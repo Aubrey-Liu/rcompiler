@@ -1,0 +1,170 @@
+use crate::ast::*;
+
+grammar;
+
+match {
+  // skip blanks and comments
+  r"\s*" => {},
+  r"//[^\n\r]*[\n\r]*" => {},
+  r"/\*([^\n\r]*[\n\r]*)*\*/" => {},
+  // default case
+  _
+}
+
+pub CompUnit: CompUnit = <func_def: FuncDef> => CompUnit { <> };
+
+FuncDef: FuncDef = {
+  <func_type: FuncType> <ident: Ident> "(" ")" <block: Block> => {
+    FuncDef { <> }
+  }
+}
+
+FuncType: FuncType = "int" => FuncType("int".to_string());
+
+Block: Block = "{" <AstValue+> "}" => Block::new_with_vec(&<>);
+
+AstValue: AstValue = {
+  Return => AstValue::Return(<>),
+};
+
+Return: Exp = "return" <Exp> ";" => <>;
+
+// identifier
+Ident: String = r"[_a-zA-Z][_a-zA-Z0-9]*" => <>.to_string();
+
+IntConst: i32 = {
+  r"[1-9][0-9]*" => i32::from_str_radix(<>, 10).unwrap(),
+  r"0[0-7]*" => i32::from_str_radix(<>, 8).unwrap(),
+  r"0[xX][0-9a-fA-F]+" => i32::from_str_radix(&<>[2..], 16).unwrap(),
+};
+
+Exp: Exp = {
+  LOrExp => <>,
+};
+
+AddExp: Exp = {
+  <l: AddExp> "+" <r: MulExp> => {
+    let oprand = Oprand {
+      left: Box::new(l),
+      right: Box::new(r),
+    };
+    Exp::Bxp(BinaryExp::Add(oprand))
+  },
+  <l: AddExp> "-" <r: MulExp> => {
+    let oprand = Oprand {
+      left: Box::new(l),
+      right: Box::new(r),
+    };
+    Exp::Bxp(BinaryExp::Sub(oprand))
+  },
+  MulExp => <>,
+};
+
+MulExp: Exp = {
+  UnaryExp => <>,
+  <l: MulExp> "*" <r: UnaryExp> => {
+    let oprand = Oprand {
+      left: Box::new(l),
+      right: Box::new(r),
+    };
+    Exp::Bxp(BinaryExp::Mul(oprand))
+  },
+  <l: MulExp> "/" <r: UnaryExp> => {
+    let oprand = Oprand {
+      left: Box::new(l),
+      right: Box::new(r),
+    };
+    Exp::Bxp(BinaryExp::Div(oprand))
+  },
+  <l: MulExp> "%" <r: UnaryExp> => {
+    let oprand = Oprand {
+      left: Box::new(l),
+      right: Box::new(r),
+    };
+    Exp::Bxp(BinaryExp::Mod(oprand))
+  },
+};
+
+UnaryExp: Exp = {
+  PrimaryExp => <>,
+  "+" <uxp: UnaryExp> => uxp,
+  "-" <uxp: UnaryExp> => Exp::Uxp(UnaryExp::Neg(Box::new(uxp))),
+  "!" <uxp: UnaryExp> => Exp::Uxp(UnaryExp::Not(Box::new(uxp))),
+};
+
+PrimaryExp: Exp = {
+  "(" <Exp> ")" => <>,
+  IntConst => Exp::Integer(<>),
+};
+
+RelExp: Exp = {
+  AddExp => <>,
+  <l: RelExp> "<" <r: AddExp> => {
+    let oprand = Oprand {
+      left: Box::new(l),
+      right: Box::new(r),
+    };
+    Exp::Bxp(BinaryExp::Lt(oprand))
+  },
+  <l: RelExp> ">" <r: AddExp> => {
+    let oprand = Oprand {
+      left: Box::new(l),
+      right: Box::new(r),
+    };
+    Exp::Bxp(BinaryExp::Gt(oprand))
+  },
+  <l: RelExp> "<=" <r: AddExp> => {
+    let oprand = Oprand {
+      left: Box::new(l),
+      right: Box::new(r),
+    };
+    Exp::Bxp(BinaryExp::Lte(oprand))
+  },
+  <l: RelExp> ">=" <r: AddExp> => {
+    let oprand = Oprand {
+      left: Box::new(l),
+      right: Box::new(r),
+    };
+    Exp::Bxp(BinaryExp::Gte(oprand))
+  },
+};
+
+EqExp: Exp = {
+  RelExp => <>,
+  <l: EqExp> "==" <r: RelExp> => {
+    let oprand = Oprand {
+      left: Box::new(l),
+      right: Box::new(r),
+    };
+    Exp::Bxp(BinaryExp::Eq(oprand))
+  },
+  <l: EqExp> "!=" <r: RelExp> => {
+    let oprand = Oprand {
+      left: Box::new(l),
+      right: Box::new(r),
+    };
+    Exp::Bxp(BinaryExp::Neq(oprand))
+  },
+};
+
+LAndExp: Exp = {
+  EqExp => <>,
+  <l: LAndExp> "&&" <r: EqExp> => {
+    let oprand = Oprand {
+      left: Box::new(l),
+      right: Box::new(r),
+    };
+    Exp::Bxp(BinaryExp::And(oprand))
+  },
+};
+
+LOrExp: Exp = {
+  LAndExp => <>,
+  <l: LOrExp> "||" <r: LAndExp> => {
+    let oprand = Oprand {
+      left: Box::new(l),
+      right: Box::new(r),
+    };
+    Exp::Bxp(BinaryExp::Or(oprand))
+  },
+};

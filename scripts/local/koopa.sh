@@ -1,1 +1,1 @@
-cargo run -- -koopa hello.c -o hello.koopa 
+cargo run -- -koopa examples/hello.c -o examples/hello.koopa 

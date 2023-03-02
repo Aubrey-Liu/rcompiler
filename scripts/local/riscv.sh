@@ -1,1 +1,1 @@
-cargo run -- -riscv hello.c -o hello.riscv
+cargo run -- -riscv examples/hello.c -o examples/hello.riscv
