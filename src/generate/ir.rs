@@ -2,7 +2,8 @@ use crate::ast::*;
 use crate::sysy;
 use anyhow::Result;
 use koopa::back::KoopaGenerator;
-use koopa::ir::{builder_traits::BasicBlockBuilder, *};
+use koopa::ir::builder::BasicBlockBuilder;
+use koopa::ir::*;
 use std::fs::read_to_string;
 
 pub fn into_mem_ir(ipath: &str) -> Result<Program> {
@@ -19,6 +20,25 @@ pub fn into_text_ir(ipath: &str, opath: &str) -> Result<()> {
     gen.generate_on(&program)?;
 
     Ok(())
+}
+
+pub(super) mod insts {
+    use koopa::ir::builder_traits::{LocalInstBuilder, ValueBuilder};
+    use koopa::ir::{FunctionData, Value};
+
+    pub fn integer(fib_data: &mut FunctionData, i: i32) -> Value {
+        fib_data.dfg_mut().new_value().integer(i)
+    }
+
+    pub fn ret(fib_data: &mut FunctionData, v: Value) -> Value {
+        fib_data.dfg_mut().new_value().ret(Some(v))
+    }
+}
+
+impl Exp {
+    pub fn into_value(&self, fib_data: &mut FunctionData) -> Value {
+        insts::integer(fib_data, self.parse())
+    }
 }
 
 impl CompUnit {
@@ -61,7 +81,7 @@ impl Block {
 
         while let Some(value) = values.next() {
             if let AstValue::Return(e) = value {
-                let ret_value = e.parse(fib_data);
+                let ret_value = e.into_value(fib_data);
                 insts.push(insts::ret(fib_data, ret_value));
             } else {
                 // todo: At now, we can only understand the 'return' statement.
@@ -69,81 +89,5 @@ impl Block {
             }
         }
         fib_data.layout_mut().bb_mut(bb).insts_mut().extend(insts);
-    }
-}
-
-impl Exp {
-    pub fn parse(&self, fib_data: &mut FunctionData) -> Value {
-        insts::integer(fib_data, exp::parse_exp(self))
-    }
-}
-
-pub(super) mod exp {
-    use crate::ast::*;
-
-    pub fn parse_exp(exp: &Exp) -> i32 {
-        match exp {
-            Exp::Integer(i) => *i,
-            Exp::Uxp(uxp) => match uxp {
-                UnaryExp::Neg(e) => -parse_exp(e),
-                UnaryExp::Not(e) => is_zero(parse_exp(e)),
-            },
-            Exp::Bxp(bxp) => match bxp {
-                BinaryExp::Add(x) => parse_exp(&x.left) + parse_exp(&x.right),
-                BinaryExp::Sub(x) => parse_exp(&x.left) - parse_exp(&x.right),
-                BinaryExp::Mul(x) => parse_exp(&x.left) * parse_exp(&x.right),
-                BinaryExp::Div(x) => parse_exp(&x.left) / parse_exp(&x.right),
-                BinaryExp::Mod(x) => parse_exp(&x.left) % parse_exp(&x.right),
-                BinaryExp::And(x) => lnd(parse_exp(&x.left), parse_exp(&x.right)),
-                BinaryExp::Or(x) => lor(parse_exp(&x.left), parse_exp(&x.right)),
-                BinaryExp::Eq(x) => is_zero(parse_exp(&x.left) - parse_exp(&x.right)),
-                BinaryExp::Neq(x) => not_zero(parse_exp(&x.left) - parse_exp(&x.right)),
-                BinaryExp::Lt(x) => positive(parse_exp(&x.right) - parse_exp(&x.left)),
-                BinaryExp::Lte(x) => non_negative(parse_exp(&x.right) - parse_exp(&x.left)),
-                BinaryExp::Gt(x) => positive(parse_exp(&x.left) - parse_exp(&x.right)),
-                BinaryExp::Gte(x) => non_negative(parse_exp(&x.left) - parse_exp(&x.right)),
-            },
-        }
-    }
-
-    // logical and
-    fn lnd(x: i32, y: i32) -> i32 {
-        (x != 0 && y != 0) as i32
-    }
-
-    // logical or
-    fn lor(x: i32, y: i32) -> i32 {
-        (x != 0 || y != 0) as i32
-    }
-
-    fn is_zero(i: i32) -> i32 {
-        (i == 0) as i32
-    }
-
-    fn not_zero(i: i32) -> i32 {
-        (i != 0) as i32
-    }
-
-    fn positive(x: i32) -> i32 {
-        x.is_positive() as i32
-    }
-
-    fn non_negative(x: i32) -> i32 {
-        !x.is_negative() as i32
-    }
-}
-
-pub(super) mod insts {
-    use koopa::ir::{
-        builder_traits::{LocalInstBuilder, ValueBuilder},
-        FunctionData, Value,
-    };
-
-    pub fn integer(fib_data: &mut FunctionData, i: i32) -> Value {
-        fib_data.dfg_mut().new_value().integer(i)
-    }
-
-    pub fn ret(fib_data: &mut FunctionData, v: Value) -> Value {
-        fib_data.dfg_mut().new_value().ret(Some(v))
     }
 }
