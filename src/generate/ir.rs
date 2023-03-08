@@ -1,19 +1,24 @@
 use crate::ast::*;
 use crate::sysy;
+use anyhow::Result;
 use koopa::back::KoopaGenerator;
 use koopa::ir::{builder_traits::BasicBlockBuilder, *};
 use std::fs::read_to_string;
 
-pub fn into_mem_ir(ipath: &str) -> Program {
-    let input = read_to_string(ipath).unwrap();
+pub fn into_mem_ir(ipath: &str) -> Result<Program> {
+    let input = read_to_string(ipath)?;
     let ast = sysy::CompUnitParser::new().parse(&input).unwrap();
-    ast.into_program()
-}
-pub fn into_text_ir(ipath: &str, opath: &str) {
-    let program = into_mem_ir(ipath);
 
-    let mut gen = KoopaGenerator::from_path(opath).unwrap();
-    gen.generate_on(&program).unwrap();
+    Ok(ast.into_program())
+}
+
+pub fn into_text_ir(ipath: &str, opath: &str) -> Result<()> {
+    let program = into_mem_ir(ipath)?;
+
+    let mut gen = KoopaGenerator::from_path(opath)?;
+    gen.generate_on(&program)?;
+
+    Ok(())
 }
 
 impl CompUnit {
@@ -79,24 +84,24 @@ pub(super) mod exp {
     pub fn parse_exp(exp: &Exp) -> i32 {
         match exp {
             Exp::Integer(i) => *i,
-            Exp::Uxp(op) => match op {
+            Exp::Uxp(uxp) => match uxp {
                 UnaryExp::Neg(e) => -parse_exp(e),
                 UnaryExp::Not(e) => is_zero(parse_exp(e)),
             },
-            Exp::Bxp(op) => match op {
-                BinaryExp::Add(p) => parse_exp(&p.left) + parse_exp(&p.right),
-                BinaryExp::Sub(p) => parse_exp(&p.left) - parse_exp(&p.right),
-                BinaryExp::Mul(p) => parse_exp(&p.left) * parse_exp(&p.right),
-                BinaryExp::Div(p) => parse_exp(&p.left) / parse_exp(&p.right),
-                BinaryExp::Mod(p) => parse_exp(&p.left) % parse_exp(&p.right),
-                BinaryExp::And(p) => lnd(parse_exp(&p.left), parse_exp(&p.right)),
-                BinaryExp::Or(p) => lor(parse_exp(&p.left), parse_exp(&p.right)),
-                BinaryExp::Eq(p) => is_zero(parse_exp(&p.left) - parse_exp(&p.right)),
-                BinaryExp::Neq(p) => not_zero(parse_exp(&p.left) - parse_exp(&p.right)),
-                BinaryExp::Lt(p) => positive(parse_exp(&p.right) - parse_exp(&p.left)),
-                BinaryExp::Lte(p) => non_negative(parse_exp(&p.right) - parse_exp(&p.left)),
-                BinaryExp::Gt(p) => positive(parse_exp(&p.left) - parse_exp(&p.right)),
-                BinaryExp::Gte(p) => non_negative(parse_exp(&p.left) - parse_exp(&p.right)),
+            Exp::Bxp(bxp) => match bxp {
+                BinaryExp::Add(x) => parse_exp(&x.left) + parse_exp(&x.right),
+                BinaryExp::Sub(x) => parse_exp(&x.left) - parse_exp(&x.right),
+                BinaryExp::Mul(x) => parse_exp(&x.left) * parse_exp(&x.right),
+                BinaryExp::Div(x) => parse_exp(&x.left) / parse_exp(&x.right),
+                BinaryExp::Mod(x) => parse_exp(&x.left) % parse_exp(&x.right),
+                BinaryExp::And(x) => lnd(parse_exp(&x.left), parse_exp(&x.right)),
+                BinaryExp::Or(x) => lor(parse_exp(&x.left), parse_exp(&x.right)),
+                BinaryExp::Eq(x) => is_zero(parse_exp(&x.left) - parse_exp(&x.right)),
+                BinaryExp::Neq(x) => not_zero(parse_exp(&x.left) - parse_exp(&x.right)),
+                BinaryExp::Lt(x) => positive(parse_exp(&x.right) - parse_exp(&x.left)),
+                BinaryExp::Lte(x) => non_negative(parse_exp(&x.right) - parse_exp(&x.left)),
+                BinaryExp::Gt(x) => positive(parse_exp(&x.left) - parse_exp(&x.right)),
+                BinaryExp::Gte(x) => non_negative(parse_exp(&x.left) - parse_exp(&x.right)),
             },
         }
     }
