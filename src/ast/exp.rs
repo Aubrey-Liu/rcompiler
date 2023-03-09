@@ -1,5 +1,4 @@
-use super::symt::*;
-use super::utils::*;
+use super::*;
 
 #[derive(Debug, Clone)]
 pub enum Exp {
@@ -15,7 +14,6 @@ pub struct BinaryExp {
     pub left: Box<Exp>,
     pub right: Box<Exp>,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct UnaryExp {
@@ -47,33 +45,64 @@ pub enum UnaryOp {
     Not,
 }
 
+pub trait Eval {
+    fn eval(&self, symt: &SymbolTable, is_const: bool) -> i32;
+}
 
-impl Exp {
-    pub fn parse(&self) -> i32 {
-        match self {
-            Exp::Integer(i) => *i,
-            Exp::Uxp(uxp) => match uxp.op {
-                UnaryOp::Nop => uxp.right.parse(),
-                UnaryOp::Neg => -uxp.right.parse(),
-                UnaryOp::Not => is_zero(uxp.right.parse()),
-            },
-            Exp::Bxp(bxp) => match bxp.op {
-                BinaryOp::Add => bxp.left.parse() + bxp.right.parse(),
-                BinaryOp::Sub => bxp.left.parse() - bxp.right.parse(),
-                BinaryOp::Mul => bxp.left.parse() * bxp.right.parse(),
-                BinaryOp::Div => bxp.left.parse() / bxp.right.parse(),
-                BinaryOp::Mod => bxp.left.parse() % bxp.right.parse(),
-                BinaryOp::And => lnd(bxp.left.parse(), bxp.right.parse()),
-                BinaryOp::Or => lor(bxp.left.parse(), bxp.right.parse()),
-                BinaryOp::Eq => is_zero(bxp.left.parse() - bxp.right.parse()),
-                BinaryOp::Neq => not_zero(bxp.left.parse() - bxp.right.parse()),
-                BinaryOp::Lt => positive(bxp.right.parse() - bxp.left.parse()),
-                BinaryOp::Lte => non_negative(bxp.right.parse() - bxp.left.parse()),
-                BinaryOp::Gt => positive(bxp.left.parse() - bxp.right.parse()),
-                BinaryOp::Gte => non_negative(bxp.left.parse() - bxp.right.parse()),
-            },
-            _ => todo!(),
+impl Eval for UnaryExp {
+    fn eval(&self, symt: &SymbolTable, is_const: bool) -> i32 {
+        let right = self.right.eval(symt, is_const);
+
+        match self.op {
+            UnaryOp::Nop => right,
+            UnaryOp::Neg => -right,
+            UnaryOp::Not => is_zero(right),
         }
     }
 }
 
+impl Eval for BinaryExp {
+    fn eval(&self, symt: &SymbolTable, is_const: bool) -> i32 {
+        let left = self.left.eval(symt, is_const);
+        let right = self.right.eval(symt, is_const);
+
+        match self.op {
+            BinaryOp::Add => left + right,
+            BinaryOp::Sub => left - right,
+            BinaryOp::Mul => left * right,
+            BinaryOp::Div => left / right,
+            BinaryOp::Mod => left % right,
+            BinaryOp::And => lnd(left, right),
+            BinaryOp::Or => lor(left, right),
+            BinaryOp::Eq => is_zero(left - right),
+            BinaryOp::Neq => not_zero(left - right),
+            BinaryOp::Lt => positive(right - left),
+            BinaryOp::Lte => non_negative(right - left),
+            BinaryOp::Gt => positive(left - right),
+            BinaryOp::Gte => non_negative(left - right),
+        }
+    }
+}
+
+impl Eval for Exp {
+    fn eval(&self, symt: &SymbolTable, is_const: bool) -> i32 {
+        match self {
+            Exp::Integer(i) => *i,
+            Exp::Uxp(uxp) => uxp.eval(symt, is_const),
+            Exp::Bxp(bxp) => bxp.eval(symt, is_const),
+            Exp::LVal(name) => {
+                let sym = symt.get(name).unwrap();
+                match sym {
+                    Symbol::ConstVar(val) => *val,
+                    Symbol::Var(exp) => {
+                        if is_const {
+                            panic!("Non-const variable in a const expression")
+                        } else {
+                            exp.eval(symt, is_const)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

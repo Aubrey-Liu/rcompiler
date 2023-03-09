@@ -1,1 +1,2 @@
-docker run -it --rm -v ~/Developer/rcompiler/:/root/compiler maxxing/compiler-dev bash 
+docker run -it -v ~/Developer/rcompiler/:/root/compiler -v ~/.cargo/config:/root/.cargo/config \
+  maxxing/compiler-dev bash

@@ -8,14 +8,14 @@ use std::fs::read_to_string;
 
 pub fn into_mem_ir(ipath: &str) -> Result<Program> {
     let input = read_to_string(ipath)?;
+    let mut gsymt = SymbolTable::new();
     let ast = sysy::CompUnitParser::new().parse(&input).unwrap();
 
-    Ok(ast.into_program())
+    ast.into_program(&mut gsymt)
 }
 
 pub fn into_text_ir(ipath: &str, opath: &str) -> Result<()> {
     let program = into_mem_ir(ipath)?;
-
     let mut gen = KoopaGenerator::from_path(opath)?;
     gen.generate_on(&program)?;
 
@@ -35,23 +35,17 @@ pub(super) mod insts {
     }
 }
 
-impl Exp {
-    pub fn into_value(&self, fib_data: &mut FunctionData) -> Value {
-        insts::integer(fib_data, self.parse())
-    }
-}
-
 impl CompUnit {
-    pub fn into_program(&self) -> Program {
+    pub fn into_program(&self, symt: &mut SymbolTable) -> Result<Program> {
         let mut program = Program::new();
         let fib = self.func_def.new_func(&mut program);
         let fib_data = program.func_mut(fib);
         // Create the entry block
         let entry = self.func_def.block.new_bb(fib_data, "%entry");
         self.func_def.push_bb(fib_data, entry);
-        self.func_def.block.parse_bb(fib_data, entry);
+        self.func_def.block.parse_bb(fib_data, entry, symt)?;
 
-        program
+        Ok(program)
     }
 }
 
@@ -75,19 +69,32 @@ impl Block {
         fib_data.dfg_mut().new_bb().basic_block(Some(name.into()))
     }
 
-    pub fn parse_bb(&self, fib_data: &mut FunctionData, bb: BasicBlock) {
+    pub fn parse_bb(
+        &self,
+        fib_data: &mut FunctionData,
+        bb: BasicBlock,
+        symt: &mut SymbolTable,
+    ) -> Result<()> {
         let mut insts = Vec::new();
         let mut values = self.values.iter().peekable();
 
         while let Some(value) = values.next() {
-            if let AstValue::Return(e) = value {
-                let ret_value = e.into_value(fib_data);
-                insts.push(insts::ret(fib_data, ret_value));
-            } else {
-                // todo: At now, we can only understand the 'return' statement.
-                break;
+            match value {
+                AstValue::Return(e) => {
+                    let val = e.eval(symt, false);
+                    let ret_value = insts::integer(fib_data, val);
+                    insts.push(insts::ret(fib_data, ret_value));
+                }
+                AstValue::ConstDecl(decls) => {
+                    for d in decls {
+                        symt.insert_const(&d.name, d.init.eval(symt, true))?;
+                    }
+                }
+                _ => todo!()
             }
         }
         fib_data.layout_mut().bb_mut(bb).insts_mut().extend(insts);
+
+        Ok(())
     }
 }

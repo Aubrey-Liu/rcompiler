@@ -1,5 +1,6 @@
 pub use exp::*;
 pub use symt::*;
+pub(self) use utils::*;
 pub mod exp;
 pub mod symt;
 mod utils;
@@ -21,9 +22,21 @@ pub struct FuncType(pub String);
 
 #[derive(Debug, Clone)]
 pub enum AstValue {
-    ConstDecl(SymbolID, Exp),
-    Return(Exp),
-    End, // ; is the end of a line
+    Decl(Vec<Decl>),
+    ConstDecl(Vec<ConstDecl>),
+    Return(Box<Exp>),
+}
+
+#[derive(Debug, Clone)]
+pub struct ConstDecl {
+    pub name: SymbolID,
+    pub init: Box<Exp>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Decl {
+    pub name: SymbolID,
+    pub init: Box<Exp>,
 }
 
 #[derive(Debug)]

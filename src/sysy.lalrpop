@@ -17,19 +17,36 @@ FuncDef: FuncDef = {
   <func_type: FuncType> <ident: Ident> "(" ")" <block: Block> => {
     FuncDef { <> }
   }
-}
+};
 
 FuncType: FuncType = "int" => FuncType("int".to_string());
 
 Block: Block = "{" <BlockItem+> "}" => Block::new_with_vec(&<>);
 
 BlockItem: AstValue = {
-  Return => AstValue::Return(<>),
+  Return => <>,
+  Decl => <>,
 };
 
-// todo: const variable
+Decl: AstValue = {
+  ConstDecl => <>,
+};
 
-Return: Exp = "return" <Exp> ";" => <>;
+ConstDecl: AstValue = {
+  "const" "int" <mut vals: (<ConstDef> ",")*> <val: ConstDef>  ";" => {
+    vals.push(val);
+    AstValue::ConstDecl(vals)
+  }
+};
+
+ConstDef: ConstDecl = <name: Ident> "=" <init: ConstInit> => {
+  ConstDecl { name: name, init: init }
+};
+
+ConstInit: Box<Exp> = ConstExp => <>;
+ConstExp: Box<Exp> = Exp => <>;
+
+Return: AstValue = "return" <Exp> ";" => AstValue::Return(<>);
 
 // identifier
 Ident: String = r"[_a-zA-Z][_a-zA-Z0-9]*" => <>.to_string();
@@ -40,25 +57,19 @@ IntConst: i32 = {
   r"0[xX][0-9a-fA-F]+" => i32::from_str_radix(&<>[2..], 16).unwrap(),
 };
 
-Exp: Exp = {
-  LOrExp => <>,
+LVal: String = Ident => <>;
+
+PrimaryExp: Box<Exp> = {
+  "(" <Exp> ")" => <>,
+  IntConst => Box::new(Exp::Integer(<>)),
+  LVal => Box::new(Exp::LVal(<>)),
 };
 
-UnaryExp: Exp = {
-  PrimaryExp => <>,
-  <op: UnaryOp> <uxp: UnaryExp> => Exp::Uxp(UnaryExp {
-    op: op,
-    right: Box::new(uxp),
-  })
-};
-
-Tier<Op, NextTier>: Exp = {
-  <l: Tier<Op, NextTier>> <op: Op> <r: NextTier> => 
-    Exp::Bxp(BinaryExp {
-      op: op,
-      left: Box::new(l),
-      right: Box::new(r),
-    }),
+// macro for all the binary expression patterns
+Tier<Op, NextTier>: Box<Exp> = {
+  <l: Tier<Op, NextTier>> <op: Op> <r: NextTier> => {
+    Box::new(Exp::Bxp(BinaryExp { op: op, left: l, right: r }))
+  },
   NextTier
 };
 
@@ -68,11 +79,6 @@ RelExp = Tier<RelOp, AddExp>;
 EqExp = Tier<EqOp, RelExp>;
 LAndExp = Tier<LAndOp, EqExp>;
 LOrExp = Tier<LOrOp, LAndExp>;
-
-PrimaryExp: Exp = {
-  "(" <Exp> ")" => <>,
-  IntConst => Exp::Integer(<>),
-};
 
 // match all the operators
 MulOp: BinaryOp = {
@@ -110,4 +116,15 @@ UnaryOp: UnaryOp = {
   "+" => UnaryOp::Nop,
   "-" => UnaryOp::Neg,
   "!" => UnaryOp::Not,
+};
+
+Exp: Box<Exp> = {
+  LOrExp => <>,
+};
+
+UnaryExp: Box<Exp> = {
+  PrimaryExp => <>,
+  <op: UnaryOp> <uxp: UnaryExp> => {
+    Box::new(Exp::Uxp(UnaryExp { op: op, right: uxp }))
+  },
 };

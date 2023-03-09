@@ -1,29 +1,58 @@
-use std::collections::HashMap;
 use super::exp::*;
+use anyhow::{anyhow, Ok, Result};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
-pub struct Symbol {
-    pub name: String,
-    pub ty: SymbolType,
+pub enum Symbol {
+    ConstVar(i32),
+    Var(Box<Exp>),
 }
 
-pub type SymbolID = u32;
+pub type SymbolID = String;
 
 #[derive(Debug, Clone)]
 pub struct SymbolTable {
-    // todo: make fields private
-    pub names: HashMap<SymbolID, String>,
     pub symbols: HashMap<String, Symbol>,
     pub parent_link: Option<Box<SymbolTable>>,
-    pub id: SymbolID,
+    pub child_link: Option<Box<SymbolTable>>,
 }
 
-#[derive(Debug, Clone)]
-pub enum SymbolType {
-    Var { ty: VarType, value: Box<Exp> },
-}
+impl SymbolTable {
+    pub fn insert_const(&mut self, name: &String, attr: i32) -> Result<()> {
+        if self.symbols.contains_key(name) {
+            return Err(anyhow!("duplicate definition"));
+        }
+        self.symbols
+            .insert(name.clone(), Symbol::ConstVar(attr));
 
-#[derive(Debug, Clone)]
-pub enum VarType {
-    Int,
+        Ok(())
+    }
+
+    pub fn get_mut(&mut self, name: &SymbolID) -> Result<&mut Symbol> {
+        self.symbols
+            .get_mut(name)
+            .ok_or(anyhow!("Used an undefined variable: {}", name))
+    }
+
+    pub fn get(&self, name: &SymbolID) -> Result<&Symbol> {
+        self.symbols
+            .get(name)
+            .ok_or(anyhow!("Used an undefined variable: {}", name))
+    }
+
+    pub fn contains_name(&self, name: &SymbolID) -> bool {
+        self.symbols.contains_key(name)
+    }
+
+    pub fn is_global(&self) -> bool {
+        self.parent_link.is_none()
+    }
+
+    pub fn new() -> SymbolTable {
+        SymbolTable {
+            symbols: HashMap::new(),
+            parent_link: None,
+            child_link: None,
+        }
+    }
 }
