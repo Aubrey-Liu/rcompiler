@@ -21,11 +21,13 @@ FuncDef: FuncDef = {
 
 FuncType: FuncType = "int" => FuncType("int".to_string());
 
-Block: Block = "{" <AstValue+> "}" => Block::new_with_vec(&<>);
+Block: Block = "{" <BlockItem+> "}" => Block::new_with_vec(&<>);
 
-AstValue: AstValue = {
+BlockItem: AstValue = {
   Return => AstValue::Return(<>),
 };
+
+// todo: const variable
 
 Return: Exp = "return" <Exp> ";" => <>;
 
@@ -37,13 +39,6 @@ IntConst: i32 = {
   r"0[0-7]*" => i32::from_str_radix(<>, 8).unwrap(),
   r"0[xX][0-9a-fA-F]+" => i32::from_str_radix(&<>[2..], 16).unwrap(),
 };
-
-MulExp = Tier<MulOp, UnaryExp>;
-AddExp = Tier<AddOp, MulExp>;
-RelExp = Tier<RelOp, AddExp>;
-EqExp = Tier<EqOp, RelExp>;
-LAndExp = Tier<LAndOp, EqExp>;
-LOrExp = Tier<LOrOp, LAndExp>;
 
 Exp: Exp = {
   LOrExp => <>,
@@ -57,17 +52,6 @@ UnaryExp: Exp = {
   })
 };
 
-UnaryOp: UnaryOp = {
-  "+" => UnaryOp::Nop,
-  "-" => UnaryOp::Neg,
-  "!" => UnaryOp::Not,
-};
-
-PrimaryExp: Exp = {
-  "(" <Exp> ")" => <>,
-  IntConst => Exp::Integer(<>),
-};
-
 Tier<Op, NextTier>: Exp = {
   <l: Tier<Op, NextTier>> <op: Op> <r: NextTier> => 
     Exp::Bxp(BinaryExp {
@@ -78,6 +62,19 @@ Tier<Op, NextTier>: Exp = {
   NextTier
 };
 
+MulExp = Tier<MulOp, UnaryExp>;
+AddExp = Tier<AddOp, MulExp>;
+RelExp = Tier<RelOp, AddExp>;
+EqExp = Tier<EqOp, RelExp>;
+LAndExp = Tier<LAndOp, EqExp>;
+LOrExp = Tier<LOrOp, LAndExp>;
+
+PrimaryExp: Exp = {
+  "(" <Exp> ")" => <>,
+  IntConst => Exp::Integer(<>),
+};
+
+// match all the operators
 MulOp: BinaryOp = {
   "*" => BinaryOp::Mul,
   "/" => BinaryOp::Div,
@@ -107,4 +104,10 @@ LAndOp: BinaryOp = {
 
 LOrOp: BinaryOp = {
   "||" => BinaryOp::Or,
+};
+
+UnaryOp: UnaryOp = {
+  "+" => UnaryOp::Nop,
+  "-" => UnaryOp::Neg,
+  "!" => UnaryOp::Not,
 };
