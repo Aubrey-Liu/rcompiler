@@ -24,6 +24,7 @@ pub struct FuncType(pub String);
 pub enum AstValue {
     Decl(Vec<Decl>),
     ConstDecl(Vec<ConstDecl>),
+    Stmt(Stmt),
     Return(Box<Exp>),
 }
 
@@ -36,7 +37,13 @@ pub struct ConstDecl {
 #[derive(Debug, Clone)]
 pub struct Decl {
     pub name: SymbolID,
-    pub init: Box<Exp>,
+    pub init: Option<Box<Exp>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Stmt {
+    pub name: SymbolID,
+    pub val: Box<Exp>,
 }
 
 #[derive(Debug)]
@@ -46,16 +53,32 @@ pub struct Block {
 
 impl Block {
     pub fn new() -> Self {
-        Block { values: Vec::new() }
+        Self { values: Vec::new() }
     }
 
     pub fn new_with_vec(values: &Vec<AstValue>) -> Self {
-        Block {
+        Self {
             values: values.clone(),
         }
     }
 
     pub fn add(&mut self, value: AstValue) {
         self.values.push(value);
+    }
+}
+
+impl Decl {
+    pub fn new_with_init(name: &String, init: &Box<Exp>) -> Self {
+        Self {
+            name: name.clone(),
+            init: Some(init.clone()),
+        }
+    }
+
+    pub fn new_without_init(name: &String) -> Self {
+        Self {
+            name: name.clone(),
+            init: None,
+        }
     }
 }

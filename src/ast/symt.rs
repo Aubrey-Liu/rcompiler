@@ -1,11 +1,11 @@
-use super::exp::*;
-use anyhow::{anyhow, Ok, Result};
+use anyhow::{anyhow, Result};
+use koopa::ir::Value;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum Symbol {
     ConstVar(i32),
-    Var(Box<Exp>),
+    Var { val: Value, init: bool },
 }
 
 pub type SymbolID = String;
@@ -18,12 +18,22 @@ pub struct SymbolTable {
 }
 
 impl SymbolTable {
-    pub fn insert_const(&mut self, name: &String, attr: i32) -> Result<()> {
-        if self.symbols.contains_key(name) {
-            return Err(anyhow!("duplicate definition"));
-        }
-        self.symbols
-            .insert(name.clone(), Symbol::ConstVar(attr));
+    pub fn insert_var(&mut self, name: &SymbolID, val: Value, init: bool) -> Result<()> {
+        self.get(name).unwrap_err();
+        self.symbols.insert(
+            name.clone(),
+            Symbol::Var {
+                val: val,
+                init: init,
+            },
+        );
+
+        Ok(())
+    }
+
+    pub fn insert_const(&mut self, name: &SymbolID, init: i32) -> Result<()> {
+        self.get(name).unwrap_err();
+        self.symbols.insert(name.clone(), Symbol::ConstVar(init));
 
         Ok(())
     }
@@ -40,10 +50,6 @@ impl SymbolTable {
             .ok_or(anyhow!("Used an undefined variable: {}", name))
     }
 
-    pub fn contains_name(&self, name: &SymbolID) -> bool {
-        self.symbols.contains_key(name)
-    }
-
     pub fn is_global(&self) -> bool {
         self.parent_link.is_none()
     }
@@ -53,6 +59,35 @@ impl SymbolTable {
             symbols: HashMap::new(),
             parent_link: None,
             child_link: None,
+        }
+    }
+
+    pub fn is_initialized(&self, name: &SymbolID) -> bool {
+        match self.symbols.get(name).unwrap() {
+            Symbol::ConstVar(_) => true,
+            Symbol::Var { init, .. } => *init,
+        }
+    }
+
+    pub fn is_var(&self, name: &SymbolID) -> bool {
+        if let Some(Symbol::Var { .. }) = self.symbols.get(name) {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_const(&self, name: &SymbolID) -> bool {
+        if let Some(Symbol::ConstVar(_)) = self.symbols.get(name) {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn initialize(&mut self, name: &SymbolID) {
+        if let Symbol::Var { init, .. } = self.get_mut(name).unwrap() {
+            *init = true;
         }
     }
 }

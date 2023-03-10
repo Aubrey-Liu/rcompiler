@@ -25,26 +25,43 @@ Block: Block = "{" <BlockItem+> "}" => Block::new_with_vec(&<>);
 
 BlockItem: AstValue = {
   Return => <>,
+  Stmt => <>,
   Decl => <>,
+};
+
+Stmt: AstValue = {
+  <name: LVal> "=" <exp: Exp> ";" => AstValue::Stmt(Stmt { name: name, val: exp })
 };
 
 Decl: AstValue = {
   ConstDecl => <>,
+  VarDecl => <>,
 };
 
-ConstDecl: AstValue = {
-  "const" "int" <mut vals: (<ConstDef> ",")*> <val: ConstDef>  ";" => {
-    vals.push(val);
-    AstValue::ConstDecl(vals)
+VarDecl: AstValue = {
+  "int" <mut defs: (<VarDef> ",")*> <def: VarDef> ";" => {
+    defs.push(def);
+    AstValue::Decl(defs)
   }
 };
 
-ConstDef: ConstDecl = <name: Ident> "=" <init: ConstInit> => {
-  ConstDecl { name: name, init: init }
+VarDef: Decl = {
+  Ident => Decl::new_without_init(&<>),
+  <name: Ident> "=" <exp: Exp> => Decl::new_with_init(&name, &exp),
 };
 
-ConstInit: Box<Exp> = ConstExp => <>;
-ConstExp: Box<Exp> = Exp => <>;
+ConstDecl: AstValue = {
+  "const" "int" <mut defs: (<ConstDef> ",")*> <def: ConstDef>  ";" => {
+    defs.push(def);
+    AstValue::ConstDecl(defs)
+  }
+};
+
+ConstDef: ConstDecl = <name: Ident> "=" <init: Exp> => {
+  ConstDecl { name: name, init: init }
+};
+// ConstInit: Box<Exp> = ConstExp => <>;
+// ConstExp: Box<Exp> = Exp => <>;
 
 Return: AstValue = "return" <Exp> ";" => AstValue::Return(<>);
 
@@ -62,7 +79,7 @@ LVal: String = Ident => <>;
 PrimaryExp: Box<Exp> = {
   "(" <Exp> ")" => <>,
   IntConst => Box::new(Exp::Integer(<>)),
-  LVal => Box::new(Exp::LVal(<>)),
+  LVal => Box::new(Exp::LVal(<>, None)),
 };
 
 // macro for all the binary expression patterns
