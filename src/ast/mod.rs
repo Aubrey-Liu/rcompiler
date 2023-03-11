@@ -1,6 +1,9 @@
+use std::rc::Rc;
+
 pub use exp::*;
 pub use symt::*;
 pub(self) use utils::*;
+
 pub mod exp;
 pub mod symt;
 mod utils;
@@ -20,30 +23,30 @@ pub struct FuncDef {
 #[derive(Debug)]
 pub struct FuncType(pub String);
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum AstValue {
     Decl(Vec<Decl>),
     ConstDecl(Vec<ConstDecl>),
     Stmt(Stmt),
-    Return(Box<Exp>),
+    Return(Rc<Exp>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ConstDecl {
-    pub name: SymbolID,
-    pub init: Box<Exp>,
+    pub name: String,
+    pub init: Rc<Exp>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Decl {
-    pub name: SymbolID,
-    pub init: Option<Box<Exp>>,
+    pub name: String,
+    pub init: Option<Rc<Exp>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Stmt {
-    pub name: SymbolID,
-    pub val: Box<Exp>,
+    pub name: String,
+    pub val: Rc<Exp>,
 }
 
 #[derive(Debug)]
@@ -56,10 +59,8 @@ impl Block {
         Self { values: Vec::new() }
     }
 
-    pub fn new_with_vec(values: &Vec<AstValue>) -> Self {
-        Self {
-            values: values.clone(),
-        }
+    pub fn new_with_vec(values: Vec<AstValue>) -> Self {
+        Self { values: values }
     }
 
     pub fn add(&mut self, value: AstValue) {
@@ -68,16 +69,16 @@ impl Block {
 }
 
 impl Decl {
-    pub fn new_with_init(name: &String, init: &Box<Exp>) -> Self {
+    pub fn new_with_init(name: String, init: Rc<Exp>) -> Self {
         Self {
-            name: name.clone(),
-            init: Some(init.clone()),
+            name: name,
+            init: Some(init),
         }
     }
 
-    pub fn new_without_init(name: &String) -> Self {
+    pub fn new_without_init(name: String) -> Self {
         Self {
-            name: name.clone(),
+            name: name,
             init: None,
         }
     }

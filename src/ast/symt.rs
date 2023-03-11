@@ -1,60 +1,55 @@
-use anyhow::{anyhow, Result};
-use koopa::ir::Value;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+use anyhow::{anyhow, Result};
+use koopa::ir::Value;
+
+#[derive(Debug)]
 pub enum Symbol {
     ConstVar(i32),
-    Var { val: Value, init: bool },
+    // val: the allocated position on the stack 
+    // init: is the variable initialized with a expression?
+    Var { val: Value, init: bool }, 
 }
 
-pub type SymbolID = String;
-
-#[derive(Debug, Clone)]
-pub struct SymbolTable {
-    pub symbols: HashMap<String, Symbol>,
-    pub parent_link: Option<Box<SymbolTable>>,
-    pub child_link: Option<Box<SymbolTable>>,
+#[derive(Debug)]
+pub struct SymbolTable<'input> {
+    pub symbols: HashMap<&'input str, Symbol>,
+    pub parent_link: Option<Box<SymbolTable<'input>>>,
+    pub child_link: Option<Box<SymbolTable<'input>>>,
 }
 
-impl SymbolTable {
-    pub fn insert_var(&mut self, name: &SymbolID, val: Value, init: bool) -> Result<()> {
-        self.get(name).unwrap_err();
-        self.symbols.insert(
-            name.clone(),
-            Symbol::Var {
-                val: val,
-                init: init,
-            },
-        );
+impl<'input> SymbolTable<'input> {
+    pub fn insert_var(&mut self, name: &'input str, val: Value, init: bool) -> Result<()> {
+        self.get(&name).unwrap_err();
+        self.symbols.insert(name, Symbol::Var { val, init: init });
 
         Ok(())
     }
 
-    pub fn insert_const(&mut self, name: &SymbolID, init: i32) -> Result<()> {
-        self.get(name).unwrap_err();
-        self.symbols.insert(name.clone(), Symbol::ConstVar(init));
+    pub fn insert_const(&mut self, name: &'input str, init: i32) -> Result<()> {
+        self.get(&name).unwrap_err();
+        self.symbols.insert(name, Symbol::ConstVar(init));
 
         Ok(())
     }
 
-    pub fn get_mut(&mut self, name: &SymbolID) -> Result<&mut Symbol> {
+    pub fn get_mut(&mut self, name: &'input str) -> Result<&mut Symbol> {
         self.symbols
             .get_mut(name)
-            .ok_or(anyhow!("Used an undefined variable: {}", name))
+            .ok_or(anyhow!("cannot find {} in this scope", name))
     }
 
-    pub fn get(&self, name: &SymbolID) -> Result<&Symbol> {
+    pub fn get(&self, name: &'input str) -> Result<&Symbol> {
         self.symbols
             .get(name)
-            .ok_or(anyhow!("Used an undefined variable: {}", name))
+            .ok_or(anyhow!("cannot find {} in this scope", name))
     }
 
     pub fn is_global(&self) -> bool {
         self.parent_link.is_none()
     }
 
-    pub fn new() -> SymbolTable {
+    pub fn new() -> Self {
         SymbolTable {
             symbols: HashMap::new(),
             parent_link: None,
@@ -62,14 +57,22 @@ impl SymbolTable {
         }
     }
 
-    pub fn is_initialized(&self, name: &SymbolID) -> bool {
-        match self.symbols.get(name).unwrap() {
-            Symbol::ConstVar(_) => true,
-            Symbol::Var { init, .. } => *init,
+    pub fn assert_initialized(&self, name: &'input str) {
+        if let Symbol::Var { init, .. } = self.symbols.get(name).unwrap() {
+            if !init {
+                panic!("{} has to be initialized before used", name);
+            }
         }
     }
 
-    pub fn is_var(&self, name: &SymbolID) -> bool {
+    pub fn get_const_val(&self, name: &'input str) -> i32 {
+        if let Ok(Symbol::ConstVar(i)) = self.get(name) {
+            return *i;
+        }
+        panic!("{} has to be a const variable", name);
+    }
+
+    pub fn is_var(&self, name: &'input str) -> bool {
         if let Some(Symbol::Var { .. }) = self.symbols.get(name) {
             true
         } else {
@@ -77,7 +80,7 @@ impl SymbolTable {
         }
     }
 
-    pub fn is_const(&self, name: &SymbolID) -> bool {
+    pub fn is_const(&self, name: &'input str) -> bool {
         if let Some(Symbol::ConstVar(_)) = self.symbols.get(name) {
             true
         } else {
@@ -85,7 +88,7 @@ impl SymbolTable {
         }
     }
 
-    pub fn initialize(&mut self, name: &SymbolID) {
+    pub fn initialize(&mut self, name: &'input str) {
         if let Symbol::Var { init, .. } = self.get_mut(name).unwrap() {
             *init = true;
         }

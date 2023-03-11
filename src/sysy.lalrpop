@@ -1,4 +1,5 @@
 use crate::ast::*;
+use std::rc::Rc;
 
 grammar;
 
@@ -21,7 +22,7 @@ FuncDef: FuncDef = {
 
 FuncType: FuncType = "int" => FuncType("int".to_string());
 
-Block: Block = "{" <BlockItem+> "}" => Block::new_with_vec(&<>);
+Block: Block = "{" <BlockItem+> "}" => Block::new_with_vec(<>);
 
 BlockItem: AstValue = {
   Return => <>,
@@ -46,8 +47,8 @@ VarDecl: AstValue = {
 };
 
 VarDef: Decl = {
-  Ident => Decl::new_without_init(&<>),
-  <name: Ident> "=" <exp: Exp> => Decl::new_with_init(&name, &exp),
+  Ident => Decl::new_without_init(<>),
+  <name: Ident> "=" <exp: Exp> => Decl::new_with_init(name, exp),
 };
 
 ConstDecl: AstValue = {
@@ -60,8 +61,6 @@ ConstDecl: AstValue = {
 ConstDef: ConstDecl = <name: Ident> "=" <init: Exp> => {
   ConstDecl { name: name, init: init }
 };
-// ConstInit: Box<Exp> = ConstExp => <>;
-// ConstExp: Box<Exp> = Exp => <>;
 
 Return: AstValue = "return" <Exp> ";" => AstValue::Return(<>);
 
@@ -76,16 +75,16 @@ IntConst: i32 = {
 
 LVal: String = Ident => <>;
 
-PrimaryExp: Box<Exp> = {
+PrimaryExp: Rc<Exp> = {
   "(" <Exp> ")" => <>,
-  IntConst => Box::new(Exp::Integer(<>)),
-  LVal => Box::new(Exp::LVal(<>, None)),
+  IntConst => Rc::new(Exp::Integer(<>)),
+  LVal => Rc::new(Exp::LVal(<>, None)),
 };
 
 // macro for all the binary expression patterns
-Tier<Op, NextTier>: Box<Exp> = {
+Tier<Op, NextTier>: Rc<Exp> = {
   <l: Tier<Op, NextTier>> <op: Op> <r: NextTier> => {
-    Box::new(Exp::Bxp(BinaryExp { op: op, left: l, right: r }))
+    Rc::new(Exp::Bxp(BinaryExp { op: op, lhs: l, rhs: r }))
   },
   NextTier
 };
@@ -135,13 +134,13 @@ UnaryOp: UnaryOp = {
   "!" => UnaryOp::Not,
 };
 
-Exp: Box<Exp> = {
+Exp: Rc<Exp> = {
   LOrExp => <>,
 };
 
-UnaryExp: Box<Exp> = {
+UnaryExp: Rc<Exp> = {
   PrimaryExp => <>,
   <op: UnaryOp> <uxp: UnaryExp> => {
-    Box::new(Exp::Uxp(UnaryExp { op: op, right: uxp }))
+    Rc::new(Exp::Uxp(UnaryExp { op: op, rhs: uxp }))
   },
 };

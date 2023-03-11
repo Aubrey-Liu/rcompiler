@@ -1,29 +1,30 @@
+use std::rc::Rc;
+
 use koopa::ir::{self, ValueKind};
 use koopa::ir::{FunctionData, Value};
 
+use super::*;
 use crate::generate::ir::inst_builder;
 
-use super::*;
-
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Exp {
     Integer(i32),
-    LVal(SymbolID, Option<Value>),
+    LVal(String, Option<Value>),
     Uxp(UnaryExp),
     Bxp(BinaryExp),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct BinaryExp {
     pub op: BinaryOp,
-    pub left: Box<Exp>,
-    pub right: Box<Exp>,
+    pub lhs: Rc<Exp>,
+    pub rhs: Rc<Exp>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct UnaryExp {
     pub op: UnaryOp,
-    pub right: Box<Exp>,
+    pub rhs: Rc<Exp>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -56,16 +57,16 @@ pub trait ConstEval {
 
 impl ConstEval for UnaryExp {
     fn const_eval(&self, symt: &SymbolTable) -> i32 {
-        let right = self.right.const_eval(symt);
-        eval_unary(self.op, right)
+        let rhs = self.rhs.const_eval(symt);
+        eval_unary(self.op, rhs)
     }
 }
 
 impl ConstEval for BinaryExp {
     fn const_eval(&self, symt: &SymbolTable) -> i32 {
-        let left = self.left.const_eval(symt);
-        let right = self.right.const_eval(symt);
-        eval_binary(self.op, left, right)
+        let lhs = self.lhs.const_eval(symt);
+        let rhs = self.rhs.const_eval(symt);
+        eval_binary(self.op, lhs, rhs)
     }
 }
 
@@ -75,13 +76,7 @@ impl ConstEval for Exp {
             Exp::Integer(i) => *i,
             Exp::Uxp(uxp) => uxp.const_eval(symt),
             Exp::Bxp(bxp) => bxp.const_eval(symt),
-            Exp::LVal(name, ..) => {
-                if let Ok(Symbol::ConstVar(i)) = symt.get(name) {
-                    *i
-                } else {
-                    panic!("non-const variable used in a const expression");
-                }
-            }
+            Exp::LVal(name, ..) => symt.get_const_val(name.as_str()),
         }
     }
 }
@@ -102,17 +97,17 @@ impl IntoValue for UnaryExp {
         func: &mut FunctionData,
         insts: &mut Vec<Value>,
     ) -> Value {
-        let right = self.right.into_value(symt, func, insts);
-        
-        let rkind = func.dfg().value(right).kind();
+        let rhs = self.rhs.into_value(symt, func, insts);
+
+        let rkind = func.dfg().value(rhs).kind();
         if let ValueKind::Integer(r) = rkind {
             return inst_builder::integer(func, eval_unary(self.op, r.value()));
         }
 
         let val = match self.op {
-            UnaryOp::Nop => right,
-            UnaryOp::Neg => inst_builder::neg(func, right),
-            UnaryOp::Not => inst_builder::not(func, right),
+            UnaryOp::Nop => rhs,
+            UnaryOp::Neg => inst_builder::neg(func, rhs),
+            UnaryOp::Not => inst_builder::not(func, rhs),
         };
         insts.push(val);
 
@@ -127,17 +122,17 @@ impl IntoValue for BinaryExp {
         func: &mut FunctionData,
         insts: &mut Vec<Value>,
     ) -> Value {
-        let left = self.left.into_value(symt, func, insts);
-        let right = self.right.into_value(symt, func, insts);
+        let lhs = self.lhs.into_value(symt, func, insts);
+        let rhs = self.rhs.into_value(symt, func, insts);
 
         // evaluate when expression is const
-        let lkind = func.dfg().value(left).kind();
-        let rkind = func.dfg().value(right).kind();
+        let lkind = func.dfg().value(lhs).kind();
+        let rkind = func.dfg().value(rhs).kind();
         if let (ValueKind::Integer(l), ValueKind::Integer(r)) = (lkind, rkind) {
             return inst_builder::integer(func, eval_binary(self.op, l.value(), r.value()));
         }
 
-        let val = inst_builder::binary(func, self.op.into(), left, right);
+        let val = inst_builder::binary(func, self.op.into(), lhs, rhs);
         insts.push(val);
 
         val
@@ -156,7 +151,7 @@ impl IntoValue for Exp {
             Exp::Uxp(uxp) => uxp.into_value(symt, func, insts),
             Exp::Bxp(bxp) => bxp.into_value(symt, func, insts),
             Exp::LVal(name, ..) => {
-                assert!(symt.is_initialized(name), "used an uninitialized variable");
+                symt.assert_initialized(name);
                 match symt.get(name).unwrap() {
                     Symbol::ConstVar(i) => inst_builder::integer(func, *i),
                     Symbol::Var { val, .. } => {

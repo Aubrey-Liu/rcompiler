@@ -1,8 +1,10 @@
-use anyhow::{anyhow, Result};
-use generate::riscv::GenerateAsm;
-use lalrpop_util::lalrpop_mod;
 use std::env::args;
 use std::fs::File;
+
+use anyhow::{anyhow, Result};
+use lalrpop_util::lalrpop_mod;
+
+use generate::riscv::GenerateAsm;
 
 pub mod ast;
 pub mod generate;
@@ -10,7 +12,6 @@ pub mod generate;
 lalrpop_mod!(sysy);
 
 fn main() -> Result<()> {
-    // 解析命令行参数
     let mut args = args();
     args.next();
     let mode = args.next().unwrap();
