@@ -3,94 +3,140 @@ use std::collections::HashMap;
 use anyhow::{anyhow, Result};
 use koopa::ir::Value;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Symbol {
     ConstVar(i32),
-    // val: the allocated position on the stack 
+    // val: the allocated position on the stack
     // init: is the variable initialized with a expression?
-    Var { val: Value, init: bool }, 
+    Var { val: Value, init: bool },
 }
 
 #[derive(Debug)]
 pub struct SymbolTable<'input> {
-    pub symbols: HashMap<&'input str, Symbol>,
-    pub parent_link: Option<Box<SymbolTable<'input>>>,
-    pub child_link: Option<Box<SymbolTable<'input>>>,
+    global_node_id: usize,
+    current_node_id: usize,
+    nodes: Vec<SymbolTableNode>,
+    data: Vec<HashMap<&'input str, Symbol>>,
+}
+
+#[derive(Debug, Clone)]
+struct SymbolTableNode {
+    pub children: Vec<usize>,
+    pub parent: Option<usize>,
 }
 
 impl<'input> SymbolTable<'input> {
-    pub fn insert_var(&mut self, name: &'input str, val: Value, init: bool) -> Result<()> {
-        self.get(&name).unwrap_err();
-        self.symbols.insert(name, Symbol::Var { val, init: init });
-
-        Ok(())
-    }
-
-    pub fn insert_const(&mut self, name: &'input str, init: i32) -> Result<()> {
-        self.get(&name).unwrap_err();
-        self.symbols.insert(name, Symbol::ConstVar(init));
-
-        Ok(())
-    }
-
-    pub fn get_mut(&mut self, name: &'input str) -> Result<&mut Symbol> {
-        self.symbols
-            .get_mut(name)
-            .ok_or(anyhow!("cannot find {} in this scope", name))
-    }
-
-    pub fn get(&self, name: &'input str) -> Result<&Symbol> {
-        self.symbols
-            .get(name)
-            .ok_or(anyhow!("cannot find {} in this scope", name))
-    }
-
-    pub fn is_global(&self) -> bool {
-        self.parent_link.is_none()
-    }
-
     pub fn new() -> Self {
-        SymbolTable {
-            symbols: HashMap::new(),
-            parent_link: None,
-            child_link: None,
+        Self {
+            global_node_id: 0,
+            current_node_id: 1,
+            nodes: vec![SymbolTableNode::new(); 2],
+            data: vec![HashMap::new(); 2],
         }
     }
 
-    pub fn assert_initialized(&self, name: &'input str) {
-        if let Symbol::Var { init, .. } = self.symbols.get(name).unwrap() {
-            if !init {
-                panic!("{} has to be initialized before used", name);
+    pub fn enter_scope(&mut self) {
+        let id = self.allocate_id();
+        self.nodes[self.current_node_id].children.push(id);
+        self.nodes
+            .push(SymbolTableNode::new_as_child(self.current_node_id));
+        self.data.push(HashMap::new());
+        self.current_node_id = id;
+    }
+
+    pub fn exit_scope(&mut self) {
+        self.current_node_id = self.nodes[self.current_node_id].parent.unwrap();
+    }
+
+    fn allocate_id(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn get(&self, name: &str) -> Result<&Symbol> {
+        let mut id = self.current_node_id;
+        loop {
+            match self.data[id].get(name) {
+                Some(sym) => return Ok(sym),
+                None => {}
+            }
+            match self.nodes[id].parent {
+                Some(i) => id = i,
+                None => break,
             }
         }
+        Err(anyhow!("{} is not defined in the current scope", name))
     }
 
-    pub fn get_const_val(&self, name: &'input str) -> i32 {
-        if let Ok(Symbol::ConstVar(i)) = self.get(name) {
-            return *i;
+    pub fn get_mut(&mut self, name: &str) -> Result<&mut Symbol> {
+        let mut id = self.current_node_id;
+        loop {
+            if self.data[id].contains_key(name) {
+                return self.data[id]
+                    .get_mut(name)
+                    .ok_or(anyhow!("unexpected error"));
+            }
+            match self.nodes[id].parent {
+                Some(i) => id = i,
+                None => break,
+            }
         }
-        panic!("{} has to be a const variable", name);
+        Err(anyhow!("{} is not defined in the current scope", name))
     }
 
-    pub fn is_var(&self, name: &'input str) -> bool {
-        if let Some(Symbol::Var { .. }) = self.symbols.get(name) {
-            true
-        } else {
-            false
+    pub fn get_from_var(&self, name: &str) -> Result<Value> {
+        self.get(name).and_then(|sym| match sym {
+            Symbol::Var { val, .. } => Ok(*val),
+            Symbol::ConstVar(_) => Err(anyhow!("{} has to be a variable", name)),
+        })
+    }
+
+    pub fn get_from_const_var(&self, name: &str) -> Result<i32> {
+        self.get(name).and_then(|sym| match sym {
+            Symbol::ConstVar(i) => Ok(*i),
+            Symbol::Var { .. } => Err(anyhow!("{} has to be a variable", name)),
+        })
+    }
+
+    pub fn initialize(&mut self, name: &str) -> Result<()> {
+        self.get_mut(name).and_then(|sym| {
+            if let Symbol::Var { init, .. } = sym {
+                *init = true;
+                Ok(())
+            } else {
+                Err(anyhow!("{} has to be a variable", name))
+            }
+        })
+    }
+
+    pub fn insert_var(&mut self, name: &'input str, val: Value, init: bool) -> Result<()> {
+        self.data[self.current_node_id]
+            .insert(name, Symbol::Var { val, init })
+            .map_or(Ok(()), |_| Err(anyhow!("{}: duplicate definition", name)))
+    }
+
+    pub fn insert_const_var(&mut self, name: &'input str, init: i32) -> Result<()> {
+        self.data[self.current_node_id]
+            .insert(name, Symbol::ConstVar(init))
+            .map_or(Ok(()), |_| Err(anyhow!("{}: duplicate definition", name)))
+    }
+
+    pub fn generate_name(&self, name: &str) -> String {
+        name.to_owned() + &self.current_node_id.to_string()
+    }
+}
+
+impl SymbolTableNode {
+    pub fn new() -> Self {
+        Self {
+            children: Vec::new(),
+            parent: None,
         }
     }
 
-    pub fn is_const(&self, name: &'input str) -> bool {
-        if let Some(Symbol::ConstVar(_)) = self.symbols.get(name) {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn initialize(&mut self, name: &'input str) {
-        if let Symbol::Var { init, .. } = self.get_mut(name).unwrap() {
-            *init = true;
+    pub fn new_as_child(parent_id: usize) -> Self {
+        Self {
+            children: Vec::new(),
+            parent: Some(parent_id),
         }
     }
 }

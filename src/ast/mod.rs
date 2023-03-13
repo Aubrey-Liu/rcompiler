@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 pub use exp::*;
 pub use symt::*;
 pub(self) use utils::*;
@@ -14,6 +12,9 @@ pub struct CompUnit {
 }
 
 #[derive(Debug)]
+pub struct FuncType(pub String);
+
+#[derive(Debug)]
 pub struct FuncDef {
     pub func_type: FuncType,
     pub ident: String,
@@ -21,37 +22,36 @@ pub struct FuncDef {
 }
 
 #[derive(Debug)]
-pub struct FuncType(pub String);
+pub struct Block {
+    pub values: Vec<AstValue>,
+}
 
 #[derive(Debug)]
 pub enum AstValue {
-    Decl(Vec<Decl>),
+    Block(Box<Block>),
     ConstDecl(Vec<ConstDecl>),
+    Decl(Vec<Decl>),
+    Exp(Option<Box<Exp>>),
+    Return(Option<Box<Exp>>),
     Stmt(Stmt),
-    Return(Rc<Exp>),
 }
 
 #[derive(Debug)]
 pub struct ConstDecl {
     pub name: String,
-    pub init: Rc<Exp>,
+    pub init: Box<Exp>,
 }
 
 #[derive(Debug)]
 pub struct Decl {
     pub name: String,
-    pub init: Option<Rc<Exp>>,
+    pub init: Option<Box<Exp>>,
 }
 
 #[derive(Debug)]
 pub struct Stmt {
     pub name: String,
-    pub val: Rc<Exp>,
-}
-
-#[derive(Debug)]
-pub struct Block {
-    pub values: Vec<AstValue>,
+    pub val: Box<Exp>,
 }
 
 impl Block {
@@ -69,7 +69,7 @@ impl Block {
 }
 
 impl Decl {
-    pub fn new_with_init(name: String, init: Rc<Exp>) -> Self {
+    pub fn new_with_init(name: String, init: Box<Exp>) -> Self {
         Self {
             name: name,
             init: Some(init),

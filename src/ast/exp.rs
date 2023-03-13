@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use koopa::ir::{self, ValueKind};
 use koopa::ir::{FunctionData, Value};
 
@@ -17,14 +15,14 @@ pub enum Exp {
 #[derive(Debug)]
 pub struct BinaryExp {
     pub op: BinaryOp,
-    pub lhs: Rc<Exp>,
-    pub rhs: Rc<Exp>,
+    pub lhs: Box<Exp>,
+    pub rhs: Box<Exp>,
 }
 
 #[derive(Debug)]
 pub struct UnaryExp {
     pub op: UnaryOp,
-    pub rhs: Rc<Exp>,
+    pub rhs: Box<Exp>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -76,7 +74,7 @@ impl ConstEval for Exp {
             Exp::Integer(i) => *i,
             Exp::Uxp(uxp) => uxp.const_eval(symt),
             Exp::Bxp(bxp) => bxp.const_eval(symt),
-            Exp::LVal(name, ..) => symt.get_const_val(name.as_str()),
+            Exp::LVal(name, ..) => symt.get_from_const_var(name.as_str()).unwrap(),
         }
     }
 }
@@ -150,27 +148,24 @@ impl IntoValue for Exp {
             Exp::Integer(i) => inst_builder::integer(func, *i),
             Exp::Uxp(uxp) => uxp.into_value(symt, func, insts),
             Exp::Bxp(bxp) => bxp.into_value(symt, func, insts),
-            Exp::LVal(name, ..) => {
-                symt.assert_initialized(name);
-                match symt.get(name).unwrap() {
-                    Symbol::ConstVar(i) => inst_builder::integer(func, *i),
-                    Symbol::Var { val, .. } => {
-                        let load = inst_builder::load(func, *val);
-                        insts.push(load);
+            Exp::LVal(name, ..) => match symt.get(name).unwrap() {
+                Symbol::ConstVar(i) => inst_builder::integer(func, *i),
+                Symbol::Var { val, .. } => {
+                    let load = inst_builder::load(func, *val);
+                    insts.push(load);
 
-                        load
-                    }
+                    load
                 }
-            }
+            },
         }
     }
 }
 
 impl Exp {
-    pub fn is_const(&self, symt: &SymbolTable) -> bool {
+    pub fn is_const(&self) -> bool {
         match self {
             Exp::Integer(_) => true,
-            Exp::LVal(name, _) => symt.is_const(name),
+            // Exp::LVal(name, _) => symt.is_const(name),
             _ => false,
         }
     }

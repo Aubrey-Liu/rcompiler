@@ -62,18 +62,21 @@ impl<'input> Block {
         bb: BasicBlock,
         symt: &mut SymbolTable<'input>,
     ) -> Result<()> {
-        let mut insts = Vec::new();
         let mut values = self.values.iter().peekable();
 
         while let Some(value) = values.next() {
+            let mut insts = Vec::new();
             match value {
-                AstValue::Return(e) => {
-                    let val = e.into_value(symt, func, &mut insts);
+                AstValue::Return(ret) => {
+                    let val = match ret {
+                        Some(exp) => exp.into_value(symt, func, &mut insts),
+                        None => inst_builder::integer(func, 0),
+                    };
                     insts.push(inst_builder::ret(func, val));
                 }
                 AstValue::ConstDecl(decls) => {
                     for d in decls {
-                        symt.insert_const(&d.name, d.init.const_eval(symt))?;
+                        symt.insert_const_var(&d.name, d.init.const_eval(symt))?;
                     }
                 }
                 AstValue::Decl(decls) => {
@@ -81,12 +84,13 @@ impl<'input> Block {
                         let dst = inst_builder::alloc(func);
 
                         insts.push(dst);
-                        func.dfg_mut()
-                            .set_value_name(dst, Some("@".to_owned() + d.name.as_str()));
+                        func.dfg_mut().set_value_name(
+                            dst,
+                            Some("@".to_owned() + &symt.generate_name(&d.name)),
+                        );
 
-                        if d.init.is_some() {
-                            let init = d.init.as_ref().unwrap();
-                            let val = init.into_value(symt, func, &mut insts);
+                        if let Some(exp) = &d.init {
+                            let val = exp.into_value(symt, func, &mut insts);
                             insts.push(inst_builder::store(func, val, dst));
                             symt.insert_var(&d.name, dst, true)?;
                         } else {
@@ -101,11 +105,21 @@ impl<'input> Block {
                     };
                     let val = stmt.val.into_value(symt, func, &mut insts);
                     insts.push(inst_builder::store(func, val, dst));
-                    symt.initialize(&stmt.name);
+                    symt.initialize(&stmt.name)?;
+                }
+                AstValue::Block(block) => {
+                    symt.enter_scope();
+                    block.parse_bb(func, bb, symt)?;
+                    symt.exit_scope();
+                }
+                AstValue::Exp(exp) => {
+                    if let Some(e) = exp {
+                        e.into_value(symt, func, &mut insts);
+                    }
                 }
             }
+            func.layout_mut().bb_mut(bb).insts_mut().extend(insts);
         }
-        func.layout_mut().bb_mut(bb).insts_mut().extend(insts);
 
         Ok(())
     }
