@@ -1,4 +1,4 @@
-use crate::generate::ir;
+use crate::irgen;
 use anyhow::{Ok, Result};
 use koopa::ir::values::{Binary, Load, Return, Store};
 use koopa::ir::{BinaryOp, FunctionData, Program};
@@ -230,7 +230,7 @@ impl LoadValue for Value {
 }
 
 pub fn ir_to_riscv(input: &str, opath: &str) -> Result<()> {
-    let program = ir::into_mem_ir(input)?;
+    let program = irgen::into_mem_ir(input)?;
     let mut f = File::create(&opath)?;
     program.generate(&mut f)?;
 

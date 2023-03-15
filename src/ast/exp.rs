@@ -2,7 +2,7 @@ use koopa::ir::{self, ValueKind};
 use koopa::ir::{FunctionData, Value};
 
 use super::*;
-use crate::generate::ir::inst_builder;
+use crate::irgen::ir::inst_builder;
 
 #[derive(Debug)]
 pub enum Exp {

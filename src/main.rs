@@ -4,10 +4,11 @@ use std::fs::File;
 use anyhow::{anyhow, Result};
 use lalrpop_util::lalrpop_mod;
 
-use generate::riscv::GenerateAsm;
+use codegen::GenerateAsm;
 
 pub mod ast;
-pub mod generate;
+pub mod codegen;
+pub mod irgen;
 
 lalrpop_mod!(sysy);
 
@@ -21,10 +22,10 @@ fn main() -> Result<()> {
 
     match mode.as_str() {
         "-koopa" => {
-            generate::ir::into_text_ir(&ipath, &opath)?;
+            irgen::into_text_ir(&ipath, &opath)?;
         }
         "-riscv" => {
-            let program = generate::ir::into_mem_ir(&ipath)?;
+            let program = irgen::into_mem_ir(&ipath)?;
             let mut f = File::create(&opath)?;
             program.generate(&mut f)?;
         }

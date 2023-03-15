@@ -13,4 +13,3 @@ anyhow = "1.0.69"
 koopa = "0.0.6"
 lalrpop-util = { version = "0.19.8", features = ["lexer"] }
 regex = "1"
-thiserror = "1.0.39"
