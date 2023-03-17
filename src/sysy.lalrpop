@@ -79,6 +79,7 @@ PrimaryExp: Box<Exp> = {
   "(" <Exp> ")" => <>,
   IntConst => Box::new(Exp::Integer(<>)),
   LVal => Box::new(Exp::LVal(<>, None)),
+  ! => Box::new(Exp::Error),
 };
 
 // macro for all the binary expression patterns

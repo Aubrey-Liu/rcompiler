@@ -13,6 +13,7 @@ pub enum Symbol {
 
 #[derive(Debug)]
 pub struct SymbolTable<'input> {
+    #[allow(dead_code)]
     global_node_id: usize,
     current_node_id: usize,
     nodes: Vec<SymbolTableNode>,

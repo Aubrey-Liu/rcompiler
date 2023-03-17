@@ -10,6 +10,7 @@ pub enum Exp {
     LVal(String, Option<Value>),
     Uxp(UnaryExp),
     Bxp(BinaryExp),
+    Error,
 }
 
 #[derive(Debug)]
@@ -75,6 +76,7 @@ impl ConstEval for Exp {
             Exp::Uxp(uxp) => uxp.const_eval(symt),
             Exp::Bxp(bxp) => bxp.const_eval(symt),
             Exp::LVal(name, ..) => symt.get_from_const_var(name.as_str()).unwrap(),
+            Exp::Error => panic!("expected an expression"),
         }
     }
 }
@@ -157,16 +159,7 @@ impl IntoValue for Exp {
                     load
                 }
             },
-        }
-    }
-}
-
-impl Exp {
-    pub fn is_const(&self) -> bool {
-        match self {
-            Exp::Integer(_) => true,
-            // Exp::LVal(name, _) => symt.is_const(name),
-            _ => false,
+            Exp::Error => panic!("expected an expression"),
         }
     }
 }

@@ -1,10 +1,12 @@
-use crate::ast::*;
-use crate::sysy;
+use std::fs::read_to_string;
+
 use anyhow::Result;
 use koopa::back::KoopaGenerator;
 use koopa::ir::builder::BasicBlockBuilder;
 use koopa::ir::*;
-use std::fs::read_to_string;
+
+use crate::ast::*;
+use crate::sysy;
 
 pub fn into_mem_ir(ipath: &str) -> Result<Program> {
     let input = read_to_string(ipath)?;
@@ -62,9 +64,7 @@ impl<'input> Block {
         bb: BasicBlock,
         symt: &mut SymbolTable<'input>,
     ) -> Result<()> {
-        let mut values = self.values.iter().peekable();
-
-        while let Some(value) = values.next() {
+        for value in &self.values {
             let mut insts = Vec::new();
             match value {
                 AstValue::Return(ret) => {

@@ -1,11 +1,13 @@
-use crate::irgen;
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write;
+
 use anyhow::{Ok, Result};
 use koopa::ir::values::{Binary, Load, Return, Store};
 use koopa::ir::{BinaryOp, FunctionData, Program};
 use koopa::ir::{Value, ValueKind};
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::Write;
+
+use crate::irgen;
 
 type LocalStore = HashMap<Value, i32>;
 
@@ -29,7 +31,7 @@ impl GenerateAsm for FunctionData {
         writeln!(f, "  .globl {}", &self.name()[1..])?;
         writeln!(f, "{}:", &self.name()[1..])?;
 
-        let mut store = HashMap::<Value, i32>::new();
+        let mut store = LocalStore::new();
         let mut asm = String::new();
         let mut local_alloc = 0;
         for (&_bb, node) in self.layout().bbs() {
@@ -44,7 +46,7 @@ impl GenerateAsm for FunctionData {
                 inst.generate(&mut asm, self, &store)?;
             }
         }
-        asm = format!("  addi sp, sp, -{}\n", local_alloc).to_owned() + asm.as_str();
+        asm = format!("  addi sp, sp, -{}\n", local_alloc) + asm.as_str();
         asm += format!("  addi sp, sp, {}\n", local_alloc).as_str();
         asm += "  ret\n";
 
@@ -55,21 +57,11 @@ impl GenerateAsm for FunctionData {
 }
 
 trait ValueToAsm {
-    fn generate(
-        &self,
-        asm: &mut String,
-        func: &FunctionData,
-        store: &HashMap<Value, i32>,
-    ) -> Result<()>;
+    fn generate(&self, asm: &mut String, func: &FunctionData, store: &LocalStore) -> Result<()>;
 }
 
 trait UnitInstToAsm {
-    fn generate(
-        &self,
-        asm: &mut String,
-        func: &FunctionData,
-        store: &HashMap<Value, i32>,
-    ) -> Result<()>;
+    fn generate(&self, asm: &mut String, func: &FunctionData, store: &LocalStore) -> Result<()>;
 }
 
 trait NonUnitInstToAsm {
@@ -77,18 +69,13 @@ trait NonUnitInstToAsm {
         &self,
         asm: &mut String,
         func: &FunctionData,
-        store: &HashMap<Value, i32>,
+        store: &LocalStore,
         save: Value,
     ) -> Result<()>;
 }
 
 impl ValueToAsm for Value {
-    fn generate(
-        &self,
-        asm: &mut String,
-        func: &FunctionData,
-        store: &HashMap<Value, i32>,
-    ) -> Result<()> {
+    fn generate(&self, asm: &mut String, func: &FunctionData, store: &LocalStore) -> Result<()> {
         let value_data = func.dfg().value(*self);
         match value_data.kind() {
             ValueKind::Return(r) => r.generate(asm, func, store)?,
@@ -107,7 +94,7 @@ impl NonUnitInstToAsm for Load {
         &self,
         asm: &mut String,
         func: &FunctionData,
-        store: &HashMap<Value, i32>,
+        store: &LocalStore,
         save: Value,
     ) -> Result<()> {
         let save = store.get(&save).unwrap();
@@ -123,7 +110,7 @@ impl NonUnitInstToAsm for Binary {
         &self,
         asm: &mut String,
         func: &FunctionData,
-        store: &HashMap<Value, i32>,
+        store: &LocalStore,
         save: Value,
     ) -> Result<()> {
         self.lhs().load(asm, func, store, "t1")?;
@@ -173,12 +160,7 @@ impl NonUnitInstToAsm for Binary {
 }
 
 impl UnitInstToAsm for Store {
-    fn generate(
-        &self,
-        asm: &mut String,
-        func: &FunctionData,
-        store: &HashMap<Value, i32>,
-    ) -> Result<()> {
+    fn generate(&self, asm: &mut String, func: &FunctionData, store: &LocalStore) -> Result<()> {
         let dst = store.get(&self.dest()).unwrap();
         self.value().load(asm, func, store, "t1")?;
         asm.push_str(format!("  sw t1, {}(sp)\n", dst).as_str());
@@ -204,7 +186,7 @@ trait LoadValue {
         &self,
         asm: &mut String,
         func: &FunctionData,
-        store: &HashMap<Value, i32>,
+        store: &LocalStore,
         dst: &str,
     ) -> Result<()>;
 }
@@ -214,7 +196,7 @@ impl LoadValue for Value {
         &self,
         asm: &mut String,
         func: &FunctionData,
-        store: &HashMap<Value, i32>,
+        store: &LocalStore,
         dst: &str,
     ) -> Result<()> {
         let val = func.dfg().value(*self);
@@ -231,7 +213,7 @@ impl LoadValue for Value {
 
 pub fn ir_to_riscv(input: &str, opath: &str) -> Result<()> {
     let program = irgen::into_mem_ir(input)?;
-    let mut f = File::create(&opath)?;
+    let mut f = File::create(opath)?;
     program.generate(&mut f)?;
 
     Ok(())
