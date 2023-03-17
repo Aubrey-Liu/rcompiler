@@ -1,9 +1,7 @@
 pub use exp::*;
-pub use symt::*;
 pub(self) use utils::*;
 
 pub mod exp;
-pub mod symt;
 mod utils;
 
 #[derive(Debug)]

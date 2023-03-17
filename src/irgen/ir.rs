@@ -5,6 +5,7 @@ use koopa::back::KoopaGenerator;
 use koopa::ir::builder::BasicBlockBuilder;
 use koopa::ir::*;
 
+use super::*;
 use crate::ast::*;
 use crate::sysy;
 
