@@ -1,6 +1,8 @@
+use lalrpop_util::ErrorRecovery;
+
 use crate::ast::*;
 
-grammar;
+grammar<'err>(errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, &'static str>>);
 
 match {
   // skip blanks and comments
@@ -79,7 +81,7 @@ PrimaryExp: Box<Exp> = {
   "(" <Exp> ")" => <>,
   IntConst => Box::new(Exp::Integer(<>)),
   LVal => Box::new(Exp::LVal(<>, None)),
-  ! => Box::new(Exp::Error),
+  ! => { errors.push(<>); Box::new(Exp::Error) },
 };
 
 // macro for all the binary expression patterns

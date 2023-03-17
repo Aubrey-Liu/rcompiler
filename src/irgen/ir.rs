@@ -11,7 +11,10 @@ use crate::sysy;
 pub fn into_mem_ir(ipath: &str) -> Result<Program> {
     let input = read_to_string(ipath)?;
     let mut global_symt = SymbolTable::new();
-    let ast = sysy::CompUnitParser::new().parse(&input).unwrap();
+    let mut errors = Vec::new();
+    let ast = sysy::CompUnitParser::new()
+        .parse(&mut errors, &input)
+        .unwrap();
 
     ast.into_program(&mut global_symt)
 }
