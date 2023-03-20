@@ -1,10 +1,10 @@
 use std::env::args;
-use std::fs::File;
 
 use anyhow::{anyhow, Result};
 use lalrpop_util::lalrpop_mod;
 
-use codegen::GenerateAsm;
+use codegen::generate_code;
+use irgen::generate_ir;
 
 pub mod ast;
 pub mod codegen;
@@ -21,14 +21,8 @@ fn main() -> Result<()> {
     let opath = args.next().unwrap();
 
     match mode.as_str() {
-        "-koopa" => {
-            irgen::into_text_ir(&ipath, &opath)?;
-        }
-        "-riscv" => {
-            let program = irgen::into_mem_ir(&ipath)?;
-            let mut f = File::create(&opath)?;
-            program.generate(&mut f)?;
-        }
+        "-koopa" => generate_ir(&ipath, &opath)?,
+        "-riscv" => generate_code(&ipath, &opath)?,
         _ => return Err(anyhow!(format!("invalid mode: {}", mode.as_str()))),
     };
 

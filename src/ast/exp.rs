@@ -1,8 +1,7 @@
-use koopa::ir::{self, ValueKind};
-use koopa::ir::{FunctionData, Value};
+use koopa::ir::Value;
 
 use super::*;
-use crate::irgen::{*, ir::inst_builder};
+use crate::irgen::SymbolTable;
 
 #[derive(Debug)]
 pub enum Exp {
@@ -77,109 +76,6 @@ impl ConstEval for Exp {
             Exp::Bxp(bxp) => bxp.const_eval(symt),
             Exp::LVal(name, ..) => symt.get_from_const_var(name.as_str()).unwrap(),
             Exp::Error => panic!("expected an expression"),
-        }
-    }
-}
-
-pub trait GenerateIR {
-    fn generate(
-        &self,
-        symt: &SymbolTable,
-        func: &mut FunctionData,
-        insts: &mut Vec<Value>,
-    ) -> Value;
-}
-
-impl GenerateIR for UnaryExp {
-    fn generate(
-        &self,
-        symt: &SymbolTable,
-        func: &mut FunctionData,
-        insts: &mut Vec<Value>,
-    ) -> Value {
-        let rhs = self.rhs.generate(symt, func, insts);
-
-        let rkind = func.dfg().value(rhs).kind();
-        if let ValueKind::Integer(r) = rkind {
-            return inst_builder::integer(func, eval_unary(self.op, r.value()));
-        }
-
-        let val = match self.op {
-            UnaryOp::Nop => rhs,
-            UnaryOp::Neg => inst_builder::neg(func, rhs),
-            UnaryOp::Not => inst_builder::not(func, rhs),
-        };
-        insts.push(val);
-
-        val
-    }
-}
-
-impl GenerateIR for BinaryExp {
-    fn generate(
-        &self,
-        symt: &SymbolTable,
-        func: &mut FunctionData,
-        insts: &mut Vec<Value>,
-    ) -> Value {
-        let lhs = self.lhs.generate(symt, func, insts);
-        let rhs = self.rhs.generate(symt, func, insts);
-
-        // evaluate when expression is const
-        let lkind = func.dfg().value(lhs).kind();
-        let rkind = func.dfg().value(rhs).kind();
-        if let (ValueKind::Integer(l), ValueKind::Integer(r)) = (lkind, rkind) {
-            return inst_builder::integer(func, eval_binary(self.op, l.value(), r.value()));
-        }
-
-        let val = inst_builder::binary(func, self.op.into(), lhs, rhs);
-        insts.push(val);
-
-        val
-    }
-}
-
-impl GenerateIR for Exp {
-    fn generate(
-        &self,
-        symt: &SymbolTable,
-        func: &mut FunctionData,
-        insts: &mut Vec<Value>,
-    ) -> Value {
-        match self {
-            Exp::Integer(i) => inst_builder::integer(func, *i),
-            Exp::Uxp(uxp) => uxp.generate(symt, func, insts),
-            Exp::Bxp(bxp) => bxp.generate(symt, func, insts),
-            Exp::LVal(name, ..) => match symt.get(name).unwrap() {
-                Symbol::ConstVar(i) => inst_builder::integer(func, *i),
-                Symbol::Var { val, .. } => {
-                    let load = inst_builder::load(func, *val);
-                    insts.push(load);
-
-                    load
-                }
-            },
-            Exp::Error => panic!("expected an expression"),
-        }
-    }
-}
-
-impl From<BinaryOp> for ir::BinaryOp {
-    fn from(value: BinaryOp) -> Self {
-        match value {
-            BinaryOp::Add => ir::BinaryOp::Add,
-            BinaryOp::Sub => ir::BinaryOp::Sub,
-            BinaryOp::Mul => ir::BinaryOp::Mul,
-            BinaryOp::Div => ir::BinaryOp::Div,
-            BinaryOp::Mod => ir::BinaryOp::Mod,
-            BinaryOp::And => ir::BinaryOp::And,
-            BinaryOp::Or => ir::BinaryOp::Or,
-            BinaryOp::Eq => ir::BinaryOp::Eq,
-            BinaryOp::Neq => ir::BinaryOp::NotEq,
-            BinaryOp::Lt => ir::BinaryOp::Lt,
-            BinaryOp::Lte => ir::BinaryOp::Le,
-            BinaryOp::Gt => ir::BinaryOp::Gt,
-            BinaryOp::Gte => ir::BinaryOp::Ge,
         }
     }
 }

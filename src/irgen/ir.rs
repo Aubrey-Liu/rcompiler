@@ -9,7 +9,7 @@ use super::*;
 use crate::ast::*;
 use crate::sysy;
 
-pub fn into_mem_ir(ipath: &str) -> Result<Program> {
+pub fn generate_mem_ir(ipath: &str) -> Result<Program> {
     let input = read_to_string(ipath)?;
     let mut global_symt = SymbolTable::new();
     let mut errors = Vec::new();
@@ -20,8 +20,8 @@ pub fn into_mem_ir(ipath: &str) -> Result<Program> {
     ast.into_program(&mut global_symt)
 }
 
-pub fn into_text_ir(ipath: &str, opath: &str) -> Result<()> {
-    let program = into_mem_ir(ipath)?;
+pub fn generate_ir(ipath: &str, opath: &str) -> Result<()> {
+    let program = generate_mem_ir(ipath)?;
     let mut gen = KoopaGenerator::from_path(opath)?;
     gen.generate_on(&program)?;
 
@@ -71,12 +71,12 @@ impl<'input> Block {
         for value in &self.values {
             let mut insts = Vec::new();
             match value {
-                AstValue::Return(ret) => {
-                    let val = match ret {
+                AstValue::Return(r) => {
+                    let val = match r {
                         Some(exp) => exp.generate(symt, func, &mut insts),
-                        None => inst_builder::integer(func, 0),
+                        None => integer(func, 0),
                     };
-                    insts.push(inst_builder::ret(func, val));
+                    insts.push(ret(func, val));
                 }
                 AstValue::ConstDecl(decls) => {
                     for d in decls {
@@ -85,7 +85,7 @@ impl<'input> Block {
                 }
                 AstValue::Decl(decls) => {
                     for d in decls {
-                        let dst = inst_builder::alloc(func);
+                        let dst = alloc(func);
 
                         insts.push(dst);
                         func.dfg_mut().set_value_name(
@@ -95,7 +95,7 @@ impl<'input> Block {
 
                         if let Some(exp) = &d.init {
                             let val = exp.generate(symt, func, &mut insts);
-                            insts.push(inst_builder::store(func, val, dst));
+                            insts.push(store(func, val, dst));
                             symt.insert_var(&d.name, dst, true)?;
                         } else {
                             symt.insert_var(&d.name, dst, false)?;
@@ -108,7 +108,7 @@ impl<'input> Block {
                         Symbol::ConstVar(_) => unreachable!(),
                     };
                     let val = stmt.val.generate(symt, func, &mut insts);
-                    insts.push(inst_builder::store(func, val, dst));
+                    insts.push(store(func, val, dst));
                     symt.initialize(&stmt.name)?;
                 }
                 AstValue::Block(block) => {
@@ -126,49 +126,5 @@ impl<'input> Block {
         }
 
         Ok(())
-    }
-}
-
-pub mod inst_builder {
-    use koopa::ir::builder_traits::{LocalInstBuilder, ValueBuilder};
-    use koopa::ir::{BinaryOp, FunctionData, Type, Value};
-
-    pub fn integer(func: &mut FunctionData, i: i32) -> Value {
-        func.dfg_mut().new_value().integer(i)
-    }
-
-    pub fn ret(func: &mut FunctionData, v: Value) -> Value {
-        func.dfg_mut().new_value().ret(Some(v))
-    }
-
-    pub fn alloc(func: &mut FunctionData) -> Value {
-        // allocate a pointer for an integer
-        func.dfg_mut().new_value().alloc(Type::get_i32())
-    }
-
-    pub fn store(func: &mut FunctionData, val: Value, dst: Value) -> Value {
-        func.dfg_mut().new_value().store(val, dst)
-    }
-
-    pub fn load(func: &mut FunctionData, src: Value) -> Value {
-        func.dfg_mut().new_value().load(src)
-    }
-
-    pub fn binary(func: &mut FunctionData, op: BinaryOp, lhs: Value, rhs: Value) -> Value {
-        func.dfg_mut().new_value().binary(op, lhs, rhs)
-    }
-
-    pub fn neg(func: &mut FunctionData, val: Value) -> Value {
-        let zero = zero(func);
-        func.dfg_mut().new_value().binary(BinaryOp::Sub, zero, val)
-    }
-
-    pub fn not(func: &mut FunctionData, val: Value) -> Value {
-        let zero = zero(func);
-        func.dfg_mut().new_value().binary(BinaryOp::Eq, zero, val)
-    }
-
-    fn zero(func: &mut FunctionData) -> Value {
-        func.dfg_mut().new_value().integer(0)
     }
 }

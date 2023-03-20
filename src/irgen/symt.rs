@@ -142,3 +142,9 @@ impl SymbolTableNode {
         }
     }
 }
+
+impl<'input> Default for SymbolTable<'input> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
