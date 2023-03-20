@@ -81,8 +81,8 @@ impl ConstEval for Exp {
     }
 }
 
-pub trait IntoValue {
-    fn into_value(
+pub trait GenerateIR {
+    fn generate(
         &self,
         symt: &SymbolTable,
         func: &mut FunctionData,
@@ -90,14 +90,14 @@ pub trait IntoValue {
     ) -> Value;
 }
 
-impl IntoValue for UnaryExp {
-    fn into_value(
+impl GenerateIR for UnaryExp {
+    fn generate(
         &self,
         symt: &SymbolTable,
         func: &mut FunctionData,
         insts: &mut Vec<Value>,
     ) -> Value {
-        let rhs = self.rhs.into_value(symt, func, insts);
+        let rhs = self.rhs.generate(symt, func, insts);
 
         let rkind = func.dfg().value(rhs).kind();
         if let ValueKind::Integer(r) = rkind {
@@ -115,15 +115,15 @@ impl IntoValue for UnaryExp {
     }
 }
 
-impl IntoValue for BinaryExp {
-    fn into_value(
+impl GenerateIR for BinaryExp {
+    fn generate(
         &self,
         symt: &SymbolTable,
         func: &mut FunctionData,
         insts: &mut Vec<Value>,
     ) -> Value {
-        let lhs = self.lhs.into_value(symt, func, insts);
-        let rhs = self.rhs.into_value(symt, func, insts);
+        let lhs = self.lhs.generate(symt, func, insts);
+        let rhs = self.rhs.generate(symt, func, insts);
 
         // evaluate when expression is const
         let lkind = func.dfg().value(lhs).kind();
@@ -139,8 +139,8 @@ impl IntoValue for BinaryExp {
     }
 }
 
-impl IntoValue for Exp {
-    fn into_value(
+impl GenerateIR for Exp {
+    fn generate(
         &self,
         symt: &SymbolTable,
         func: &mut FunctionData,
@@ -148,8 +148,8 @@ impl IntoValue for Exp {
     ) -> Value {
         match self {
             Exp::Integer(i) => inst_builder::integer(func, *i),
-            Exp::Uxp(uxp) => uxp.into_value(symt, func, insts),
-            Exp::Bxp(bxp) => bxp.into_value(symt, func, insts),
+            Exp::Uxp(uxp) => uxp.generate(symt, func, insts),
+            Exp::Bxp(bxp) => bxp.generate(symt, func, insts),
             Exp::LVal(name, ..) => match symt.get(name).unwrap() {
                 Symbol::ConstVar(i) => inst_builder::integer(func, *i),
                 Symbol::Var { val, .. } => {

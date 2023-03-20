@@ -58,7 +58,7 @@ impl Block {
     }
 
     pub fn new_with_vec(values: Vec<AstValue>) -> Self {
-        Self { values: values }
+        Self { values }
     }
 
     pub fn add(&mut self, value: AstValue) {
@@ -69,14 +69,14 @@ impl Block {
 impl Decl {
     pub fn new_with_init(name: String, init: Box<Exp>) -> Self {
         Self {
-            name: name,
+            name,
             init: Some(init),
         }
     }
 
     pub fn new_without_init(name: String) -> Self {
         Self {
-            name: name,
+            name,
             init: None,
         }
     }

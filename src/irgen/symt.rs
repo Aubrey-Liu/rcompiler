@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Ok, Result};
 use koopa::ir::Value;
+
+type SymbolTableID = usize;
 
 #[derive(Debug, Clone)]
 pub enum Symbol {
@@ -14,16 +16,16 @@ pub enum Symbol {
 #[derive(Debug)]
 pub struct SymbolTable<'input> {
     #[allow(dead_code)]
-    global_node_id: usize,
-    current_node_id: usize,
+    global_node_id: SymbolTableID,
+    current_node_id: SymbolTableID,
     nodes: Vec<SymbolTableNode>,
     data: Vec<HashMap<&'input str, Symbol>>,
 }
 
 #[derive(Debug, Clone)]
 struct SymbolTableNode {
-    pub children: Vec<usize>,
-    pub parent: Option<usize>,
+    pub children: Vec<SymbolTableID>,
+    pub parent: Option<SymbolTableID>,
 }
 
 impl<'input> SymbolTable<'input> {
@@ -49,16 +51,15 @@ impl<'input> SymbolTable<'input> {
         self.current_node_id = self.nodes[self.current_node_id].parent.unwrap();
     }
 
-    fn allocate_id(&self) -> usize {
+    fn allocate_id(&self) -> SymbolTableID {
         self.data.len()
     }
 
     pub fn get(&self, name: &str) -> Result<&Symbol> {
         let mut id = self.current_node_id;
         loop {
-            match self.data[id].get(name) {
-                Some(sym) => return Ok(sym),
-                None => {}
+            if let Some(sym) = self.data[id].get(name) {
+                return Ok(sym);
             }
             match self.nodes[id].parent {
                 Some(i) => id = i,
@@ -134,7 +135,7 @@ impl SymbolTableNode {
         }
     }
 
-    pub fn new_as_child(parent_id: usize) -> Self {
+    pub fn new_as_child(parent_id: SymbolTableID) -> Self {
         Self {
             children: Vec::new(),
             parent: Some(parent_id),

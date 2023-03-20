@@ -73,7 +73,7 @@ impl<'input> Block {
             match value {
                 AstValue::Return(ret) => {
                     let val = match ret {
-                        Some(exp) => exp.into_value(symt, func, &mut insts),
+                        Some(exp) => exp.generate(symt, func, &mut insts),
                         None => inst_builder::integer(func, 0),
                     };
                     insts.push(inst_builder::ret(func, val));
@@ -94,7 +94,7 @@ impl<'input> Block {
                         );
 
                         if let Some(exp) = &d.init {
-                            let val = exp.into_value(symt, func, &mut insts);
+                            let val = exp.generate(symt, func, &mut insts);
                             insts.push(inst_builder::store(func, val, dst));
                             symt.insert_var(&d.name, dst, true)?;
                         } else {
@@ -107,7 +107,7 @@ impl<'input> Block {
                         Symbol::Var { val, .. } => *val,
                         Symbol::ConstVar(_) => unreachable!(),
                     };
-                    let val = stmt.val.into_value(symt, func, &mut insts);
+                    let val = stmt.val.generate(symt, func, &mut insts);
                     insts.push(inst_builder::store(func, val, dst));
                     symt.initialize(&stmt.name)?;
                 }
@@ -118,7 +118,7 @@ impl<'input> Block {
                 }
                 AstValue::Exp(exp) => {
                     if let Some(e) = exp {
-                        e.into_value(symt, func, &mut insts);
+                        e.generate(symt, func, &mut insts);
                     }
                 }
             }
