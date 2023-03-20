@@ -1,7 +1,9 @@
+pub use block::*;
 pub use exp::*;
-pub use values::*;
-pub use utils::{eval_unary, eval_binary};
+pub use func::*;
+pub use utils::{eval_binary, eval_unary};
 
+pub mod block;
 pub mod exp;
-pub mod values;
+pub mod func;
 pub mod utils;

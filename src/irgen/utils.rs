@@ -1,5 +1,26 @@
-use koopa::ir::builder_traits::{LocalInstBuilder, ValueBuilder};
-use koopa::ir::{BinaryOp, FunctionData, Type, Value};
+use koopa::ir::builder_traits::{BasicBlockBuilder, LocalInstBuilder, ValueBuilder};
+use koopa::ir::{BasicBlock, BinaryOp, Function, FunctionData, Program, Type, Value};
+
+pub fn new_func(program: &mut Program, ident: &str) -> Function {
+    let name = "@".to_owned() + ident;
+    program.new_func(FunctionData::with_param_names(
+        name,
+        Vec::new(),
+        Type::get_i32(),
+    ))
+}
+
+pub fn new_bb(func: &mut FunctionData, name: &str) -> BasicBlock {
+    func.dfg_mut().new_bb().basic_block(Some(name.into()))
+}
+
+pub fn push_bb(func: &mut FunctionData, bb: BasicBlock) {
+    func.layout_mut().bbs_mut().extend([bb]);
+}
+
+pub fn push_insts(func: &mut FunctionData, bb: BasicBlock, insts: Vec<Value>) {
+    func.layout_mut().bb_mut(bb).insts_mut().extend(insts);
+}
 
 pub fn integer(func: &mut FunctionData, i: i32) -> Value {
     func.dfg_mut().new_value().integer(i)
