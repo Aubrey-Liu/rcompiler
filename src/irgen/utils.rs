@@ -1,6 +1,9 @@
 use koopa::ir::builder_traits::{BasicBlockBuilder, LocalInstBuilder, ValueBuilder};
 use koopa::ir::{BasicBlock, BinaryOp, Function, FunctionData, Program, Type, Value, ValueKind};
 
+use super::*;
+use crate::ast::Exp;
+
 pub fn generate_var_name(name: &str) -> String {
     "@".to_owned() + name
 }
@@ -94,21 +97,45 @@ pub fn jump_to(func: &mut FunctionData, from: BasicBlock, to: BasicBlock) {
     push_one_inst(func, from, jump);
 }
 
-pub fn check_and_jump(func: &mut FunctionData, src: BasicBlock, target: BasicBlock) {
-    if func.layout_mut().bb_mut(src).insts().is_empty() {
-        jump_to(func, src, target);
-        return;
-    }
-    let last_inst = *func.layout_mut().bb_mut(src).insts().back_key().unwrap();
+fn is_empty(func: &mut FunctionData, bb: BasicBlock) -> bool {
+    func.layout_mut().bb_mut(bb).insts().is_empty()
+}
+
+fn is_finish(func: &mut FunctionData, bb: BasicBlock) -> bool {
+    let last_inst = *func.layout_mut().bb_mut(bb).insts().back_key().unwrap();
     let last_inst = func.dfg().value(last_inst).kind();
     match last_inst {
-        ValueKind::Branch(_) | ValueKind::Return(_) | ValueKind::Jump(_) => {}
-        _ => jump_to(func, src, target),
+        ValueKind::Branch(_) | ValueKind::Return(_) | ValueKind::Jump(_) => true,
+        _ => false,
     }
 }
 
-pub fn ret(func: &mut FunctionData, v: Value) -> Value {
-    func.dfg_mut().new_value().ret(Some(v))
+pub fn check_and_jump(func: &mut FunctionData, src: BasicBlock, target: BasicBlock) {
+    if is_empty(func, src) || !is_finish(func, src) {
+        jump_to(func, src, target);
+    }
+}
+
+pub fn check_and_return(
+    symt: &SymbolTable,
+    func: &mut FunctionData,
+    bb: BasicBlock,
+    val: &Option<Box<Exp>>,
+) {
+    if !is_empty(func, bb) && is_finish(func, bb) {
+        return;
+    }
+    let mut insts = Vec::new();
+    let val = match val {
+        Some(exp) => exp.generate(symt, func, &mut insts),
+        None => integer(func, 0),
+    };
+    insts.push(ret(func, val));
+    push_insts(func, bb, &insts);
+}
+
+fn ret(func: &mut FunctionData, val: Value) -> Value {
+    func.dfg_mut().new_value().ret(Some(val))
 }
 
 pub fn store(func: &mut FunctionData, val: Value, dst: Value) -> Value {

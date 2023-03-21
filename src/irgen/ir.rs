@@ -164,12 +164,8 @@ impl<'input> Stmt {
                     e.generate(symt, func, &mut insts);
                 }
             }
-            Self::Return(r) => {
-                let val = match r {
-                    Some(exp) => exp.generate(symt, func, &mut insts),
-                    None => integer(func, 0),
-                };
-                insts.push(ret(func, val));
+            Self::Return(val) => {
+                check_and_return(symt, func, bb, val);
             }
             Self::Branch(branch) => {
                 let cond = branch.cond.generate(symt, func, &mut insts);

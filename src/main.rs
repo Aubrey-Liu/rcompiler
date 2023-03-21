@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     match mode.as_str() {
         "-koopa" => generate_ir(&ipath, &opath)?,
         "-riscv" => generate_code(&ipath, &opath)?,
-        _ => return Err(anyhow!(format!("invalid mode: {}", mode.as_str()))),
+        _ => return Err(anyhow!("invalid mode: {}", mode.as_str())),
     };
 
     Ok(())
