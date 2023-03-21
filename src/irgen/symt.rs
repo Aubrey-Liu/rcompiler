@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
-use anyhow::{anyhow, Ok, Result};
 use koopa::ir::Value;
+
+use super::*;
 
 type SymbolTableID = usize;
 

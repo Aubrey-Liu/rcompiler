@@ -1,6 +1,6 @@
 use std::env::args;
 
-use anyhow::{anyhow, Result};
+use anyhow::{bail, Result};
 use lalrpop_util::lalrpop_mod;
 
 use codegen::generate_code;
@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     match mode.as_str() {
         "-koopa" => generate_ir(&ipath, &opath)?,
         "-riscv" => generate_code(&ipath, &opath)?,
-        _ => return Err(anyhow!("invalid mode: {}", mode.as_str())),
+        _ => bail!("invalid mode: {}", mode.as_str()),
     };
 
     Ok(())

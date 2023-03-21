@@ -146,7 +146,7 @@ impl<'input> Stmt {
                 let dst = match symt.get(&assign.name).unwrap() {
                     Symbol::Var { val, .. } => *val,
                     Symbol::ConstVar(_) => {
-                        return Err(anyhow!("\"{}\" must be a modifiable lvalue", assign.name))
+                        bail!("\"{}\" must be a modifiable lvalue", assign.name);
                     }
                 };
                 let val = assign.val.generate(symt, func, &mut insts);
