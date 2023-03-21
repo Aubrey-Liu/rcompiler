@@ -18,11 +18,11 @@ pub enum Stmt {
     Exp(Option<Box<Exp>>),
     Return(Option<Box<Exp>>),
     Block(Box<Block>),
-    Cond(Cond),
+    Branch(Branch),
 }
 
 #[derive(Debug)]
-pub struct Cond {
+pub struct Branch {
     pub cond: Box<Exp>,
     pub if_stmt: Box<Stmt>,
     pub el_stmt: Option<Box<Stmt>>,

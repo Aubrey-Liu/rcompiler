@@ -75,7 +75,14 @@ impl GenerateValue for Exp {
             Exp::Bxp(bxp) => bxp.generate(symt, func, insts),
             Exp::LVal(name, ..) => match symt.get(name).unwrap() {
                 Symbol::ConstVar(i) => integer(func, *i),
-                Symbol::Var { val, .. } => {
+                Symbol::Var { val, init } => {
+                    if !init {
+                        panic!(
+                            "uninitialized variable {} can't be used in an expression",
+                            name
+                        )
+                    }
+
                     let load = load(func, *val);
                     insts.push(load);
 

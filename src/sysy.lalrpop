@@ -33,10 +33,39 @@ BlockItem: BlockItem = {
 };
 
 Stmt: Stmt = {
+  OpenStatement => <>,
+  ClosedStatement => <>,
+};
+
+NonIfStatement: Stmt = {
   <name: LVal> "=" <val: Exp> ";" => Stmt::Assign(Assign { name, val }),
   InnerBlock => Stmt::Block(Box::new(<>)),
   <Exp?> ";" => Stmt::Exp(<>),
   "return" <Exp?> ";" => Stmt::Return(<>),
+};
+
+OpenStatement: Stmt = {
+  "if" "(" <cond: Exp> ")" <if_stmt: Stmt> => Stmt::Branch(Branch {
+    cond,
+    if_stmt: Box::new(if_stmt),
+    el_stmt: None,
+  }),
+  "if" "(" <cond: Exp> ")" <if_stmt: ClosedStatement> 
+  "else" <el_stmt: OpenStatement> => Stmt::Branch(Branch {
+    cond,
+    if_stmt: Box::new(if_stmt),
+    el_stmt: Some(Box::new(el_stmt)),
+  }),
+};
+
+ClosedStatement: Stmt = {
+  NonIfStatement => <>,
+  "if" "(" <cond: Exp> ")" <if_stmt: ClosedStatement> 
+  "else" <el_stmt: ClosedStatement> => Stmt::Branch(Branch {
+    cond,
+    if_stmt: Box::new(if_stmt),
+    el_stmt: Some(Box::new(el_stmt)),
+  }),
 };
 
 Decl: Vec<Decl> = {

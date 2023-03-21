@@ -122,8 +122,8 @@ impl<'input> SymbolTable<'input> {
             .map_or(Ok(()), |_| Err(anyhow!("{}: duplicate definition", name)))
     }
 
-    pub fn generate_name(&self, name: &str) -> String {
-        name.to_owned() + &self.current_node_id.to_string()
+    pub fn current_id(&self) -> i32 {
+        self.current_node_id as i32
     }
 }
 
