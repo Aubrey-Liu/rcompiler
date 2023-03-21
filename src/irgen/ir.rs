@@ -168,25 +168,7 @@ impl<'input> Stmt {
                 check_and_return(symt, func, bb, val);
             }
             Self::Branch(branch) => {
-                let cond = branch.cond.generate(symt, func, &mut insts);
-
-                let (true_bb, false_bb, end_bb) = new_branch(func);
-
-                move_to = end_bb;
-
-                flow.insert(bb, Flow::Branch(cond, true_bb, false_bb));
-                // the flows can be overwritten
-                flow.insert(true_bb, Flow::Jump(end_bb));
-                flow.insert(false_bb, Flow::Jump(end_bb));
-
-                if bb != link_to {
-                    flow.insert(end_bb, Flow::Jump(link_to));
-                }
-
-                branch.if_stmt.generate(symt, func, true_bb, end_bb, flow)?;
-                if let Some(el_stmt) = &branch.el_stmt {
-                    el_stmt.generate(symt, func, false_bb, end_bb, flow)?;
-                }
+                move_to = branch.generate(symt, func, bb, link_to, flow)?;
             }
         }
 
@@ -195,5 +177,38 @@ impl<'input> Stmt {
         }
 
         Ok(move_to)
+    }
+}
+
+impl<'input> Branch {
+    fn generate(
+        &'input self,
+        symt: &mut SymbolTable<'input>,
+        func: &mut FunctionData,
+        bb: BasicBlock,
+        link_to: BasicBlock,
+        flow: &mut FlowGraph,
+    ) -> Result<BasicBlock> {
+        let mut insts = Vec::new();
+        let cond = self.cond.generate(symt, func, &mut insts);
+        let (true_bb, false_bb, end_bb) = new_branch(func);
+
+        flow.insert(bb, Flow::Branch(cond, true_bb, false_bb));
+        // the flows can be overwritten
+        flow.insert(true_bb, Flow::Jump(end_bb));
+        flow.insert(false_bb, Flow::Jump(end_bb));
+
+        if bb != link_to {
+            flow.insert(end_bb, Flow::Jump(link_to));
+        }
+
+        self.if_stmt.generate(symt, func, true_bb, end_bb, flow)?;
+        if let Some(el_stmt) = &self.el_stmt {
+            el_stmt.generate(symt, func, false_bb, end_bb, flow)?;
+        }
+
+        push_insts(func, bb, &insts);
+
+        Ok(end_bb)
     }
 }
