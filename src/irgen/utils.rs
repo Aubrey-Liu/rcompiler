@@ -142,16 +142,40 @@ pub fn store(func: &mut FunctionData, val: Value, dst: Value) -> Value {
     func.dfg_mut().new_value().store(val, dst)
 }
 
+pub fn lor(func: &mut FunctionData, lhs: Value, rhs: Value, insts: &mut Vec<Value>) -> Value {
+    let ll = logical(func, lhs);
+    let lr = logical(func, rhs);
+    let result = binary(func, BinaryOp::Or, ll, lr);
+    insts.extend([ll, lr]);
+
+    result
+}
+
+fn logical(func: &mut FunctionData, val: Value) -> Value {
+    let z = zero(func);
+
+    binary(func, BinaryOp::NotEq, val, z)
+}
+
+pub fn land(func: &mut FunctionData, lhs: Value, rhs: Value, insts: &mut Vec<Value>) -> Value {
+    let ll = logical(func, lhs);
+    let lr = logical(func, rhs);
+    let result = binary(func, BinaryOp::And, ll, lr);
+    insts.extend([ll, lr]);
+
+    result
+}
+
 pub fn neg(func: &mut FunctionData, val: Value) -> Value {
-    let zero = zero(func);
-    func.dfg_mut().new_value().binary(BinaryOp::Sub, zero, val)
+    let z = zero(func);
+    binary(func, BinaryOp::Sub, z, val)
 }
 
 pub fn not(func: &mut FunctionData, val: Value) -> Value {
-    let zero = zero(func);
-    func.dfg_mut().new_value().binary(BinaryOp::Eq, zero, val)
+    let z = zero(func);
+    binary(func, BinaryOp::Eq, z, val)
 }
 
 fn zero(func: &mut FunctionData) -> Value {
-    func.dfg_mut().new_value().integer(0)
+    integer(func, 0)
 }

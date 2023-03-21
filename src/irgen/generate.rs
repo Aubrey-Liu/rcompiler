@@ -55,7 +55,12 @@ impl GenerateValue for BinaryExp {
             return integer(func, eval_binary(self.op, l.value(), r.value()));
         }
 
-        let val = binary(func, self.op.into(), lhs, rhs);
+        let val = match self.op {
+            BinaryOp::And => land(func, lhs, rhs, insts),
+            BinaryOp::Or => lor(func, lhs, rhs, insts),
+            _ => binary(func, self.op.into(), lhs, rhs),
+        };
+
         insts.push(val);
 
         val
@@ -102,14 +107,13 @@ impl From<BinaryOp> for IR_BinaryOp {
             BinaryOp::Mul => IR_BinaryOp::Mul,
             BinaryOp::Div => IR_BinaryOp::Div,
             BinaryOp::Mod => IR_BinaryOp::Mod,
-            BinaryOp::And => IR_BinaryOp::And,
-            BinaryOp::Or => IR_BinaryOp::Or,
             BinaryOp::Eq => IR_BinaryOp::Eq,
             BinaryOp::Neq => IR_BinaryOp::NotEq,
             BinaryOp::Lt => IR_BinaryOp::Lt,
             BinaryOp::Le => IR_BinaryOp::Le,
             BinaryOp::Gt => IR_BinaryOp::Gt,
             BinaryOp::Ge => IR_BinaryOp::Ge,
+            _ => unreachable!(),
         }
     }
 }

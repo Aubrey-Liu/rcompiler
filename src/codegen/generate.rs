@@ -188,16 +188,10 @@ impl NonUnitInstToAsm for Binary {
             BinaryOp::Mul => asm.push_str("  mul t1, t1, t2\n"),
             BinaryOp::Div => asm.push_str("  div t1, t1, t2\n"),
             BinaryOp::Mod => asm.push_str("  rem t1, t1, t2\n"),
-            BinaryOp::And => {
-                asm.push_str("  snez t1, t1\n");
-                asm.push_str("  snez t2, t2\n");
-                asm.push_str("  and t1, t1, t2\n");
-            }
-            BinaryOp::Or => {
-                asm.push_str("  snez t1, t1\n");
-                asm.push_str("  snez t2, t2\n");
-                asm.push_str("  or t1, t1, t2\n");
-            }
+            BinaryOp::And => asm.push_str("  and t1, t1, t2\n"),
+            BinaryOp::Or => asm.push_str("  or t1, t1, t2\n"),
+            BinaryOp::Lt => asm.push_str("  slt t1, t1, t2\n"),
+            BinaryOp::Gt => asm.push_str("  sgt t1, t1, t2\n"),
             BinaryOp::Eq => {
                 asm.push_str("  sub t1, t1, t2\n");
                 asm.push_str("  seqz t1, t1\n");
@@ -206,17 +200,15 @@ impl NonUnitInstToAsm for Binary {
                 asm.push_str("  sub t1, t1, t2\n");
                 asm.push_str("  snez t1, t1\n");
             }
-            BinaryOp::Lt => asm.push_str("  slt t1, t1, t2\n"),
             BinaryOp::Le => {
                 asm.push_str("  sgt t1, t1, t2\n");
                 asm.push_str("  snez t1, t1\n");
             }
-            BinaryOp::Gt => asm.push_str("  sgt t1, t1, t2\n"),
             BinaryOp::Ge => {
                 asm.push_str("  slt t1, t1, t2\n");
                 asm.push_str("  snez t1, t1\n");
             }
-            _ => {}
+            _ => unreachable!(),
         }
         asm.push_str(format!("  sw t1, {}(sp)\n", save).as_str());
 
