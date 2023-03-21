@@ -38,9 +38,9 @@ pub fn eval_binary(op: BinaryOp, lhs: i32, rhs: i32) -> i32 {
         BinaryOp::Eq => is_zero(lhs - rhs),
         BinaryOp::Neq => not_zero(lhs - rhs),
         BinaryOp::Lt => positive(rhs - lhs),
-        BinaryOp::Lte => non_negative(rhs - lhs),
+        BinaryOp::Le => non_negative(rhs - lhs),
         BinaryOp::Gt => positive(lhs - rhs),
-        BinaryOp::Gte => non_negative(lhs - rhs),
+        BinaryOp::Ge => non_negative(lhs - rhs),
     }
 }
 

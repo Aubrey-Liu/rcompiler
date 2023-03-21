@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 use std::io::Write;
 
-use koopa::ir::values::{Binary, Load, Return, Store};
-use koopa::ir::*;
-
 use super::*;
 
 type LocalStore = HashMap<Value, i32>;
@@ -30,23 +27,22 @@ impl GenerateAsm for FunctionData {
 
         let mut store = LocalStore::new();
         let mut asm = String::new();
-        let mut local_alloc = 0;
-        for (&_bb, node) in self.layout().bbs() {
+        let mut alloc = 0;
+        for (&bb, node) in self.layout().bbs() {
+            asm.push_str(format!("{}:\n", get_bb_name(self, bb)).as_str());
             for &inst in node.insts().keys() {
                 let value_data = self.dfg().value(inst);
 
                 if !value_data.ty().is_unit() {
-                    store.insert(inst, local_alloc);
-                    local_alloc += 4;
+                    store.insert(inst, alloc);
+                    alloc += 4;
                 }
 
-                inst.generate(&mut asm, self, &store)?;
+                inst.generate(&mut asm, self, &store, alloc)?;
             }
         }
-        asm = format!("  addi sp, sp, -{}\n", local_alloc) + asm.as_str();
-        asm += format!("  addi sp, sp, {}\n", local_alloc).as_str();
-        asm += "  ret\n";
 
+        asm = format!("  addi sp, sp, -{}\n", alloc) + asm.as_str();
         write!(f, "{}", asm.as_str())?;
 
         Ok(())
@@ -54,17 +50,31 @@ impl GenerateAsm for FunctionData {
 }
 
 trait ValueToAsm {
-    fn generate(&self, asm: &mut String, func: &FunctionData, store: &LocalStore) -> Result<()>;
+    fn generate(
+        &self,
+        asm: &mut String,
+        func: &FunctionData,
+        store: &LocalStore,
+        alloc: i32,
+    ) -> Result<()>;
 }
 
 impl ValueToAsm for Value {
-    fn generate(&self, asm: &mut String, func: &FunctionData, store: &LocalStore) -> Result<()> {
+    fn generate(
+        &self,
+        asm: &mut String,
+        func: &FunctionData,
+        store: &LocalStore,
+        alloc: i32,
+    ) -> Result<()> {
         let value_data = func.dfg().value(*self);
         match value_data.kind() {
-            ValueKind::Return(r) => r.generate(asm, func, store)?,
+            ValueKind::Return(r) => r.generate(asm, func, store, alloc)?,
             ValueKind::Store(s) => s.generate(asm, func, store)?,
             ValueKind::Load(l) => l.generate(asm, func, store, *self)?,
             ValueKind::Binary(b) => b.generate(asm, func, store, *self)?,
+            ValueKind::Jump(j) => j.generate(asm, func, store)?,
+            ValueKind::Branch(b) => b.generate(asm, func, store)?,
             _ => {}
         }
 
@@ -86,13 +96,49 @@ impl UnitInstToAsm for Store {
     }
 }
 
-impl UnitInstToAsm for Return {
-    fn generate(&self, asm: &mut String, func: &FunctionData, store: &LocalStore) -> Result<()> {
+trait ReturnToAsm {
+    fn generate(
+        &self,
+        asm: &mut String,
+        func: &FunctionData,
+        store: &LocalStore,
+        prologue: i32,
+    ) -> Result<()>;
+}
+
+impl ReturnToAsm for Return {
+    fn generate(
+        &self,
+        asm: &mut String,
+        func: &FunctionData,
+        store: &LocalStore,
+        prologue: i32,
+    ) -> Result<()> {
         if self.value().is_none() {
             asm.push_str("  li a0, 0\n");
-            return Ok(());
+        } else {
+            self.value().unwrap().load(asm, func, store, "a0")?;
         }
-        self.value().unwrap().load(asm, func, store, "a0")?;
+        asm.push_str(format!("  addi sp, sp, {}\n", prologue).as_str());
+        asm.push_str("  ret\n");
+
+        Ok(())
+    }
+}
+
+impl UnitInstToAsm for Jump {
+    fn generate(&self, asm: &mut String, func: &FunctionData, _store: &LocalStore) -> Result<()> {
+        asm.push_str(format!("  j {}\n", get_bb_name(func, self.target())).as_str());
+
+        Ok(())
+    }
+}
+
+impl UnitInstToAsm for Branch {
+    fn generate(&self, asm: &mut String, func: &FunctionData, store: &LocalStore) -> Result<()> {
+        self.cond().load(asm, func, store, "t1")?;
+        asm.push_str(format!("  bnez t1, {}\n", get_bb_name(func, self.true_bb())).as_str());
+        asm.push_str(format!("  j {}\n", get_bb_name(func, self.false_bb())).as_str());
 
         Ok(())
     }

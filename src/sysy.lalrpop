@@ -138,9 +138,9 @@ AddOp: BinaryOp = {
 
 RelOp: BinaryOp = {
   "<" => BinaryOp::Lt,
-  "<=" => BinaryOp::Lte,
+  "<=" => BinaryOp::Le,
   ">" => BinaryOp:: Gt,
-  ">=" => BinaryOp::Gte,
+  ">=" => BinaryOp::Ge,
 };
 
 EqOp: BinaryOp = {

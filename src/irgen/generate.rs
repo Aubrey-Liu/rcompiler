@@ -107,9 +107,9 @@ impl From<BinaryOp> for IR_BinaryOp {
             BinaryOp::Eq => IR_BinaryOp::Eq,
             BinaryOp::Neq => IR_BinaryOp::NotEq,
             BinaryOp::Lt => IR_BinaryOp::Lt,
-            BinaryOp::Lte => IR_BinaryOp::Le,
+            BinaryOp::Le => IR_BinaryOp::Le,
             BinaryOp::Gt => IR_BinaryOp::Gt,
-            BinaryOp::Gte => IR_BinaryOp::Ge,
+            BinaryOp::Ge => IR_BinaryOp::Ge,
         }
     }
 }
