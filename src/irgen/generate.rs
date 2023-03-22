@@ -1,7 +1,7 @@
 use super::*;
 use crate::ast::*;
 
-pub trait GenerateValue {
+pub(in crate::irgen) trait GenerateValue {
     fn generate(
         &self,
         symt: &SymbolTable,

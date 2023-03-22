@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs::read_to_string;
 
 use anyhow::Result;
@@ -7,14 +6,6 @@ use koopa::back::KoopaGenerator;
 use super::*;
 use crate::ast::*;
 use crate::sysy;
-
-#[derive(Debug, Clone, Copy)]
-enum Flow {
-    Branch(Value, BasicBlock, BasicBlock),
-    Jump(BasicBlock),
-}
-
-type FlowGraph = HashMap<BasicBlock, Flow>;
 
 pub fn generate_mem_ir(ipath: &str) -> Result<Program> {
     let input = read_to_string(ipath)?;
@@ -36,7 +27,10 @@ pub fn generate_ir(ipath: &str, opath: &str) -> Result<()> {
 }
 
 impl<'input> CompUnit {
-    pub fn generate(&'input self, symt: &mut SymbolTable<'input>) -> Result<Program> {
+    pub(in crate::irgen) fn generate(
+        &'input self,
+        symt: &mut SymbolTable<'input>,
+    ) -> Result<Program> {
         let mut program = Program::new();
         self.func_def.generate(symt, &mut program)?;
         Ok(program)
@@ -44,7 +38,7 @@ impl<'input> CompUnit {
 }
 
 impl<'input> FuncDef {
-    pub fn generate(
+    pub(in crate::irgen) fn generate(
         &'input self,
         symt: &mut SymbolTable<'input>,
         program: &mut Program,
@@ -70,7 +64,7 @@ impl<'input> FuncDef {
 }
 
 impl<'input> Block {
-    fn generate_entry(
+    pub(in crate::irgen) fn generate_entry(
         &'input self,
         symt: &mut SymbolTable<'input>,
         flow: &mut FlowGraph,
@@ -83,7 +77,7 @@ impl<'input> Block {
         Ok(())
     }
 
-    fn generate(
+    pub(in crate::irgen) fn generate(
         &'input self,
         symt: &mut SymbolTable<'input>,
         flow: &mut FlowGraph,
@@ -109,7 +103,7 @@ impl<'input> Block {
 }
 
 impl<'input> Decl {
-    fn generate(
+    pub(in crate::irgen) fn generate(
         &'input self,
         symt: &mut SymbolTable<'input>,
         func: &mut FunctionData,
@@ -145,7 +139,7 @@ impl<'input> Decl {
 }
 
 impl<'input> Stmt {
-    fn generate(
+    pub(in crate::irgen) fn generate(
         &'input self,
         symt: &mut SymbolTable<'input>,
         flow: &mut FlowGraph,
@@ -192,78 +186,5 @@ impl<'input> Stmt {
         }
 
         Ok(move_to)
-    }
-}
-
-impl<'input> Branch {
-    fn generate(
-        &'input self,
-        symt: &mut SymbolTable<'input>,
-        flow: &mut FlowGraph,
-        func: &mut FunctionData,
-        bb: BasicBlock,
-        link_to: BasicBlock,
-    ) -> Result<BasicBlock> {
-        let (true_bb, false_bb, end_bb) = new_branch(func);
-
-        self.shortcut(symt, flow, func, bb, true_bb, false_bb, &self.cond)?;
-
-        // the flows can be overwritten
-        flow.insert(true_bb, Flow::Jump(end_bb));
-        flow.insert(false_bb, Flow::Jump(end_bb));
-
-        if bb != link_to {
-            flow.insert(end_bb, Flow::Jump(link_to));
-        }
-
-        // let cond = self.cond.generate(symt, func, &mut insts);
-
-        self.if_stmt.generate(symt, flow, func, true_bb, end_bb)?;
-        if let Some(el_stmt) = &self.el_stmt {
-            el_stmt.generate(symt, flow, func, false_bb, end_bb)?;
-        }
-
-        Ok(end_bb)
-    }
-
-    fn shortcut(
-        &'input self,
-        symt: &mut SymbolTable<'input>,
-        flow: &mut FlowGraph,
-        func: &mut FunctionData,
-        bb: BasicBlock,
-        true_bb: BasicBlock,
-        false_bb: BasicBlock,
-        cond: &Box<Exp>,
-    ) -> Result<()> {
-        let mut insts = Vec::new();
-
-        if !cond.is_logical() {
-            let cond_val = cond.generate(symt, func, &mut insts);
-            flow.insert(bb, Flow::Branch(cond_val, true_bb, false_bb));
-
-            push_insts(func, bb, &insts);
-
-            return Ok(());
-        }
-
-        match cond.get_binary_op().unwrap() {
-            BinaryOp::And => {
-                let bxp = cond.get_bxp().unwrap();
-                let check_right = new_bb(func, "%check");
-                self.shortcut(symt, flow, func, bb, check_right, false_bb, &bxp.lhs)?;
-                self.shortcut(symt, flow, func, check_right, true_bb, false_bb, &bxp.rhs)?;
-            }
-            BinaryOp::Or => {
-                let bxp = cond.get_bxp().unwrap();
-                let check_right = new_bb(func, "%check");
-                self.shortcut(symt, flow, func, bb, true_bb, check_right, &bxp.lhs)?;
-                self.shortcut(symt, flow, func, check_right, true_bb, false_bb, &bxp.rhs)?;
-            }
-            _ => unreachable!(),
-        }
-        push_insts(func, bb, &insts);
-
-        Ok(())
     }
 }
