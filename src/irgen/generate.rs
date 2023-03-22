@@ -1,6 +1,3 @@
-use koopa::ir::BinaryOp as IR_BinaryOp;
-use koopa::ir::{FunctionData, Value, ValueKind};
-
 use super::*;
 use crate::ast::*;
 

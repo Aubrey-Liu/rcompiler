@@ -1,5 +1,4 @@
 use koopa::ir::builder_traits::{BasicBlockBuilder, LocalInstBuilder, ValueBuilder};
-use koopa::ir::{BasicBlock, BinaryOp, Function, FunctionData, Program, Type, Value, ValueKind};
 
 use super::*;
 use crate::ast::Exp;
@@ -56,7 +55,7 @@ pub fn alloc(func: &mut FunctionData) -> Value {
     func.dfg_mut().new_value().alloc(Type::get_i32())
 }
 
-pub fn binary(func: &mut FunctionData, op: BinaryOp, lhs: Value, rhs: Value) -> Value {
+pub fn binary(func: &mut FunctionData, op: IR_BinaryOp, lhs: Value, rhs: Value) -> Value {
     func.dfg_mut().new_value().binary(op, lhs, rhs)
 }
 
@@ -145,7 +144,7 @@ pub fn store(func: &mut FunctionData, val: Value, dst: Value) -> Value {
 pub fn lor(func: &mut FunctionData, lhs: Value, rhs: Value, insts: &mut Vec<Value>) -> Value {
     let ll = logical(func, lhs);
     let lr = logical(func, rhs);
-    let result = binary(func, BinaryOp::Or, ll, lr);
+    let result = binary(func, IR_BinaryOp::Or, ll, lr);
     insts.extend([ll, lr]);
 
     result
@@ -154,13 +153,13 @@ pub fn lor(func: &mut FunctionData, lhs: Value, rhs: Value, insts: &mut Vec<Valu
 fn logical(func: &mut FunctionData, val: Value) -> Value {
     let z = zero(func);
 
-    binary(func, BinaryOp::NotEq, val, z)
+    binary(func, IR_BinaryOp::NotEq, val, z)
 }
 
 pub fn land(func: &mut FunctionData, lhs: Value, rhs: Value, insts: &mut Vec<Value>) -> Value {
     let ll = logical(func, lhs);
     let lr = logical(func, rhs);
-    let result = binary(func, BinaryOp::And, ll, lr);
+    let result = binary(func, IR_BinaryOp::And, ll, lr);
     insts.extend([ll, lr]);
 
     result
@@ -168,12 +167,12 @@ pub fn land(func: &mut FunctionData, lhs: Value, rhs: Value, insts: &mut Vec<Val
 
 pub fn neg(func: &mut FunctionData, val: Value) -> Value {
     let z = zero(func);
-    binary(func, BinaryOp::Sub, z, val)
+    binary(func, IR_BinaryOp::Sub, z, val)
 }
 
 pub fn not(func: &mut FunctionData, val: Value) -> Value {
     let z = zero(func);
-    binary(func, BinaryOp::Eq, z, val)
+    binary(func, IR_BinaryOp::Eq, z, val)
 }
 
 fn zero(func: &mut FunctionData) -> Value {

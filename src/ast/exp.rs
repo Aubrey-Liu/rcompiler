@@ -49,6 +49,32 @@ pub enum UnaryOp {
     Not,
 }
 
+impl Exp {
+    pub fn is_logical(&self) -> bool {
+        if let Self::Bxp(bxp) = self {
+            matches!(bxp.op, BinaryOp::And | BinaryOp::Or)
+        } else {
+            false
+        }
+    }
+
+    pub fn get_binary_op(&self) -> Option<BinaryOp> {
+        if let Self::Bxp(bxp) = self {
+            Some(bxp.op)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_bxp(&self) -> Option<&BinaryExp> {
+        if let Self::Bxp(bxp) = self {
+            Some(bxp)
+        } else {
+            None
+        }
+    }
+}
+
 pub trait ConstEval {
     fn const_eval(&self, symt: &SymbolTable) -> i32;
 }
