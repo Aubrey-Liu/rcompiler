@@ -7,6 +7,11 @@ pub fn generate_var_name(name: &str) -> String {
     "@".to_owned() + name
 }
 
+pub fn set_value_name(func: &mut FunctionData, val: Value, name: &str) {
+    func.dfg_mut()
+        .set_value_name(val, Some(generate_var_name(name)));
+}
+
 pub fn new_func(program: &mut Program, ident: &str) -> Function {
     let name = "@".to_owned() + ident;
     program.new_func(FunctionData::with_param_names(

@@ -121,10 +121,8 @@ impl<'input> Decl {
             Decl::VarDecl(decls) => {
                 for d in decls {
                     let dst = alloc(func);
-
+                    set_value_name(func, dst, &d.name);
                     insts.push(dst);
-                    func.dfg_mut()
-                        .set_value_name(dst, Some(generate_var_name(&d.name)));
 
                     if let Some(exp) = &d.init {
                         let val = exp.generate(symt, func, &mut insts);
