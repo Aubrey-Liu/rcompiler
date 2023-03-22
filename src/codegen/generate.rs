@@ -37,12 +37,19 @@ impl GenerateAsm for FunctionData {
                 }
             }
         }
+        // align to 16
+        alloc = (alloc + 15) / 16 * 16;
 
         for (&bb, node) in self.layout().bbs() {
             let bb_name = get_bb_name(self, bb);
             writeln!(f, "{}:", bb_name)?;
             if bb == self.layout().entry_bb().unwrap() {
-                writeln!(f, "  addi sp, sp, -{}", alloc)?;
+                if alloc >= 2048 {
+                    writeln!(f, "  li t1, {}", -alloc)?;
+                    writeln!(f, "  add sp, sp, t1")?;
+                } else {
+                    writeln!(f, "  addi sp, sp, -{}", alloc)?;
+                }
             }
             for &inst in node.insts().keys() {
                 inst.generate(f, self, &store, alloc)?;
@@ -95,36 +102,6 @@ impl UnitInstToAsm for Store {
         let dst = store.get(&self.dest()).unwrap();
         self.value().load(w, func, store, "t1")?;
         writeln!(w, "  sw t1, {}(sp)", dst)?;
-
-        Ok(())
-    }
-}
-
-trait ReturnToAsm {
-    fn generate<W: Write>(
-        &self,
-        w: &mut W,
-        func: &FunctionData,
-        store: &LocalStore,
-        prologue: i32,
-    ) -> Result<()>;
-}
-
-impl ReturnToAsm for Return {
-    fn generate<W: Write>(
-        &self,
-        w: &mut W,
-        func: &FunctionData,
-        store: &LocalStore,
-        prologue: i32,
-    ) -> Result<()> {
-        if self.value().is_none() {
-            writeln!(w, "  li a0, 0")?;
-        } else {
-            self.value().unwrap().load(w, func, store, "a0")?;
-        }
-        writeln!(w, "  addi sp, sp, {}", prologue)?;
-        writeln!(w, "  ret")?;
 
         Ok(())
     }
@@ -220,6 +197,41 @@ impl NonUnitInstToAsm for Binary {
             _ => unreachable!(),
         }
         writeln!(w, "  sw t1, {}(sp)", save)?;
+
+        Ok(())
+    }
+}
+
+trait ReturnToAsm {
+    fn generate<W: Write>(
+        &self,
+        w: &mut W,
+        func: &FunctionData,
+        store: &LocalStore,
+        prologue: i32,
+    ) -> Result<()>;
+}
+
+impl ReturnToAsm for Return {
+    fn generate<W: Write>(
+        &self,
+        w: &mut W,
+        func: &FunctionData,
+        store: &LocalStore,
+        prologue: i32,
+    ) -> Result<()> {
+        if self.value().is_none() {
+            writeln!(w, "  li a0, 0")?;
+        } else {
+            self.value().unwrap().load(w, func, store, "a0")?;
+        }
+        if prologue > 2047 {
+            writeln!(w, "  li t1, {}", prologue)?;
+            writeln!(w, "  add sp, sp, t1")?;
+        } else {
+            writeln!(w, "  addi sp, sp, {}", prologue)?;
+        }
+        writeln!(w, "  ret")?;
 
         Ok(())
     }
