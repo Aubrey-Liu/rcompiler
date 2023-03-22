@@ -8,7 +8,7 @@ match {
   // skip blanks and comments
   r"\s*" => {},
   r"//[^\n\r]*[\n\r]*" => {},
-  r"/\*([^\n\r]*[\n\r]*)*\*/" => {},
+  r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/" => {},
   // default case
   _
 }
