@@ -24,14 +24,44 @@ FuncDef: FuncDef = {
 FuncType: FuncType = "int" => FuncType("int".to_string());
 
 Block: Block = "{" <BlockItem+> "}" => Block::new_with_vec(<>);
+
 InnerBlock: Block = "{" <BlockItem*> "}" => Block::new_with_vec(<>);
 
 BlockItem: BlockItem = {
-  ConstDecl => BlockItem::ConstDecl(<>),
   Decl => BlockItem::Decl(<>),
   Stmt => BlockItem::Stmt(<>),
 };
 
+// Declaration
+Decl: Decl = {
+  ConstDecl => Decl::ConstDecl(<>),
+  VarDecl => Decl::VarDecl(<>),
+}
+
+VarDecl: Vec<VarDecl> = {
+  "int" <mut defs: (<VarDef> ",")*> <def: VarDef> ";" => {
+    defs.push(def);
+    defs
+  }
+};
+
+VarDef: VarDecl = {
+  Ident => VarDecl::new_without_init(<>),
+  <name: Ident> "=" <exp: Exp> => VarDecl::new_with_init(name, exp),
+};
+
+ConstDecl: Vec<ConstDecl> = {
+  "const" "int" <mut defs: (<ConstDef> ",")*> <def: ConstDef>  ";" => {
+    defs.push(def);
+    defs
+  }
+};
+
+ConstDef: ConstDecl = <name: Ident> "=" <init: Exp> => {
+  ConstDecl { name, init }
+};
+
+// Statement
 Stmt: Stmt = {
   OpenStatement => <>,
   ClosedStatement => <>,
@@ -68,31 +98,10 @@ ClosedStatement: Stmt = {
   }),
 };
 
-Decl: Vec<Decl> = {
-  "int" <mut defs: (<VarDef> ",")*> <def: VarDef> ";" => {
-    defs.push(def);
-    defs
-  }
-};
-
-VarDef: Decl = {
-  Ident => Decl::new_without_init(<>),
-  <name: Ident> "=" <exp: Exp> => Decl::new_with_init(name, exp),
-};
-
-ConstDecl: Vec<ConstDecl> = {
-  "const" "int" <mut defs: (<ConstDef> ",")*> <def: ConstDef>  ";" => {
-    defs.push(def);
-    defs
-  }
-};
-
-ConstDef: ConstDecl = <name: Ident> "=" <init: Exp> => {
-  ConstDecl { name, init }
-};
-
 // identifier
 Ident: String = r"[_a-zA-Z][_a-zA-Z0-9]*" => <>.to_string();
+
+LVal: String = Ident => <>;
 
 IntConst: i32 = {
   r"[1-9][0-9]*" => i32::from_str_radix(<>, 10).unwrap(),
@@ -100,7 +109,10 @@ IntConst: i32 = {
   r"0[xX][0-9a-fA-F]+" => i32::from_str_radix(&<>[2..], 16).unwrap(),
 };
 
-LVal: String = Ident => <>;
+// Expressions
+Exp: Box<Exp> = {
+  LOrExp => <>,
+};
 
 PrimaryExp: Box<Exp> = {
   "(" <Exp> ")" => <>,
@@ -109,7 +121,14 @@ PrimaryExp: Box<Exp> = {
   ! => { errors.push(<>); Box::new(Exp::Error) },
 };
 
-// macro for all the binary expression patterns
+UnaryExp: Box<Exp> = {
+  PrimaryExp => <>,
+  <op: UnaryOp> <uxp: UnaryExp> => {
+    Box::new(Exp::Uxp(UnaryExp { op: op, rhs: uxp }))
+  },
+};
+
+// macro for all the binary expressions
 Tier<Op, NextTier>: Box<Exp> = {
   <l: Tier<Op, NextTier>> <op: Op> <r: NextTier> => {
     Box::new(Exp::Bxp(BinaryExp { op: op, lhs: l, rhs: r }))
@@ -124,7 +143,7 @@ EqExp = Tier<EqOp, RelExp>;
 LAndExp = Tier<LAndOp, EqExp>;
 LOrExp = Tier<LOrOp, LAndExp>;
 
-// match all the operators
+// Operators
 MulOp: BinaryOp = {
   "*" => BinaryOp::Mul,
   "/" => BinaryOp::Div,
@@ -162,13 +181,3 @@ UnaryOp: UnaryOp = {
   "!" => UnaryOp::Not,
 };
 
-Exp: Box<Exp> = {
-  LOrExp => <>,
-};
-
-UnaryExp: Box<Exp> = {
-  PrimaryExp => <>,
-  <op: UnaryOp> <uxp: UnaryExp> => {
-    Box::new(Exp::Uxp(UnaryExp { op: op, rhs: uxp }))
-  },
-};

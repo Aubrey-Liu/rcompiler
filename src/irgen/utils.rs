@@ -48,7 +48,7 @@ pub fn push_insts(func: &mut FunctionData, bb: BasicBlock, insts: &Vec<Value>) {
     func.layout_mut()
         .bb_mut(bb)
         .insts_mut()
-        .extend(insts.clone());
+        .extend(insts.clone())
 }
 
 pub fn alloc(func: &mut FunctionData) -> Value {
@@ -104,10 +104,10 @@ fn is_empty(func: &mut FunctionData, bb: BasicBlock) -> bool {
 fn is_finish(func: &mut FunctionData, bb: BasicBlock) -> bool {
     let last_inst = *func.layout_mut().bb_mut(bb).insts().back_key().unwrap();
     let last_inst = func.dfg().value(last_inst).kind();
-    match last_inst {
-        ValueKind::Branch(_) | ValueKind::Return(_) | ValueKind::Jump(_) => true,
-        _ => false,
-    }
+    matches!(
+        last_inst,
+        ValueKind::Branch(_) | ValueKind::Return(_) | ValueKind::Jump(_)
+    )
 }
 
 pub fn check_and_jump(func: &mut FunctionData, src: BasicBlock, target: BasicBlock) {

@@ -26,33 +26,37 @@ impl GenerateAsm for FunctionData {
         writeln!(f, "{}:", &self.name()[1..])?;
 
         let mut store = LocalStore::new();
-        let mut asm = String::new();
         let mut alloc = 0;
-        for (&bb, node) in self.layout().bbs() {
-            asm.push_str(format!("{}:\n", get_bb_name(self, bb)).as_str());
+
+        for (&_bb, node) in self.layout().bbs() {
             for &inst in node.insts().keys() {
                 let value_data = self.dfg().value(inst);
-
                 if !value_data.ty().is_unit() {
                     store.insert(inst, alloc);
                     alloc += 4;
                 }
-
-                inst.generate(&mut asm, self, &store, alloc)?;
             }
         }
 
-        asm = format!("  addi sp, sp, -{}\n", alloc) + asm.as_str();
-        write!(f, "{}", asm.as_str())?;
+        for (&bb, node) in self.layout().bbs() {
+            let bb_name = get_bb_name(self, bb);
+            writeln!(f, "{}:", bb_name)?;
+            if bb_name == "entry" {
+                writeln!(f, "  addi sp, sp, -{}", alloc)?;
+            }
+            for &inst in node.insts().keys() {
+                inst.generate(f, self, &store, alloc)?;
+            }
+        }
 
         Ok(())
     }
 }
 
 trait ValueToAsm {
-    fn generate(
+    fn generate<W: Write>(
         &self,
-        asm: &mut String,
+        asm: &mut W,
         func: &FunctionData,
         store: &LocalStore,
         alloc: i32,
@@ -60,21 +64,21 @@ trait ValueToAsm {
 }
 
 impl ValueToAsm for Value {
-    fn generate(
+    fn generate<W: Write>(
         &self,
-        asm: &mut String,
+        w: &mut W,
         func: &FunctionData,
         store: &LocalStore,
         alloc: i32,
     ) -> Result<()> {
         let value_data = func.dfg().value(*self);
         match value_data.kind() {
-            ValueKind::Return(r) => r.generate(asm, func, store, alloc)?,
-            ValueKind::Store(s) => s.generate(asm, func, store)?,
-            ValueKind::Load(l) => l.generate(asm, func, store, *self)?,
-            ValueKind::Binary(b) => b.generate(asm, func, store, *self)?,
-            ValueKind::Jump(j) => j.generate(asm, func, store)?,
-            ValueKind::Branch(b) => b.generate(asm, func, store)?,
+            ValueKind::Return(r) => r.generate(w, func, store, alloc)?,
+            ValueKind::Store(s) => s.generate(w, func, store)?,
+            ValueKind::Load(l) => l.generate(w, func, store, *self)?,
+            ValueKind::Binary(b) => b.generate(w, func, store, *self)?,
+            ValueKind::Jump(j) => j.generate(w, func, store)?,
+            ValueKind::Branch(b) => b.generate(w, func, store)?,
             _ => {}
         }
 
@@ -83,23 +87,23 @@ impl ValueToAsm for Value {
 }
 
 trait UnitInstToAsm {
-    fn generate(&self, asm: &mut String, func: &FunctionData, store: &LocalStore) -> Result<()>;
+    fn generate<W: Write>(&self, w: &mut W, func: &FunctionData, store: &LocalStore) -> Result<()>;
 }
 
 impl UnitInstToAsm for Store {
-    fn generate(&self, asm: &mut String, func: &FunctionData, store: &LocalStore) -> Result<()> {
+    fn generate<W: Write>(&self, w: &mut W, func: &FunctionData, store: &LocalStore) -> Result<()> {
         let dst = store.get(&self.dest()).unwrap();
-        self.value().load(asm, func, store, "t1")?;
-        asm.push_str(format!("  sw t1, {}(sp)\n", dst).as_str());
+        self.value().load(w, func, store, "t1")?;
+        writeln!(w, "  sw t1, {}(sp)", dst)?;
 
         Ok(())
     }
 }
 
 trait ReturnToAsm {
-    fn generate(
+    fn generate<W: Write>(
         &self,
-        asm: &mut String,
+        w: &mut W,
         func: &FunctionData,
         store: &LocalStore,
         prologue: i32,
@@ -107,47 +111,52 @@ trait ReturnToAsm {
 }
 
 impl ReturnToAsm for Return {
-    fn generate(
+    fn generate<W: Write>(
         &self,
-        asm: &mut String,
+        w: &mut W,
         func: &FunctionData,
         store: &LocalStore,
         prologue: i32,
     ) -> Result<()> {
         if self.value().is_none() {
-            asm.push_str("  li a0, 0\n");
+            writeln!(w, "  li a0, 0")?;
         } else {
-            self.value().unwrap().load(asm, func, store, "a0")?;
+            self.value().unwrap().load(w, func, store, "a0")?;
         }
-        asm.push_str(format!("  addi sp, sp, {}\n", prologue).as_str());
-        asm.push_str("  ret\n");
+        writeln!(w, "  addi sp, sp, {}", prologue)?;
+        writeln!(w, "  ret")?;
 
         Ok(())
     }
 }
 
 impl UnitInstToAsm for Jump {
-    fn generate(&self, asm: &mut String, func: &FunctionData, _store: &LocalStore) -> Result<()> {
-        asm.push_str(format!("  j {}\n", get_bb_name(func, self.target())).as_str());
+    fn generate<W: Write>(
+        &self,
+        w: &mut W,
+        func: &FunctionData,
+        _store: &LocalStore,
+    ) -> Result<()> {
+        writeln!(w, "  j {}", get_bb_name(func, self.target()))?;
 
         Ok(())
     }
 }
 
 impl UnitInstToAsm for Branch {
-    fn generate(&self, asm: &mut String, func: &FunctionData, store: &LocalStore) -> Result<()> {
-        self.cond().load(asm, func, store, "t1")?;
-        asm.push_str(format!("  bnez t1, {}\n", get_bb_name(func, self.true_bb())).as_str());
-        asm.push_str(format!("  j {}\n", get_bb_name(func, self.false_bb())).as_str());
+    fn generate<W: Write>(&self, w: &mut W, func: &FunctionData, store: &LocalStore) -> Result<()> {
+        self.cond().load(w, func, store, "t1")?;
+        writeln!(w, "  bnez t1, {}", get_bb_name(func, self.true_bb()))?;
+        writeln!(w, "  j {}", get_bb_name(func, self.false_bb()))?;
 
         Ok(())
     }
 }
 
 trait NonUnitInstToAsm {
-    fn generate(
+    fn generate<W: Write>(
         &self,
-        asm: &mut String,
+        w: &mut W,
         func: &FunctionData,
         store: &LocalStore,
         save: Value,
@@ -155,71 +164,71 @@ trait NonUnitInstToAsm {
 }
 
 impl NonUnitInstToAsm for Load {
-    fn generate(
+    fn generate<W: Write>(
         &self,
-        asm: &mut String,
+        w: &mut W,
         func: &FunctionData,
         store: &LocalStore,
         save: Value,
     ) -> Result<()> {
         let save = store.get(&save).unwrap();
-        self.src().load(asm, func, store, "t1")?;
-        asm.push_str(format!("  sw t1, {}(sp)\n", save).as_str());
+        self.src().load(w, func, store, "t1")?;
+        writeln!(w, "  sw t1, {}(sp)", save)?;
 
         Ok(())
     }
 }
 
 impl NonUnitInstToAsm for Binary {
-    fn generate(
+    fn generate<W: Write>(
         &self,
-        asm: &mut String,
+        w: &mut W,
         func: &FunctionData,
         store: &LocalStore,
         save: Value,
     ) -> Result<()> {
-        self.lhs().load(asm, func, store, "t1")?;
-        self.rhs().load(asm, func, store, "t2")?;
+        self.lhs().load(w, func, store, "t1")?;
+        self.rhs().load(w, func, store, "t2")?;
         let save = store.get(&save).unwrap();
 
         match self.op() {
-            BinaryOp::Add => asm.push_str("  add t1, t1, t2\n"),
-            BinaryOp::Sub => asm.push_str("  sub t1, t1, t2\n"),
-            BinaryOp::Mul => asm.push_str("  mul t1, t1, t2\n"),
-            BinaryOp::Div => asm.push_str("  div t1, t1, t2\n"),
-            BinaryOp::Mod => asm.push_str("  rem t1, t1, t2\n"),
-            BinaryOp::And => asm.push_str("  and t1, t1, t2\n"),
-            BinaryOp::Or => asm.push_str("  or t1, t1, t2\n"),
-            BinaryOp::Lt => asm.push_str("  slt t1, t1, t2\n"),
-            BinaryOp::Gt => asm.push_str("  sgt t1, t1, t2\n"),
+            BinaryOp::Add => writeln!(w, "  add t1, t1, t2")?,
+            BinaryOp::Sub => writeln!(w, "  sub t1, t1, t2")?,
+            BinaryOp::Mul => writeln!(w, "  mul t1, t1, t2")?,
+            BinaryOp::Div => writeln!(w, "  div t1, t1, t2")?,
+            BinaryOp::Mod => writeln!(w, "  rem t1, t1, t2")?,
+            BinaryOp::And => writeln!(w, "  and t1, t1, t2")?,
+            BinaryOp::Or => writeln!(w, "  or t1, t1, t2")?,
+            BinaryOp::Lt => writeln!(w, "  slt t1, t1, t2")?,
+            BinaryOp::Gt => writeln!(w, "  sgt t1, t1, t2")?,
             BinaryOp::Eq => {
-                asm.push_str("  sub t1, t1, t2\n");
-                asm.push_str("  seqz t1, t1\n");
+                writeln!(w, "  sub t1, t1, t2")?;
+                writeln!(w, "  seqz t1, t1")?;
             }
             BinaryOp::NotEq => {
-                asm.push_str("  sub t1, t1, t2\n");
-                asm.push_str("  snez t1, t1\n");
+                writeln!(w, "  sub t1, t1, t2")?;
+                writeln!(w, "  snez t1, t1")?;
             }
             BinaryOp::Le => {
-                asm.push_str("  sgt t1, t1, t2\n");
-                asm.push_str("  snez t1, t1\n");
+                writeln!(w, "  sgt t1, t1, t2")?;
+                writeln!(w, "  snez t1, t1")?;
             }
             BinaryOp::Ge => {
-                asm.push_str("  slt t1, t1, t2\n");
-                asm.push_str("  snez t1, t1\n");
+                writeln!(w, "  slt t1, t1, t2")?;
+                writeln!(w, "  snez t1, t1")?;
             }
             _ => unreachable!(),
         }
-        asm.push_str(format!("  sw t1, {}(sp)\n", save).as_str());
+        writeln!(w, "  sw t1, {}(sp)", save)?;
 
         Ok(())
     }
 }
 
 trait LoadValue {
-    fn load(
+    fn load<W: Write>(
         &self,
-        asm: &mut String,
+        asm: &mut W,
         func: &FunctionData,
         store: &LocalStore,
         dst: &str,
@@ -227,19 +236,19 @@ trait LoadValue {
 }
 
 impl LoadValue for Value {
-    fn load(
+    fn load<W: Write>(
         &self,
-        asm: &mut String,
+        w: &mut W,
         func: &FunctionData,
         store: &LocalStore,
         dst: &str,
     ) -> Result<()> {
         let val = func.dfg().value(*self);
         if let ValueKind::Integer(i) = val.kind() {
-            asm.push_str(format!("  li {}, {}\n", dst, i.value()).as_str());
+            writeln!(w, "  li {}, {}", dst, i.value())?;
         } else {
             let src = store.get(self).unwrap();
-            asm.push_str(format!("  lw {}, {}(sp)\n", dst, src).as_str());
+            writeln!(w, "  lw {}, {}(sp)", dst, src)?;
         }
 
         Ok(())

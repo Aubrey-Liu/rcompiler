@@ -7,9 +7,14 @@ pub struct Block {
 
 #[derive(Debug)]
 pub enum BlockItem {
-    ConstDecl(Vec<ConstDecl>),
-    Decl(Vec<Decl>),
+    Decl(Decl),
     Stmt(Stmt),
+}
+
+#[derive(Debug)]
+pub enum Decl {
+    VarDecl(Vec<VarDecl>),
+    ConstDecl(Vec<ConstDecl>),
 }
 
 #[derive(Debug)]
@@ -58,12 +63,12 @@ pub struct ConstDecl {
 }
 
 #[derive(Debug)]
-pub struct Decl {
+pub struct VarDecl {
     pub name: String,
     pub init: Option<Box<Exp>>,
 }
 
-impl Decl {
+impl VarDecl {
     pub fn new_with_init(name: String, init: Box<Exp>) -> Self {
         Self {
             name,

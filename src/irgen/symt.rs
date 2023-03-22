@@ -40,20 +40,16 @@ impl<'input> SymbolTable<'input> {
     }
 
     pub fn enter_scope(&mut self) {
-        let id = self.allocate_id();
+        let id = self.next_id();
         self.nodes[self.current_node_id].children.push(id);
         self.nodes
-            .push(SymbolTableNode::new_as_child(self.current_node_id));
+            .push(SymbolTableNode::new_with_parent(self.current_node_id));
         self.data.push(HashMap::new());
         self.current_node_id = id;
     }
 
     pub fn exit_scope(&mut self) {
         self.current_node_id = self.nodes[self.current_node_id].parent.unwrap();
-    }
-
-    fn allocate_id(&self) -> SymbolTableID {
-        self.data.len()
     }
 
     pub fn get(&self, name: &str) -> Result<&Symbol> {
@@ -128,6 +124,12 @@ impl<'input> SymbolTable<'input> {
     }
 }
 
+impl SymbolTable<'_> {
+    fn next_id(&self) -> SymbolTableID {
+        self.data.len()
+    }
+}
+
 impl SymbolTableNode {
     pub fn new() -> Self {
         Self {
@@ -136,7 +138,7 @@ impl SymbolTableNode {
         }
     }
 
-    pub fn new_as_child(parent_id: SymbolTableID) -> Self {
+    pub fn new_with_parent(parent_id: SymbolTableID) -> Self {
         Self {
             children: Vec::new(),
             parent: Some(parent_id),

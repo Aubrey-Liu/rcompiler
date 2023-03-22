@@ -95,35 +95,49 @@ impl<'input> Block {
         let mut bb = bb;
 
         for item in &self.items {
-            let mut insts = Vec::new();
-
             match item {
-                BlockItem::ConstDecl(decls) => {
-                    for d in decls {
-                        symt.insert_const_var(&d.name, d.init.const_eval(symt))?;
-                    }
-                }
-                BlockItem::Decl(decls) => {
-                    for d in decls {
-                        let dst = alloc(func);
-
-                        insts.push(dst);
-                        func.dfg_mut()
-                            .set_value_name(dst, Some(generate_var_name(&d.name)));
-
-                        if let Some(exp) = &d.init {
-                            let val = exp.generate(symt, func, &mut insts);
-                            insts.push(store(func, val, dst));
-                            symt.insert_var(&d.name, dst, true)?;
-                        } else {
-                            symt.insert_var(&d.name, dst, false)?;
-                        }
-                    }
-                }
+                BlockItem::Decl(decl) => decl.generate(symt, func, bb)?,
                 BlockItem::Stmt(stmt) => bb = stmt.generate(symt, func, bb, link_to, flow)?,
             }
-            push_insts(func, bb, &insts);
         }
+
+        Ok(())
+    }
+}
+
+impl<'input> Decl {
+    fn generate(
+        &'input self,
+        symt: &mut SymbolTable<'input>,
+        func: &mut FunctionData,
+        bb: BasicBlock,
+    ) -> Result<()> {
+        let mut insts = Vec::new();
+        match self {
+            Decl::ConstDecl(decls) => {
+                for d in decls {
+                    symt.insert_const_var(&d.name, d.init.const_eval(symt))?;
+                }
+            }
+            Decl::VarDecl(decls) => {
+                for d in decls {
+                    let dst = alloc(func);
+
+                    insts.push(dst);
+                    func.dfg_mut()
+                        .set_value_name(dst, Some(generate_var_name(&d.name)));
+
+                    if let Some(exp) = &d.init {
+                        let val = exp.generate(symt, func, &mut insts);
+                        insts.push(store(func, val, dst));
+                        symt.insert_var(&d.name, dst, true)?;
+                    } else {
+                        symt.insert_var(&d.name, dst, false)?;
+                    }
+                }
+            }
+        }
+        push_insts(func, bb, &mut insts);
 
         Ok(())
     }
