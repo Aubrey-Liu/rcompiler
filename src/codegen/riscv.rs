@@ -8,9 +8,9 @@ pub fn generate_code(ipath: &str, opath: &str) -> Result<()> {
     let tmp_path = "tmp.koopa";
     generate_ir(ipath, tmp_path)?;
     let driver = koopa::front::Driver::from_path(tmp_path)?;
-    let program = driver.generate_program().unwrap();
-    program.generate(&mut f)?;
+    let program = driver.generate_program();
     remove_file(tmp_path)?;
+    program.unwrap().generate(&mut f)?;
 
     Ok(())
 }

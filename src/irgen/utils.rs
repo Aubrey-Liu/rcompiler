@@ -101,38 +101,34 @@ pub fn jump_to(func: &mut FunctionData, from: BasicBlock, to: BasicBlock) {
     push_one_inst(func, from, jump);
 }
 
-fn is_empty(func: &mut FunctionData, bb: BasicBlock) -> bool {
-    func.layout_mut().bb_mut(bb).insts().is_empty()
-}
-
-fn is_finish(func: &mut FunctionData, bb: BasicBlock) -> bool {
-    let last_inst = *func.layout_mut().bb_mut(bb).insts().back_key().unwrap();
-    let last_inst = func.dfg().value(last_inst).kind();
+pub fn is_finish(func: &mut FunctionData, bb: BasicBlock) -> bool {
+    if func.layout_mut().bb_mut(bb).insts().is_empty() {
+        return false;
+    }
+    let last_val = *func.layout_mut().bb_mut(bb).insts().back_key().unwrap();
+    let last_valkind = func.dfg().value(last_val).kind();
     matches!(
-        last_inst,
+        last_valkind,
         ValueKind::Branch(_) | ValueKind::Return(_) | ValueKind::Jump(_)
     )
 }
 
 pub fn check_and_jump(func: &mut FunctionData, src: BasicBlock, target: BasicBlock) {
-    if is_empty(func, src) || !is_finish(func, src) {
+    if !is_finish(func, src) {
         jump_to(func, src, target);
     }
 }
 
-pub fn check_and_return(
+pub fn return_from(
     symt: &SymbolTable,
     func: &mut FunctionData,
     bb: BasicBlock,
     val: &Option<Box<Exp>>,
 ) {
-    if !is_empty(func, bb) && is_finish(func, bb) {
-        return;
-    }
     let mut insts = Vec::new();
     let val = match val {
         Some(exp) => exp.generate(symt, func, &mut insts),
-        None => integer(func, 0),
+        None => zero(func),
     };
     insts.push(ret(func, val));
     push_insts(func, bb, &insts);
@@ -146,6 +142,12 @@ pub fn store(func: &mut FunctionData, val: Value, dst: Value) -> Value {
     func.dfg_mut().new_value().store(val, dst)
 }
 
+fn logical(func: &mut FunctionData, val: Value) -> Value {
+    let z = zero(func);
+
+    binary(func, IR_BinaryOp::NotEq, val, z)
+}
+
 pub fn lor(func: &mut FunctionData, lhs: Value, rhs: Value, insts: &mut Vec<Value>) -> Value {
     let ll = logical(func, lhs);
     let lr = logical(func, rhs);
@@ -153,12 +155,6 @@ pub fn lor(func: &mut FunctionData, lhs: Value, rhs: Value, insts: &mut Vec<Valu
     insts.extend([ll, lr]);
 
     result
-}
-
-fn logical(func: &mut FunctionData, val: Value) -> Value {
-    let z = zero(func);
-
-    binary(func, IR_BinaryOp::NotEq, val, z)
 }
 
 pub fn land(func: &mut FunctionData, lhs: Value, rhs: Value, insts: &mut Vec<Value>) -> Value {

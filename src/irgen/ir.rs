@@ -98,6 +98,10 @@ impl<'input> Block {
                 BlockItem::Decl(decl) => decl.generate(symt, func, bb)?,
                 BlockItem::Stmt(stmt) => bb = stmt.generate(symt, flow, func, bb, link_to)?,
             }
+
+            if is_finish(func, bb) {
+                return Ok(());
+            }
         }
 
         Ok(())
@@ -176,7 +180,7 @@ impl<'input> Stmt {
                 }
             }
             Self::Return(val) => {
-                check_and_return(symt, func, bb, val);
+                return_from(symt, func, bb, val);
             }
             Self::Branch(branch) => {
                 move_to = branch.generate(symt, flow, func, bb, link_to)?;

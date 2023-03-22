@@ -80,11 +80,10 @@ impl GenerateValue for Exp {
                 Symbol::Var { val, init } => {
                     if !init {
                         panic!(
-                            "uninitialized variable {} can't be used in an expression",
+                            "uninitialized variable \"{}\" can't be used in an expression",
                             name
                         )
                     }
-
                     let load = load(func, *val);
                     insts.push(load);
 

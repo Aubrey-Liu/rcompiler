@@ -41,7 +41,7 @@ impl GenerateAsm for FunctionData {
         for (&bb, node) in self.layout().bbs() {
             let bb_name = get_bb_name(self, bb);
             writeln!(f, "{}:", bb_name)?;
-            if bb_name == "entry" {
+            if bb == self.layout().entry_bb().unwrap() {
                 writeln!(f, "  addi sp, sp, -{}", alloc)?;
             }
             for &inst in node.insts().keys() {
