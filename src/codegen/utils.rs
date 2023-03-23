@@ -49,14 +49,9 @@ impl<'a> AsmGenerator<'a> {
     }
 
     pub fn load(&mut self, program: &ProgramStat, dst: &str, val: Value) -> Result<()> {
-        let kind = program.value_kind(val);
-        if let ValueKind::Integer(imm) = kind {
+        if let ValueKind::Integer(imm) = program.value_kind(val) {
             return self.loadi(dst, imm.value());
         }
-        if let ValueKind::Load(load) = kind {
-            return self.load(program, dst, load.src());
-        }
-
         let off = program.curr_func().get_offset(&val);
         if off >= -2048 && off <= 2047 {
             writeln!(self.f, "  lw {}, {}(sp)", dst, off)

@@ -24,9 +24,7 @@ impl GenerateAsm for FunctionData {
 
         let mut off = 0;
         for (&val, data) in self.dfg().values() {
-            if !data.ty().is_unit()
-                && !matches!(data.kind(), ValueKind::Load(_) | ValueKind::Return(_))
-            {
+            if data.kind().is_local_inst() && !data.used_by().is_empty() {
                 program.curr_func_mut().register_inst(val, off);
                 off += 4;
             }
@@ -55,16 +53,26 @@ impl GenerateAsm for Value {
     fn generate(&self, gen: &mut AsmGenerator, program: &mut ProgramStat) -> Result<()> {
         let value_data = program.func_data().dfg().value(*self);
         match value_data.kind().clone() {
-            ValueKind::Binary(b) => {
-                b.generate(gen, program)?;
+            ValueKind::Branch(v) => v.generate(gen, program),
+            ValueKind::Jump(v) => v.generate(gen, program),
+            ValueKind::Return(v) => v.generate(gen, program),
+            ValueKind::Store(v) => v.generate(gen, program),
+            ValueKind::Binary(v) => {
+                v.generate(gen, program)?;
                 gen.store(program, "t1", *self)
             }
-            ValueKind::Branch(b) => b.generate(gen, program),
-            ValueKind::Jump(j) => j.generate(gen, program),
-            ValueKind::Return(r) => r.generate(gen, program),
-            ValueKind::Store(s) => s.generate(gen, program),
+            ValueKind::Load(v) => {
+                v.generate(gen, program)?;
+                gen.store(program, "t1", *self)
+            }
             _ => Ok(()),
         }
+    }
+}
+
+impl GenerateAsm for Load {
+    fn generate(&self, gen: &mut AsmGenerator, program: &mut ProgramStat) -> Result<()> {
+        gen.load(program, "t1", self.src())
     }
 }
 
