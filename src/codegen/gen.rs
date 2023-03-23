@@ -24,7 +24,9 @@ impl GenerateAsm for FunctionData {
 
         let mut off = 0;
         for (&val, data) in self.dfg().values() {
-            if !data.ty().is_unit() && !matches!(data.kind(), ValueKind::Load(_)) {
+            if !data.ty().is_unit()
+                && !matches!(data.kind(), ValueKind::Load(_) | ValueKind::Return(_))
+            {
                 program.curr_func_mut().register_inst(val, off);
                 off += 4;
             }
