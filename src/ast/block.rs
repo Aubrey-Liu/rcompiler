@@ -1,4 +1,4 @@
-pub use super::*;
+use super::*;
 
 #[derive(Debug)]
 pub struct Block {
@@ -24,6 +24,21 @@ pub enum Stmt {
     Return(Option<Box<Exp>>),
     Block(Box<Block>),
     Branch(Branch),
+    While(While),
+    Continue(Continue),
+    Break(Break),
+}
+
+#[derive(Debug)]
+pub struct Continue;
+
+#[derive(Debug)]
+pub struct Break;
+
+#[derive(Debug)]
+pub struct While {
+    pub cond: Box<Exp>,
+    pub stmt: Box<Stmt>,
 }
 
 #[derive(Debug)]
@@ -31,22 +46,6 @@ pub struct Branch {
     pub cond: Box<Exp>,
     pub if_stmt: Box<Stmt>,
     pub el_stmt: Option<Box<Stmt>>,
-}
-
-impl Default for Block {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Block {
-    pub fn new() -> Self {
-        Self { items: Vec::new() }
-    }
-
-    pub fn new_with_vec(items: Vec<BlockItem>) -> Self {
-        Self { items }
-    }
 }
 
 #[derive(Debug)]
@@ -78,5 +77,21 @@ impl VarDecl {
 
     pub fn new_without_init(name: String) -> Self {
         Self { name, init: None }
+    }
+}
+
+impl Default for Block {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Block {
+    pub fn new() -> Self {
+        Self { items: Vec::new() }
+    }
+
+    pub fn new_with_vec(items: Vec<BlockItem>) -> Self {
+        Self { items }
     }
 }

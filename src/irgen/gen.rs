@@ -129,9 +129,7 @@ impl<'input> Stmt {
             Self::Assign(assign) => {
                 let dst = match symt.get(&assign.name).unwrap() {
                     Symbol::Var { val, .. } => *val,
-                    Symbol::ConstVar(_) => {
-                        bail!("\"{}\" must be a modifiable lvalue", assign.name);
-                    }
+                    Symbol::ConstVar(_) => bail!("\"{}\" must be a modifiable lvalue", assign.name),
                 };
                 let val = assign.val.generate(symt, func, &mut insts);
                 insts.push(store(func, val, dst));
@@ -148,9 +146,13 @@ impl<'input> Stmt {
             Self::Return(val) => {
                 return_from(symt, func, bb, val);
             }
-            Self::Branch(branch) => {
-                move_to = branch.generate(symt, flow, func, bb, link_to)?;
+            Self::Branch(br) => {
+                move_to = br.generate(symt, flow, func, bb, link_to)?;
             }
+            Self::While(w) => {
+                move_to = w.generate(symt, flow, func, bb, link_to)?;
+            }
+            _ => todo!(),
         }
 
         if !insts.is_empty() {
@@ -161,17 +163,8 @@ impl<'input> Stmt {
     }
 }
 
-pub(in crate::irgen) trait GenerateValue {
-    fn generate(
-        &self,
-        symt: &SymbolTable,
-        func: &mut FunctionData,
-        insts: &mut Vec<Value>,
-    ) -> Value;
-}
-
-impl GenerateValue for UnaryExp {
-    fn generate(
+impl UnaryExp {
+    pub fn generate(
         &self,
         symt: &SymbolTable,
         func: &mut FunctionData,
@@ -195,8 +188,8 @@ impl GenerateValue for UnaryExp {
     }
 }
 
-impl GenerateValue for BinaryExp {
-    fn generate(
+impl BinaryExp {
+    pub fn generate(
         &self,
         symt: &SymbolTable,
         func: &mut FunctionData,
@@ -224,8 +217,8 @@ impl GenerateValue for BinaryExp {
     }
 }
 
-impl GenerateValue for Exp {
-    fn generate(
+impl Exp {
+    pub fn generate(
         &self,
         symt: &SymbolTable,
         func: &mut FunctionData,

@@ -1,11 +1,11 @@
-pub mod riscv;
+pub(crate) mod riscv;
 
 mod gen;
 mod stat;
 mod tests;
 mod utils;
 
-pub use riscv::generate_code;
+pub(crate) use riscv::generate_code;
 
 use gen::GenerateAsm;
 use koopa::ir::values::*;

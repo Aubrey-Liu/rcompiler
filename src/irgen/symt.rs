@@ -82,12 +82,12 @@ impl<'input> SymbolTable<'input> {
         Err(anyhow!("{} is not defined in the current scope", name))
     }
 
-    pub fn get_from_var(&self, name: &str) -> Result<Value> {
-        self.get(name).and_then(|sym| match sym {
-            Symbol::Var { val, .. } => Ok(*val),
-            Symbol::ConstVar(_) => Err(anyhow!("{} has to be a variable", name)),
-        })
-    }
+    // pub fn get_from_var(&self, name: &str) -> Result<Value> {
+    //     self.get(name).and_then(|sym| match sym {
+    //         Symbol::Var { val, .. } => Ok(*val),
+    //         Symbol::ConstVar(_) => Err(anyhow!("{} has to be a variable", name)),
+    //     })
+    // }
 
     pub fn get_from_const_var(&self, name: &str) -> Result<i32> {
         self.get(name).and_then(|sym| match sym {
@@ -119,9 +119,9 @@ impl<'input> SymbolTable<'input> {
             .map_or(Ok(()), |_| Err(anyhow!("{}: duplicate definition", name)))
     }
 
-    pub fn current_id(&self) -> i32 {
-        self.current_node_id as i32
-    }
+    // pub fn current_id(&self) -> i32 {
+    //     self.current_node_id as i32
+    // }
 }
 
 impl SymbolTable<'_> {

@@ -40,6 +40,18 @@ pub fn new_branch(func: &mut FunctionData) -> (BasicBlock, BasicBlock, BasicBloc
     (true_bb, false_bb, end_bb)
 }
 
+pub fn new_loop(func: &mut FunctionData) -> (BasicBlock, BasicBlock, BasicBlock) {
+    let while_entry = new_bb(func, "%while_entry");
+    let while_body = new_bb(func, "%while_body");
+    let while_end = new_bb(func, "%while_end");
+
+    push_bb(func, while_entry);
+    push_bb(func, while_body);
+    push_bb(func, while_end);
+
+    (while_entry, while_body, while_end)
+}
+
 pub fn push_bb(func: &mut FunctionData, bb: BasicBlock) {
     func.layout_mut().bbs_mut().extend([bb]);
 }

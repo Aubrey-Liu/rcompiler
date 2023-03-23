@@ -14,6 +14,8 @@ pub fn generate_mem_ir(ipath: &str) -> Result<Program> {
         .parse(&mut errors, &input)
         .unwrap();
 
+    dbg!(&ast);
+
     ast.generate(&mut global_symt)
 }
 
