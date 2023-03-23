@@ -52,6 +52,7 @@ impl GenerateAsm for FunctionData {
 impl GenerateAsm for Value {
     fn generate(&self, gen: &mut AsmGenerator, program: &mut ProgramStat) -> Result<()> {
         let value_data = program.func_data().dfg().value(*self);
+        let used_by = !program.func_data().dfg().value(*self).used_by().is_empty();
         match value_data.kind().clone() {
             ValueKind::Branch(v) => v.generate(gen, program),
             ValueKind::Jump(v) => v.generate(gen, program),
@@ -59,7 +60,11 @@ impl GenerateAsm for Value {
             ValueKind::Store(v) => v.generate(gen, program),
             ValueKind::Binary(v) => {
                 v.generate(gen, program)?;
-                gen.store(program, "t1", *self)
+                if used_by {
+                    gen.store(program, "t1", *self)
+                } else {
+                    Ok(())
+                }
             }
             ValueKind::Load(v) => {
                 v.generate(gen, program)?;
