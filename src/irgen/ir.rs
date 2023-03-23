@@ -168,10 +168,7 @@ impl<'input> Stmt {
                 symt.exit_scope();
             }
             Self::Exp(exp) => {
-                if let Some(e) = exp {
-                    // evaluation result is ignored here
-                    e.generate(symt, func, &mut insts);
-                }
+                exp.as_ref().map(|e| e.generate(symt, func, &mut insts));
             }
             Self::Return(val) => {
                 return_from(symt, func, bb, val);

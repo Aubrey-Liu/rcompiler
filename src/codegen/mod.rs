@@ -1,6 +1,8 @@
-mod gen;
 pub mod riscv;
+
+mod gen;
 mod stat;
+mod tests;
 mod utils;
 
 pub use riscv::generate_code;
