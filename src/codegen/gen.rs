@@ -23,15 +23,13 @@ impl GenerateAsm for FunctionData {
         gen.enter_func(&self.name()[1..])?;
 
         let mut off = 0;
-        for (&_bb, node) in self.layout().bbs() {
-            for &inst in node.insts().keys() {
-                let value_data = self.dfg().value(inst);
-                if !value_data.ty().is_unit() {
-                    program.curr_func_mut().register_inst(inst, off);
-                    off += 4;
-                }
+        for (&val, data) in self.dfg().values() {
+            if !data.ty().is_unit() && !matches!(data.kind(), ValueKind::Load(_)) {
+                program.curr_func_mut().register_inst(val, off);
+                off += 4;
             }
         }
+
         // align to 16
         let alloc = (off + 15) / 16 * 16;
         program.curr_func_mut().set_ss(alloc);
@@ -63,7 +61,6 @@ impl GenerateAsm for Value {
             ValueKind::Jump(j) => j.generate(gen, program),
             ValueKind::Return(r) => r.generate(gen, program),
             ValueKind::Store(s) => s.generate(gen, program),
-            // ValueKind::Load(l) => l.generate(gen, program)?,
             _ => Ok(()),
         }
     }
