@@ -1,19 +1,17 @@
-use std::collections::HashMap;
-use std::io::Write;
+use std::io::Result;
 
 use super::*;
 
-type LocalStore = HashMap<Value, i32>;
-
 pub trait GenerateAsm {
-    fn generate(&self, f: &mut File) -> Result<()>;
+    fn generate(&self, gen: &mut AsmGenerator, program: &mut ProgramStat) -> Result<()>;
 }
 
 impl GenerateAsm for Program {
-    fn generate(&self, f: &mut File) -> Result<()> {
-        writeln!(f, "  .text")?;
+    fn generate(&self, gen: &mut AsmGenerator, program: &mut ProgramStat) -> Result<()> {
+        gen.text()?;
         for &func in self.func_layout() {
-            self.func(func).generate(f)?;
+            program.set_func(func);
+            self.func(func).generate(gen, program)?;
         }
 
         Ok(())
@@ -21,38 +19,31 @@ impl GenerateAsm for Program {
 }
 
 impl GenerateAsm for FunctionData {
-    fn generate(&self, f: &mut File) -> Result<()> {
-        writeln!(f, "  .globl {}", &self.name()[1..])?;
-        writeln!(f, "{}:", &self.name()[1..])?;
+    fn generate(&self, gen: &mut AsmGenerator, program: &mut ProgramStat) -> Result<()> {
+        gen.enter_func(&self.name()[1..])?;
 
-        let mut store = LocalStore::new();
-        let mut alloc = 0;
-
+        let mut off = 0;
         for (&_bb, node) in self.layout().bbs() {
             for &inst in node.insts().keys() {
                 let value_data = self.dfg().value(inst);
                 if !value_data.ty().is_unit() {
-                    store.insert(inst, alloc);
-                    alloc += 4;
+                    program.curr_func_mut().register_inst(inst, off);
+                    off += 4;
                 }
             }
         }
         // align to 16
-        alloc = (alloc + 15) / 16 * 16;
+        let alloc = (off + 15) / 16 * 16;
+        program.curr_func_mut().set_ss(alloc);
 
         for (&bb, node) in self.layout().bbs() {
-            let bb_name = get_bb_name(self, bb);
-            writeln!(f, "{}:", bb_name)?;
             if bb == self.layout().entry_bb().unwrap() {
-                if alloc >= 2048 {
-                    writeln!(f, "  li t1, {}", -alloc)?;
-                    writeln!(f, "  add sp, sp, t1")?;
-                } else {
-                    writeln!(f, "  addi sp, sp, -{}", alloc)?;
-                }
+                gen.prologue(program)?;
+            } else {
+                gen.enter_bb(program, bb)?;
             }
             for &inst in node.insts().keys() {
-                inst.generate(f, self, &store, alloc)?;
+                inst.generate(gen, program)?;
             }
         }
 
@@ -60,209 +51,59 @@ impl GenerateAsm for FunctionData {
     }
 }
 
-trait ValueToAsm {
-    fn generate<W: Write>(
-        &self,
-        asm: &mut W,
-        func: &FunctionData,
-        store: &LocalStore,
-        alloc: i32,
-    ) -> Result<()>;
-}
-
-impl ValueToAsm for Value {
-    fn generate<W: Write>(
-        &self,
-        w: &mut W,
-        func: &FunctionData,
-        store: &LocalStore,
-        alloc: i32,
-    ) -> Result<()> {
-        let value_data = func.dfg().value(*self);
-        match value_data.kind() {
-            ValueKind::Return(r) => r.generate(w, func, store, alloc)?,
-            ValueKind::Store(s) => s.generate(w, func, store)?,
-            ValueKind::Load(l) => l.generate(w, func, store, *self)?,
-            ValueKind::Binary(b) => b.generate(w, func, store, *self)?,
-            ValueKind::Jump(j) => j.generate(w, func, store)?,
-            ValueKind::Branch(b) => b.generate(w, func, store)?,
-            _ => {}
+impl GenerateAsm for Value {
+    fn generate(&self, gen: &mut AsmGenerator, program: &mut ProgramStat) -> Result<()> {
+        let value_data = program.func_data().dfg().value(*self);
+        match value_data.kind().clone() {
+            ValueKind::Binary(b) => {
+                b.generate(gen, program)?;
+                gen.store(program, "t1", *self)
+            }
+            ValueKind::Branch(b) => b.generate(gen, program),
+            ValueKind::Jump(j) => j.generate(gen, program),
+            ValueKind::Return(r) => r.generate(gen, program),
+            ValueKind::Store(s) => s.generate(gen, program),
+            // ValueKind::Load(l) => l.generate(gen, program)?,
+            _ => Ok(()),
         }
-
-        Ok(())
     }
 }
 
-trait UnitInstToAsm {
-    fn generate<W: Write>(&self, w: &mut W, func: &FunctionData, store: &LocalStore) -> Result<()>;
-}
-
-impl UnitInstToAsm for Store {
-    fn generate<W: Write>(&self, w: &mut W, func: &FunctionData, store: &LocalStore) -> Result<()> {
-        let dst = store.get(&self.dest()).unwrap();
-        self.value().load(w, func, store, "t1")?;
-        writeln!(w, "  sw t1, {}(sp)", dst)?;
-
-        Ok(())
+impl GenerateAsm for Store {
+    fn generate(&self, gen: &mut AsmGenerator, program: &mut ProgramStat) -> Result<()> {
+        gen.load(program, "t1", self.value())?;
+        gen.store(program, "t1", self.dest())
     }
 }
 
-impl UnitInstToAsm for Jump {
-    fn generate<W: Write>(
-        &self,
-        w: &mut W,
-        func: &FunctionData,
-        _store: &LocalStore,
-    ) -> Result<()> {
-        writeln!(w, "  j {}", get_bb_name(func, self.target()))?;
-
-        Ok(())
+impl GenerateAsm for Jump {
+    fn generate(&self, gen: &mut AsmGenerator, program: &mut ProgramStat) -> Result<()> {
+        gen.jump(get_bb_name(program, self.target()))
     }
 }
 
-impl UnitInstToAsm for Branch {
-    fn generate<W: Write>(&self, w: &mut W, func: &FunctionData, store: &LocalStore) -> Result<()> {
-        self.cond().load(w, func, store, "t1")?;
-        writeln!(w, "  bnez t1, {}", get_bb_name(func, self.true_bb()))?;
-        writeln!(w, "  j {}", get_bb_name(func, self.false_bb()))?;
-
-        Ok(())
+impl GenerateAsm for Branch {
+    fn generate(&self, gen: &mut AsmGenerator, program: &mut ProgramStat) -> Result<()> {
+        gen.load(program, "t1", self.cond())?;
+        gen.branch(program, "t1", self.true_bb(), self.false_bb())
     }
 }
 
-trait NonUnitInstToAsm {
-    fn generate<W: Write>(
-        &self,
-        w: &mut W,
-        func: &FunctionData,
-        store: &LocalStore,
-        save: Value,
-    ) -> Result<()>;
-}
-
-impl NonUnitInstToAsm for Load {
-    fn generate<W: Write>(
-        &self,
-        w: &mut W,
-        func: &FunctionData,
-        store: &LocalStore,
-        save: Value,
-    ) -> Result<()> {
-        let save = store.get(&save).unwrap();
-        self.src().load(w, func, store, "t1")?;
-        writeln!(w, "  sw t1, {}(sp)", save)?;
-
-        Ok(())
+impl GenerateAsm for Binary {
+    fn generate(&self, gen: &mut AsmGenerator, program: &mut ProgramStat) -> Result<()> {
+        gen.load(program, "t1", self.lhs())?;
+        gen.load(program, "t2", self.rhs())?;
+        gen.binary(self.op(), "t1", "t2", "t1")
     }
 }
 
-impl NonUnitInstToAsm for Binary {
-    fn generate<W: Write>(
-        &self,
-        w: &mut W,
-        func: &FunctionData,
-        store: &LocalStore,
-        save: Value,
-    ) -> Result<()> {
-        self.lhs().load(w, func, store, "t1")?;
-        self.rhs().load(w, func, store, "t2")?;
-        let save = store.get(&save).unwrap();
-
-        match self.op() {
-            BinaryOp::Add => writeln!(w, "  add t1, t1, t2")?,
-            BinaryOp::Sub => writeln!(w, "  sub t1, t1, t2")?,
-            BinaryOp::Mul => writeln!(w, "  mul t1, t1, t2")?,
-            BinaryOp::Div => writeln!(w, "  div t1, t1, t2")?,
-            BinaryOp::Mod => writeln!(w, "  rem t1, t1, t2")?,
-            BinaryOp::And => writeln!(w, "  and t1, t1, t2")?,
-            BinaryOp::Or => writeln!(w, "  or t1, t1, t2")?,
-            BinaryOp::Lt => writeln!(w, "  slt t1, t1, t2")?,
-            BinaryOp::Gt => writeln!(w, "  sgt t1, t1, t2")?,
-            BinaryOp::Eq => {
-                writeln!(w, "  sub t1, t1, t2")?;
-                writeln!(w, "  seqz t1, t1")?;
-            }
-            BinaryOp::NotEq => {
-                writeln!(w, "  sub t1, t1, t2")?;
-                writeln!(w, "  snez t1, t1")?;
-            }
-            BinaryOp::Le => {
-                writeln!(w, "  sgt t1, t1, t2")?;
-                writeln!(w, "  snez t1, t1")?;
-            }
-            BinaryOp::Ge => {
-                writeln!(w, "  slt t1, t1, t2")?;
-                writeln!(w, "  snez t1, t1")?;
-            }
-            _ => unreachable!(),
-        }
-        writeln!(w, "  sw t1, {}(sp)", save)?;
-
-        Ok(())
-    }
-}
-
-trait ReturnToAsm {
-    fn generate<W: Write>(
-        &self,
-        w: &mut W,
-        func: &FunctionData,
-        store: &LocalStore,
-        prologue: i32,
-    ) -> Result<()>;
-}
-
-impl ReturnToAsm for Return {
-    fn generate<W: Write>(
-        &self,
-        w: &mut W,
-        func: &FunctionData,
-        store: &LocalStore,
-        prologue: i32,
-    ) -> Result<()> {
+impl GenerateAsm for Return {
+    fn generate(&self, gen: &mut AsmGenerator, program: &mut ProgramStat) -> Result<()> {
         if self.value().is_none() {
-            writeln!(w, "  li a0, 0")?;
+            gen.loadi("a0", 0)?;
         } else {
-            self.value().unwrap().load(w, func, store, "a0")?;
+            gen.load(program, "a0", self.value().unwrap())?;
         }
-        if prologue > 2047 {
-            writeln!(w, "  li t1, {}", prologue)?;
-            writeln!(w, "  add sp, sp, t1")?;
-        } else {
-            writeln!(w, "  addi sp, sp, {}", prologue)?;
-        }
-        writeln!(w, "  ret")?;
-
-        Ok(())
-    }
-}
-
-trait LoadValue {
-    fn load<W: Write>(
-        &self,
-        asm: &mut W,
-        func: &FunctionData,
-        store: &LocalStore,
-        dst: &str,
-    ) -> Result<()>;
-}
-
-impl LoadValue for Value {
-    fn load<W: Write>(
-        &self,
-        w: &mut W,
-        func: &FunctionData,
-        store: &LocalStore,
-        dst: &str,
-    ) -> Result<()> {
-        let val = func.dfg().value(*self);
-        if let ValueKind::Integer(i) = val.kind() {
-            writeln!(w, "  li {}, {}", dst, i.value())?;
-        } else {
-            let src = store.get(self).unwrap();
-            writeln!(w, "  lw {}, {}(sp)", dst, src)?;
-        }
-
-        Ok(())
+        gen.epilogue(program)
     }
 }
