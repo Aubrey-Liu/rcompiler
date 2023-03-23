@@ -1,5 +1,5 @@
-mod control_flow;
-pub mod generate;
+mod control;
+pub mod gen;
 pub mod ir;
 pub mod symt;
 mod utils;
@@ -8,8 +8,8 @@ pub use ir::{generate_ir, generate_mem_ir};
 pub use symt::*;
 
 use anyhow::*;
-use control_flow::*;
-use generate::*;
+use control::*;
+use gen::*;
 use koopa::ir::BinaryOp as IR_BinaryOp;
 use koopa::ir::{BasicBlock, Function, FunctionData, Program, Type, Value, ValueKind};
 use utils::*;
