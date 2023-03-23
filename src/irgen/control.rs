@@ -22,7 +22,8 @@ impl<'input> Branch {
     ) -> Result<BasicBlock> {
         let (true_bb, false_bb, end_bb) = new_branch(func);
 
-        self.shortcut(symt, flow, func, bb, true_bb, false_bb, &self.cond)?;
+        let br = BranchInfo(bb, true_bb, false_bb);
+        shortcut(symt, flow, func, br, &self.cond)?;
 
         // the flows can be overwritten
         flow.insert(true_bb, Flow::Jump(end_bb));
@@ -32,8 +33,6 @@ impl<'input> Branch {
             flow.insert(end_bb, Flow::Jump(link_to));
         }
 
-        // let cond = self.cond.generate(symt, func, &mut insts);
-
         self.if_stmt.generate(symt, flow, func, true_bb, end_bb)?;
         if let Some(el_stmt) = &self.el_stmt {
             el_stmt.generate(symt, flow, func, false_bb, end_bb)?;
@@ -41,45 +40,50 @@ impl<'input> Branch {
 
         Ok(end_bb)
     }
+}
 
-    fn shortcut(
-        &'input self,
-        symt: &mut SymbolTable<'input>,
-        flow: &mut FlowGraph,
-        func: &mut FunctionData,
-        bb: BasicBlock,
-        true_bb: BasicBlock,
-        false_bb: BasicBlock,
-        cond: &Box<Exp>,
-    ) -> Result<()> {
+struct BranchInfo(BasicBlock, BasicBlock, BasicBlock);
+
+fn shortcut<'input>(
+    symt: &mut SymbolTable<'input>,
+    flow: &mut FlowGraph,
+    func: &mut FunctionData,
+    info: BranchInfo,
+    cond: &Box<Exp>,
+) -> Result<()> {
+    let BranchInfo(bb, true_bb, false_bb) = info;
+
+    if !cond.is_logical() {
         let mut insts = Vec::new();
 
-        if !cond.is_logical() {
-            let cond_val = cond.generate(symt, func, &mut insts);
-            flow.insert(bb, Flow::Branch(cond_val, true_bb, false_bb));
+        let cond_val = cond.generate(symt, func, &mut insts);
+        flow.insert(bb, Flow::Branch(cond_val, true_bb, false_bb));
 
-            push_insts(func, bb, &insts);
-
-            return Ok(());
-        }
-
-        match cond.get_binary_op().unwrap() {
-            BinaryOp::And => {
-                let bxp = cond.get_bxp().unwrap();
-                let check_right = new_bb(func, "%check");
-                self.shortcut(symt, flow, func, bb, check_right, false_bb, &bxp.lhs)?;
-                self.shortcut(symt, flow, func, check_right, true_bb, false_bb, &bxp.rhs)?;
-            }
-            BinaryOp::Or => {
-                let bxp = cond.get_bxp().unwrap();
-                let check_right = new_bb(func, "%check");
-                self.shortcut(symt, flow, func, bb, true_bb, check_right, &bxp.lhs)?;
-                self.shortcut(symt, flow, func, check_right, true_bb, false_bb, &bxp.rhs)?;
-            }
-            _ => unreachable!(),
-        }
         push_insts(func, bb, &insts);
 
-        Ok(())
+        return Ok(());
+    }
+
+    match cond.get_binary_op().unwrap() {
+        BinaryOp::And => {
+            let bxp = cond.get_bxp().unwrap();
+            let check_right = new_bb(func, "%check");
+
+            let path_1 = BranchInfo(bb, check_right, false_bb);
+            let path_2 = BranchInfo(check_right, true_bb, false_bb);
+            shortcut(symt, flow, func, path_1, &bxp.lhs)?;
+            shortcut(symt, flow, func, path_2, &bxp.rhs)
+        }
+        BinaryOp::Or => {
+            let bxp = cond.get_bxp().unwrap();
+            let check_right = new_bb(func, "%check");
+
+            let path_1 = BranchInfo(bb, true_bb, check_right);
+            let path_2 = BranchInfo(check_right, true_bb, false_bb);
+
+            shortcut(symt, flow, func, path_1, &bxp.lhs)?;
+            shortcut(symt, flow, func, path_2, &bxp.rhs)
+        }
+        _ => unreachable!(),
     }
 }
