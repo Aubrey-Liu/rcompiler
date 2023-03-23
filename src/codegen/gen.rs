@@ -25,7 +25,7 @@ impl GenerateAsm for FunctionData {
         let mut off = 0;
         for (&val, data) in self.dfg().values() {
             if data.kind().is_local_inst() && !data.used_by().is_empty() {
-                program.curr_func_mut().register_inst(val, off);
+                program.curr_func_mut().register(val, off);
                 off += 4;
             }
         }

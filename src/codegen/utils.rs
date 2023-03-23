@@ -86,20 +86,20 @@ impl<'a> AsmGenerator<'a> {
             BinaryOp::Lt => writeln!(self.f, "  slt {}, {}, {}", dst, lhs, rhs),
             BinaryOp::Gt => writeln!(self.f, "  sgt {}, {}, {}", dst, lhs, rhs),
             BinaryOp::Eq => {
-                writeln!(self.f, "  sub {}, {}, {}", lhs, lhs, rhs)?;
+                writeln!(self.f, "  xor {}, {}, {}", lhs, lhs, rhs)?;
                 writeln!(self.f, "  seqz {}, {}", dst, lhs)
             }
             BinaryOp::NotEq => {
-                writeln!(self.f, "  sub {}, {}, {}", lhs, lhs, rhs)?;
+                writeln!(self.f, "  xor {}, {}, {}", lhs, lhs, rhs)?;
                 writeln!(self.f, "  snez {}, {}", dst, lhs)
             }
             BinaryOp::Le => {
                 writeln!(self.f, "  sgt {}, {}, {}", lhs, lhs, rhs)?;
-                writeln!(self.f, "  snez {}, {}", dst, lhs)
+                writeln!(self.f, "  seqz {}, {}", dst, lhs)
             }
             BinaryOp::Ge => {
                 writeln!(self.f, "  slt {}, {}, {}", lhs, lhs, rhs)?;
-                writeln!(self.f, "  snez {}, {}", dst, lhs)
+                writeln!(self.f, "  seqz {}, {}", dst, lhs)
             }
             _ => unreachable!(),
         }
@@ -120,10 +120,10 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f, "  .text")
     }
 
-    pub fn from_path(path: &str) -> Result<Self> {
+    pub fn from_path(path: &str, tmpr: &'a str) -> Result<Self> {
         Ok(Self {
             f: File::create(path)?,
-            tmpr: "t0",
+            tmpr,
         })
     }
 }

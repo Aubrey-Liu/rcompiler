@@ -70,7 +70,7 @@ impl FunctionStat {
         self.func
     }
 
-    pub fn register_inst(&mut self, inst: Value, off: i32) {
+    pub fn register(&mut self, inst: Value, off: i32) {
         self.registry.insert(inst, off);
     }
 }
