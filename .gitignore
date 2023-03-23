@@ -1,4 +1,5 @@
 .vscode/
 target/
-examples/
+
 scripts/
+testcases/
