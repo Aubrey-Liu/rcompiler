@@ -22,12 +22,11 @@ impl<'a> AsmGenerator<'a> {
     }
 
     pub fn prologue(&mut self, ctx: &Context) -> Result<()> {
-        writeln!(self.f, "entry:")?;
-        self.addi("sp", "sp", -ctx.curr_func().ss())
+        self.addi("sp", "sp", -ctx.cur_func().ss())
     }
 
     pub fn enter_bb(&mut self, ctx: &Context, bb: BasicBlock) -> Result<()> {
-        writeln!(self.f, "{}:", ctx.get_bb_name(bb))
+        writeln!(self.f, "{}:", ctx.cur_func().get_bb_name(bb))
     }
 
     pub fn enter_func(&mut self, func_name: &str) -> Result<()> {
@@ -36,7 +35,7 @@ impl<'a> AsmGenerator<'a> {
     }
 
     pub fn epilogue(&mut self, ctx: &Context) -> Result<()> {
-        self.addi("sp", "sp", ctx.curr_func().ss())?;
+        self.addi("sp", "sp", ctx.cur_func().ss())?;
         writeln!(self.f, "  ret")
     }
 
@@ -48,7 +47,7 @@ impl<'a> AsmGenerator<'a> {
         if let ValueKind::Integer(imm) = ctx.value_kind(val) {
             return self.loadi(dst, imm.value());
         }
-        let off = ctx.curr_func().get_offset(&val);
+        let off = ctx.cur_func().get_offset(&val);
         if off >= -2048 && off <= 2047 {
             writeln!(self.f, "  lw {}, {}(sp)", dst, off)
         } else {
@@ -59,7 +58,7 @@ impl<'a> AsmGenerator<'a> {
     }
 
     pub fn store(&mut self, ctx: &Context, src: &str, val: Value) -> Result<()> {
-        let off = ctx.curr_func().get_offset(&val);
+        let off = ctx.cur_func().get_offset(&val);
 
         if off >= -2048 && off <= 2047 {
             writeln!(self.f, "  sw {}, {}(sp)", src, off)
@@ -108,8 +107,13 @@ impl<'a> AsmGenerator<'a> {
         true_bb: BasicBlock,
         false_bb: BasicBlock,
     ) -> Result<()> {
-        writeln!(self.f, "  bnez {}, {}", cond, ctx.get_bb_name(true_bb))?;
-        writeln!(self.f, "  j {}", ctx.get_bb_name(false_bb))
+        writeln!(
+            self.f,
+            "  bnez {}, {}",
+            cond,
+            ctx.cur_func().get_bb_name(true_bb)
+        )?;
+        writeln!(self.f, "  j {}", ctx.cur_func().get_bb_name(false_bb))
     }
 
     pub fn text(&mut self) -> Result<()> {

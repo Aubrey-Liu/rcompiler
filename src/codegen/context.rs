@@ -12,6 +12,7 @@ pub struct Context<'i> {
 pub struct FunctionInfo {
     id: Function,
     registry: InstRegistry,
+    names: HashMap<BasicBlock, String>,
     // stack size
     ss: i32,
 }
@@ -30,28 +31,29 @@ impl<'i> Context<'i> {
         self.cur_func = Some(FunctionInfo::new(func))
     }
 
-    pub fn curr_func(&self) -> &FunctionInfo {
+    pub fn cur_func(&self) -> &FunctionInfo {
         self.cur_func.as_ref().unwrap()
     }
 
-    pub fn curr_func_mut(&mut self) -> &mut FunctionInfo {
+    pub fn cur_func_mut(&mut self) -> &mut FunctionInfo {
         self.cur_func.as_mut().unwrap()
     }
 
     pub fn func_data(&self) -> &FunctionData {
-        self.program.func(self.curr_func().id())
+        self.program.func(self.cur_func().id())
     }
 
     pub fn value_kind(&self, val: Value) -> &ValueKind {
         self.func_data().dfg().value(val).kind()
     }
 
-    pub fn get_bb_name(&'i self, bb: BasicBlock) -> String {
+    pub fn register_bb(&mut self, bb: BasicBlock) {
         let id = Self::NAMETAG.with(|id| id.replace(id.get() + 1));
-        match self.func_data().dfg().bb(bb).name() {
+        let name = match self.func_data().dfg().bb(bb).name() {
             Some(name) => format!(".L{}_{}", id, &name[1..]),
             None => format!(".L{}", id),
-        }
+        };
+        self.cur_func_mut().register_bb(bb, name);
     }
 }
 
@@ -60,6 +62,7 @@ impl FunctionInfo {
         FunctionInfo {
             id,
             registry: InstRegistry::new(),
+            names: HashMap::new(),
             ss: 0,
         }
     }
@@ -80,7 +83,15 @@ impl FunctionInfo {
         self.id
     }
 
-    pub fn register(&mut self, inst: Value, off: i32) {
+    pub fn register_var(&mut self, inst: Value, off: i32) {
         self.registry.insert(inst, off);
+    }
+
+    pub fn register_bb(&mut self, bb: BasicBlock, name: String) {
+        self.names.insert(bb, name);
+    }
+
+    pub fn get_bb_name(&self, bb: BasicBlock) -> &String {
+        self.names.get(&bb).unwrap()
     }
 }

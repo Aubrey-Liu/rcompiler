@@ -25,20 +25,23 @@ impl GenerateAsm for FunctionData {
         let mut off = 0;
         for (&val, data) in self.dfg().values() {
             if data.kind().is_local_inst() && !data.used_by().is_empty() {
-                ctx.curr_func_mut().register(val, off);
+                ctx.cur_func_mut().register_var(val, off);
                 off += 4;
             }
         }
 
+        for (&bb, _) in self.dfg().bbs() {
+            ctx.register_bb(bb);
+        }
+
         // align to 16
         let alloc = (off + 15) / 16 * 16;
-        ctx.curr_func_mut().set_ss(alloc);
+        ctx.cur_func_mut().set_ss(alloc);
 
         for (&bb, node) in self.layout().bbs() {
+            gen.enter_bb(ctx, bb)?;
             if bb == self.layout().entry_bb().unwrap() {
                 gen.prologue(ctx)?;
-            } else {
-                gen.enter_bb(ctx, bb)?;
             }
             for &inst in node.insts().keys() {
                 inst.generate(gen, ctx)?;
@@ -90,7 +93,7 @@ impl GenerateAsm for Store {
 
 impl GenerateAsm for Jump {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
-        gen.jump(&ctx.get_bb_name(self.target()))
+        gen.jump(ctx.cur_func().get_bb_name(self.target()))
     }
 }
 
