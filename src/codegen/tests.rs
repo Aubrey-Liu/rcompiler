@@ -16,9 +16,39 @@ fn dangling_exp() {
         return 0;
     }";
     prepare(source_code);
-
     assert!(generate_code(TMP_IPATH, TMP_OPATH).is_ok());
+    clean_up();
+}
 
+#[test]
+fn if_else_return() {
+    let source_code = "
+    int main() {
+        int a = 10;
+        if (a > 4)
+            return a;
+        else
+            return a / 2;
+    }";
+    prepare(source_code);
+    assert!(generate_code(TMP_IPATH, TMP_OPATH).is_ok());
+    clean_up();
+}
+
+#[test]
+fn if_else_return2() {
+    let source_code = "
+    int main() {
+        int a = 10;
+        if (a > 4)
+            return a;
+        else if (a < 5)
+            return a / 2;
+        else
+            return a;
+    }";
+    prepare(source_code);
+    assert!(generate_code(TMP_IPATH, TMP_OPATH).is_ok());
     clean_up();
 }
 
