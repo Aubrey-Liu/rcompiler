@@ -1,6 +1,6 @@
 [package]
 name = "rcompiler"
-version = "0.3.7"
+version = "0.4.0"
 edition = "2021"
 
 [build-dependencies] # <-- We added this and everything after!
