@@ -1,21 +1,18 @@
 use super::*;
 use crate::ast::*;
 
-impl<'input> CompUnit {
-    pub(in crate::irgen) fn generate(
-        &'input self,
-        symt: &mut SymbolTable<'input>,
-    ) -> Result<Program> {
+impl<'i> CompUnit {
+    pub(in crate::irgen) fn generate(&'i self, symt: &mut SymbolTable<'i>) -> Result<Program> {
         let mut program = Program::new();
         self.func_def.generate(symt, &mut program)?;
         Ok(program)
     }
 }
 
-impl<'input> FuncDef {
+impl<'i> FuncDef {
     pub(in crate::irgen) fn generate(
-        &'input self,
-        symt: &mut SymbolTable<'input>,
+        &'i self,
+        symt: &mut SymbolTable<'i>,
         program: &mut Program,
     ) -> Result<()> {
         let fib = new_func(program, &self.ident);
@@ -38,10 +35,10 @@ impl<'input> FuncDef {
     }
 }
 
-impl<'input> Block {
+impl<'i> Block {
     pub(in crate::irgen) fn generate_entry(
-        &'input self,
-        symt: &mut SymbolTable<'input>,
+        &'i self,
+        symt: &mut SymbolTable<'i>,
         flow: &mut FlowGraph,
         func: &mut FunctionData,
     ) -> Result<()> {
@@ -53,8 +50,8 @@ impl<'input> Block {
     }
 
     pub(in crate::irgen) fn generate(
-        &'input self,
-        symt: &mut SymbolTable<'input>,
+        &'i self,
+        symt: &mut SymbolTable<'i>,
         flow: &mut FlowGraph,
         func: &mut FunctionData,
         bb: BasicBlock,
@@ -77,10 +74,10 @@ impl<'input> Block {
     }
 }
 
-impl<'input> Decl {
+impl<'i> Decl {
     pub(in crate::irgen) fn generate(
-        &'input self,
-        symt: &mut SymbolTable<'input>,
+        &'i self,
+        symt: &mut SymbolTable<'i>,
         func: &mut FunctionData,
         bb: BasicBlock,
     ) -> Result<()> {
@@ -113,10 +110,10 @@ impl<'input> Decl {
     }
 }
 
-impl<'input> Stmt {
+impl<'i> Stmt {
     pub(in crate::irgen) fn generate(
-        &'input self,
-        symt: &mut SymbolTable<'input>,
+        &'i self,
+        symt: &mut SymbolTable<'i>,
         flow: &mut FlowGraph,
         func: &mut FunctionData,
         bb: BasicBlock,

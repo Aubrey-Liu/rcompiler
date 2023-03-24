@@ -11,10 +11,10 @@ pub(in crate::irgen) enum Flow {
 
 pub(in crate::irgen) type FlowGraph = HashMap<BasicBlock, Flow>;
 
-impl<'input> While {
+impl<'i> While {
     pub(in crate::irgen) fn generate(
-        &'input self,
-        symt: &mut SymbolTable<'input>,
+        &'i self,
+        symt: &mut SymbolTable<'i>,
         flow: &mut FlowGraph,
         func: &mut FunctionData,
         bb: BasicBlock,
@@ -38,10 +38,10 @@ impl<'input> While {
     }
 }
 
-impl<'input> Branch {
+impl<'i> Branch {
     pub(in crate::irgen) fn generate(
-        &'input self,
-        symt: &mut SymbolTable<'input>,
+        &'i self,
+        symt: &mut SymbolTable<'i>,
         flow: &mut FlowGraph,
         func: &mut FunctionData,
         bb: BasicBlock,
@@ -71,8 +71,8 @@ impl<'input> Branch {
 
 struct BranchInfo(BasicBlock, BasicBlock, BasicBlock);
 
-fn shortcut<'input>(
-    symt: &mut SymbolTable<'input>,
+fn shortcut<'i>(
+    symt: &mut SymbolTable<'i>,
     flow: &mut FlowGraph,
     func: &mut FunctionData,
     info: BranchInfo,

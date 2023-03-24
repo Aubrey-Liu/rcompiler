@@ -15,12 +15,12 @@ pub enum Symbol {
 }
 
 #[derive(Debug)]
-pub struct SymbolTable<'input> {
+pub struct SymbolTable<'i> {
     #[allow(dead_code)]
     global_node_id: SymbolTableID,
     current_node_id: SymbolTableID,
     nodes: Vec<SymbolTableNode>,
-    data: Vec<HashMap<&'input str, Symbol>>,
+    data: Vec<HashMap<&'i str, Symbol>>,
 }
 
 #[derive(Debug, Clone)]
@@ -29,7 +29,7 @@ struct SymbolTableNode {
     pub parent: Option<SymbolTableID>,
 }
 
-impl<'input> SymbolTable<'input> {
+impl<'i> SymbolTable<'i> {
     pub fn new() -> Self {
         Self {
             global_node_id: 0,
@@ -107,13 +107,13 @@ impl<'input> SymbolTable<'input> {
         })
     }
 
-    pub fn insert_var(&mut self, name: &'input str, val: Value, init: bool) -> Result<()> {
+    pub fn insert_var(&mut self, name: &'i str, val: Value, init: bool) -> Result<()> {
         self.data[self.current_node_id]
             .insert(name, Symbol::Var { val, init })
             .map_or(Ok(()), |_| Err(anyhow!("{}: duplicate definition", name)))
     }
 
-    pub fn insert_const_var(&mut self, name: &'input str, init: i32) -> Result<()> {
+    pub fn insert_const_var(&mut self, name: &'i str, init: i32) -> Result<()> {
         self.data[self.current_node_id]
             .insert(name, Symbol::ConstVar(init))
             .map_or(Ok(()), |_| Err(anyhow!("{}: duplicate definition", name)))
@@ -146,7 +146,7 @@ impl SymbolTableNode {
     }
 }
 
-impl<'input> Default for SymbolTable<'input> {
+impl<'i> Default for SymbolTable<'i> {
     fn default() -> Self {
         Self::new()
     }
