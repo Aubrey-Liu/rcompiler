@@ -93,7 +93,7 @@ impl Default for Block {
 
 impl Block {
     pub fn new() -> Self {
-        Self { items: Vec::new() }
+        Self { items: vec![] }
     }
 
     pub fn new_with_vec(items: Vec<BlockItem>) -> Self {

@@ -8,7 +8,7 @@ use crate::sysy;
 
 pub fn generate_mem_ir(ipath: &str) -> Result<Program> {
     let input = read_to_string(ipath)?;
-    let mut errors = Vec::new();
+    let mut errors = vec![];
     let ast = sysy::CompUnitParser::new()
         .parse(&mut errors, &input)
         .unwrap();

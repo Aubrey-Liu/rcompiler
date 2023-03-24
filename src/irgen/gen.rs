@@ -137,28 +137,17 @@ impl<'i> GenerateIR<'i> for Stmt {
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
         match self {
-            Self::Assign(assign) => {
-                assign.generate_ir(program, recorder)?;
-            }
-            Self::Block(block) => {
-                block.generate_ir(program, recorder)?;
-            }
-            Self::Exp(exp) => {
-                exp.as_ref().map(|e| e.generate_ir(program, recorder));
-            }
-            Self::Return(r) => {
-                r.generate_ir(program, recorder)?;
-            }
-            Self::Branch(br) => {
-                br.generate_ir(program, recorder)?;
-            }
-            Self::While(w) => {
-                w.generate_ir(program, recorder)?;
-            }
-            _ => todo!(),
+            Self::Assign(s) => s.generate_ir(program, recorder),
+            Self::Block(s) => s.generate_ir(program, recorder),
+            Self::Exp(s) => s
+                .as_ref()
+                .map_or(Ok(()), |exp| exp.generate_ir(program, recorder).map(|_| ())),
+            Self::Return(s) => s.generate_ir(program, recorder),
+            Self::Branch(s) => s.generate_ir(program, recorder),
+            Self::While(s) => s.generate_ir(program, recorder),
+            Self::Break(s) => s.generate_ir(program, recorder),
+            Self::Continue(s) => s.generate_ir(program, recorder),
         }
-
-        Ok(())
     }
 }
 
@@ -284,18 +273,6 @@ impl<'i> GenerateIR<'i> for Branch {
     }
 }
 
-impl<'i> GenerateIR<'i> for Continue {
-    type Out = ();
-
-    fn generate_ir(
-        &'i self,
-        program: &mut Program,
-        recorder: &mut ProgramRecorder<'i>,
-    ) -> Result<Self::Out> {
-        todo!()
-    }
-}
-
 impl<'i> GenerateIR<'i> for While {
     type Out = ();
 
@@ -343,7 +320,43 @@ impl<'i> GenerateIR<'i> for Break {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        todo!()
+        if !recorder.inside_loop() {
+            bail!("break statement occurs outside the loop");
+        }
+
+        let loop_exit = recorder.loop_exit();
+        let jump = recorder.new_value(program).jump(loop_exit);
+        recorder.func().push_inst(program, jump);
+
+        let next_bb = recorder.func().new_anonymous_bb(program);
+        recorder.func_mut().push_bb(program, next_bb);
+
+        Ok(())
+    }
+}
+
+impl<'i> GenerateIR<'i> for Continue {
+    type Out = ();
+
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        if !recorder.inside_loop() {
+            bail!("continue statement occurs outside the loop");
+        }
+
+        // instantly jump to the loop entry
+        let loop_entry = recorder.loop_entry();
+        let jump = recorder.new_value(program).jump(loop_entry);
+        recorder.func().push_inst(program, jump);
+
+        // enter the next block (unreachable)
+        let next_bb = recorder.func().new_anonymous_bb(program);
+        recorder.func_mut().push_bb(program, next_bb);
+
+        Ok(())
     }
 }
 
@@ -393,53 +406,6 @@ impl<'i> GenerateIR<'i> for Return {
     }
 }
 
-impl From<BinaryOp> for IR_BinaryOp {
-    fn from(value: BinaryOp) -> Self {
-        match value {
-            BinaryOp::Add => IR_BinaryOp::Add,
-            BinaryOp::Sub => IR_BinaryOp::Sub,
-            BinaryOp::Mul => IR_BinaryOp::Mul,
-            BinaryOp::Div => IR_BinaryOp::Div,
-            BinaryOp::Mod => IR_BinaryOp::Mod,
-            BinaryOp::Eq => IR_BinaryOp::Eq,
-            BinaryOp::Neq => IR_BinaryOp::NotEq,
-            BinaryOp::Lt => IR_BinaryOp::Lt,
-            BinaryOp::Le => IR_BinaryOp::Le,
-            BinaryOp::Gt => IR_BinaryOp::Gt,
-            BinaryOp::Ge => IR_BinaryOp::Ge,
-            _ => unreachable!(),
-        }
-    }
-}
-
-/*  impl<'i> While {
-//     pub fn generate(
-//         &'i self,
-//         symt: &mut SymbolTable<'i>,
-//         flow: &mut FlowGraph,
-//         func: &mut FunctionData,
-//         bb: BasicBlock,
-//         link_to: BasicBlock,
-//     ) -> Result<BasicBlock> {
-//         let (entry, body, end) = new_loop(func);
-
-//         flow.insert(bb, Flow::Jump(entry));
-
-//         let info = BranchInfo(entry, body, end);
-//         shortcut(symt, flow, func, info, &self.cond)?;
-
-//         flow.insert(body, Flow::Jump(entry));
-//         if bb != link_to {
-//             flow.insert(end, Flow::Jump(link_to));
-//         }
-
-//         self.stmt.generate(symt, flow, func, body, entry)?;
-
-//         Ok(end)
-//     }
-// }
-*/
-
 fn shortcut<'i>(
     program: &mut Program,
     recorder: &mut ProgramRecorder<'i>,
@@ -470,5 +436,24 @@ fn shortcut<'i>(
             shortcut(program, recorder, &cond.rhs, true_bb, false_bb)
         }
         _ => unreachable!(),
+    }
+}
+
+impl From<BinaryOp> for IR_BinaryOp {
+    fn from(value: BinaryOp) -> Self {
+        match value {
+            BinaryOp::Add => IR_BinaryOp::Add,
+            BinaryOp::Sub => IR_BinaryOp::Sub,
+            BinaryOp::Mul => IR_BinaryOp::Mul,
+            BinaryOp::Div => IR_BinaryOp::Div,
+            BinaryOp::Mod => IR_BinaryOp::Mod,
+            BinaryOp::Eq => IR_BinaryOp::Eq,
+            BinaryOp::Neq => IR_BinaryOp::NotEq,
+            BinaryOp::Lt => IR_BinaryOp::Lt,
+            BinaryOp::Le => IR_BinaryOp::Le,
+            BinaryOp::Gt => IR_BinaryOp::Gt,
+            BinaryOp::Ge => IR_BinaryOp::Ge,
+            _ => unreachable!(),
+        }
     }
 }

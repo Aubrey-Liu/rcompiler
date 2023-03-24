@@ -120,6 +120,18 @@ impl<'i> ProgramRecorder<'i> {
         self.loops.pop();
     }
 
+    pub fn inside_loop(&self) -> bool {
+        !self.loops.is_empty()
+    }
+
+    pub fn loop_entry(&self) -> BasicBlock {
+        self.loops.last().unwrap().entry
+    }
+
+    pub fn loop_exit(&self) -> BasicBlock {
+        self.loops.last().unwrap().exit
+    }
+
     pub fn insert_var(&mut self, name: &'i str, val: Value, init: bool) -> Result<()> {
         self.symbols.insert_var(name, val, init)
     }
@@ -299,14 +311,14 @@ impl SymbolTable<'_> {
 impl SymbolTableNode {
     pub fn new() -> Self {
         Self {
-            children: Vec::new(),
+            children: vec![],
             parent: None,
         }
     }
 
     pub fn new_with_parent(parent_id: SymbolTableID) -> Self {
         Self {
-            children: Vec::new(),
+            children: vec![],
             parent: Some(parent_id),
         }
     }
