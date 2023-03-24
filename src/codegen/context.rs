@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::Cell, collections::HashMap};
 
 use super::*;
 
@@ -17,6 +17,8 @@ pub struct FunctionInfo {
 }
 
 impl<'i> Context<'i> {
+    thread_local! {static NAMETAG: Cell<u32> = Cell::default(); }
+
     pub fn new_with_program(program: &'i Program) -> Self {
         Self {
             program,
@@ -42,6 +44,14 @@ impl<'i> Context<'i> {
 
     pub fn value_kind(&self, val: Value) -> &ValueKind {
         self.func_data().dfg().value(val).kind()
+    }
+
+    pub fn get_bb_name(&'i self, bb: BasicBlock) -> String {
+        let id = Self::NAMETAG.with(|id| id.replace(id.get() + 1));
+        match self.func_data().dfg().bb(bb).name() {
+            Some(name) => format!(".L{}_{}", id, &name[1..]),
+            None => format!(".L{}", id),
+        }
     }
 }
 

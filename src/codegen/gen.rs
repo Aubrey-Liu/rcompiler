@@ -90,7 +90,7 @@ impl GenerateAsm for Store {
 
 impl GenerateAsm for Jump {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
-        gen.jump(get_bb_name(ctx, self.target()))
+        gen.jump(&ctx.get_bb_name(self.target()))
     }
 }
 

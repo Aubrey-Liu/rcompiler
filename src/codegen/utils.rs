@@ -2,10 +2,6 @@ use std::io::{Result, Write};
 
 use super::*;
 
-pub fn get_bb_name<'i>(ctx: &'i Context, bb: BasicBlock) -> &'i str {
-    &ctx.func_data().dfg().bb(bb).name().as_ref().unwrap()[1..]
-}
-
 pub struct AsmGenerator<'a> {
     f: File,
     tmpr: &'a str,
@@ -31,7 +27,7 @@ impl<'a> AsmGenerator<'a> {
     }
 
     pub fn enter_bb(&mut self, ctx: &Context, bb: BasicBlock) -> Result<()> {
-        writeln!(self.f, "{}:", get_bb_name(ctx, bb))
+        writeln!(self.f, "{}:", ctx.get_bb_name(bb))
     }
 
     pub fn enter_func(&mut self, func_name: &str) -> Result<()> {
@@ -44,7 +40,7 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f, "  ret")
     }
 
-    pub fn jump(&mut self, target: &str) -> Result<()> {
+    pub fn jump(&mut self, target: &String) -> Result<()> {
         writeln!(self.f, "  j {}", target)
     }
 
@@ -112,8 +108,8 @@ impl<'a> AsmGenerator<'a> {
         true_bb: BasicBlock,
         false_bb: BasicBlock,
     ) -> Result<()> {
-        writeln!(self.f, "  bnez {}, {}", cond, get_bb_name(ctx, true_bb))?;
-        writeln!(self.f, "  j {}", get_bb_name(ctx, false_bb))
+        writeln!(self.f, "  bnez {}, {}", cond, ctx.get_bb_name(true_bb))?;
+        writeln!(self.f, "  j {}", ctx.get_bb_name(false_bb))
     }
 
     pub fn text(&mut self) -> Result<()> {
