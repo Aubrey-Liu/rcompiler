@@ -71,7 +71,7 @@ NonIfStatement: Stmt = {
   <name: LVal> "=" <val: Exp> ";" => Stmt::Assign(Assign { name, val }),
   InnerBlock => Stmt::Block(Box::new(<>)),
   <Exp?> ";" => Stmt::Exp(<>),
-  "return" <Exp?> ";" => Stmt::Return(<>),
+  "return" <Exp?> ";" => Stmt::Return(Return { ret_val: <> }),
   "continue" ";" => Stmt::Continue(Continue),
   "break" ";" => Stmt::Break(Break),
 };

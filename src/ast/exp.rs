@@ -1,7 +1,8 @@
 use koopa::ir::Value;
 
 use super::*;
-use crate::irgen::SymbolTable;
+use crate::irgen::record::Symbol;
+use crate::irgen::ProgramRecorder;
 
 #[derive(Debug)]
 pub enum Exp {
@@ -50,19 +51,11 @@ pub enum UnaryOp {
 }
 
 impl Exp {
-    pub fn is_logical(&self) -> bool {
+    pub fn is_logical_exp(&self) -> bool {
         if let Self::Bxp(bxp) = self {
             matches!(bxp.op, BinaryOp::And | BinaryOp::Or)
         } else {
             false
-        }
-    }
-
-    pub fn get_binary_op(&self) -> Option<BinaryOp> {
-        if let Self::Bxp(bxp) = self {
-            Some(bxp.op)
-        } else {
-            None
         }
     }
 
@@ -76,31 +69,37 @@ impl Exp {
 }
 
 pub trait ConstEval {
-    fn const_eval(&self, symt: &SymbolTable) -> i32;
+    fn const_eval(&self, recorder: &ProgramRecorder) -> i32;
 }
 
 impl ConstEval for UnaryExp {
-    fn const_eval(&self, symt: &SymbolTable) -> i32 {
-        let rhs = self.rhs.const_eval(symt);
+    fn const_eval(&self, recorder: &ProgramRecorder) -> i32 {
+        let rhs = self.rhs.const_eval(recorder);
         eval_unary(self.op, rhs)
     }
 }
 
 impl ConstEval for BinaryExp {
-    fn const_eval(&self, symt: &SymbolTable) -> i32 {
-        let lhs = self.lhs.const_eval(symt);
-        let rhs = self.rhs.const_eval(symt);
+    fn const_eval(&self, recorder: &ProgramRecorder) -> i32 {
+        let lhs = self.lhs.const_eval(recorder);
+        let rhs = self.rhs.const_eval(recorder);
         eval_binary(self.op, lhs, rhs)
     }
 }
 
 impl ConstEval for Exp {
-    fn const_eval(&self, symt: &SymbolTable) -> i32 {
+    fn const_eval(&self, recorder: &ProgramRecorder) -> i32 {
         match self {
             Exp::Integer(i) => *i,
-            Exp::Uxp(uxp) => uxp.const_eval(symt),
-            Exp::Bxp(bxp) => bxp.const_eval(symt),
-            Exp::LVal(name, ..) => symt.get_from_const_var(name.as_str()).unwrap(),
+            Exp::Uxp(uxp) => uxp.const_eval(recorder),
+            Exp::Bxp(bxp) => bxp.const_eval(recorder),
+            Exp::LVal(name, ..) => {
+                if let Symbol::ConstVar(i) = recorder.get_symbol(name).unwrap() {
+                    *i
+                } else {
+                    panic!("{} is not a const value", name)
+                }
+            }
             Exp::Error => panic!("expected an expression"),
         }
     }

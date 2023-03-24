@@ -1,193 +1,93 @@
-use koopa::ir::builder_traits::{BasicBlockBuilder, LocalInstBuilder, ValueBuilder};
+use koopa::ir::builder_traits::{LocalInstBuilder, ValueBuilder};
 
 use super::*;
-use crate::ast::Exp;
 
-pub fn generate_var_name(name: &str) -> String {
-    "@".to_owned() + name
+pub fn logical_check(program: &mut Program, recorder: &ProgramRecorder, opr: Value) -> Value {
+    let zero = recorder.new_value(program).integer(0);
+    let checked = recorder
+        .new_value(program)
+        .binary(IR_BinaryOp::NotEq, opr, zero);
+    recorder.func().push_inst(program, checked);
+
+    checked
 }
 
-pub fn set_value_name(func: &mut FunctionData, val: Value, name: &str) {
-    func.dfg_mut()
-        .set_value_name(val, Some(generate_var_name(name)));
-}
-
-pub fn new_func(program: &mut Program, ident: &str) -> Function {
-    let name = "@".to_owned() + ident;
-    program.new_func(FunctionData::with_param_names(
-        name,
-        Vec::new(),
-        Type::get_i32(),
-    ))
-}
-
-pub fn new_bb(func: &mut FunctionData, name: &str) -> BasicBlock {
-    let bb = func.dfg_mut().new_bb().basic_block(Some(name.into()));
-    push_bb(func, bb);
-
-    bb
-}
-
-pub fn new_branch(func: &mut FunctionData) -> (BasicBlock, BasicBlock, BasicBlock) {
-    let true_bb = new_bb(func, "%then");
-    let false_bb = new_bb(func, "%else");
-    let end_bb = new_bb(func, "%end");
-
-    push_bb(func, true_bb);
-    push_bb(func, false_bb);
-    push_bb(func, end_bb);
-
-    (true_bb, false_bb, end_bb)
-}
-
-pub fn new_loop(func: &mut FunctionData) -> (BasicBlock, BasicBlock, BasicBlock) {
-    let while_entry = new_bb(func, "%while_entry");
-    let while_body = new_bb(func, "%while_body");
-    let while_end = new_bb(func, "%while_end");
-
-    push_bb(func, while_entry);
-    push_bb(func, while_body);
-    push_bb(func, while_end);
-
-    (while_entry, while_body, while_end)
-}
-
-pub fn push_bb(func: &mut FunctionData, bb: BasicBlock) {
-    func.layout_mut().bbs_mut().extend([bb]);
-}
-
-pub fn push_one_inst(func: &mut FunctionData, bb: BasicBlock, inst: Value) {
-    func.layout_mut().bb_mut(bb).insts_mut().extend([inst]);
-}
-
-pub fn push_insts(func: &mut FunctionData, bb: BasicBlock, insts: &Vec<Value>) {
-    func.layout_mut()
-        .bb_mut(bb)
-        .insts_mut()
-        .extend(insts.clone())
-}
-
-pub fn alloc(func: &mut FunctionData) -> Value {
-    // allocate a pointer for an integer
-    func.dfg_mut().new_value().alloc(Type::get_i32())
-}
-
-pub fn binary(func: &mut FunctionData, op: IR_BinaryOp, lhs: Value, rhs: Value) -> Value {
-    func.dfg_mut().new_value().binary(op, lhs, rhs)
-}
-
-pub fn branch(
-    func: &mut FunctionData,
-    cond: Value,
-    true_bb: BasicBlock,
-    false_bb: BasicBlock,
+pub fn logical_and(
+    program: &mut Program,
+    recorder: &ProgramRecorder,
+    lhs: Value,
+    rhs: Value,
 ) -> Value {
-    func.dfg_mut().new_value().branch(cond, true_bb, false_bb)
+    let lhs = logical_check(program, recorder, lhs);
+    let rhs = logical_check(program, recorder, rhs);
+    let and = recorder
+        .new_value(program)
+        .binary(IR_BinaryOp::And, lhs, rhs);
+    recorder.func().push_inst(program, and);
+
+    and
 }
 
-pub fn branch_from(
-    func: &mut FunctionData,
-    cond: Value,
-    src: BasicBlock,
-    true_bb: BasicBlock,
-    false_bb: BasicBlock,
-) {
-    let br = branch(func, cond, true_bb, false_bb);
-    push_one_inst(func, src, br);
+pub fn logical_or(
+    program: &mut Program,
+    recorder: &ProgramRecorder,
+    lhs: Value,
+    rhs: Value,
+) -> Value {
+    let lhs = logical_check(program, recorder, lhs);
+    let rhs = logical_check(program, recorder, rhs);
+    let or = recorder
+        .new_value(program)
+        .binary(IR_BinaryOp::Or, lhs, rhs);
+    recorder.func().push_inst(program, or);
+
+    or
 }
 
-pub fn integer(func: &mut FunctionData, i: i32) -> Value {
-    func.dfg_mut().new_value().integer(i)
-}
-
-pub fn load(func: &mut FunctionData, src: Value) -> Value {
-    func.dfg_mut().new_value().load(src)
-}
-
-pub fn jump(func: &mut FunctionData, target: BasicBlock) -> Value {
-    func.dfg_mut().new_value().jump(target)
-}
-
-pub fn jump_to(func: &mut FunctionData, from: BasicBlock, to: BasicBlock) {
-    let jump = jump(func, to);
-    push_one_inst(func, from, jump);
-}
-
-pub fn is_finish(func: &mut FunctionData, bb: BasicBlock) -> bool {
-    if func.layout_mut().bb_mut(bb).insts().is_empty() {
-        return false;
+pub fn load_var(
+    program: &mut Program,
+    recorder: &ProgramRecorder,
+    val: Value,
+    init: bool,
+) -> Value {
+    if !init {
+        panic!("uninitialized variable can't be used in expressions",)
     }
-    let last_val = *func.layout_mut().bb_mut(bb).insts().back_key().unwrap();
-    let last_valkind = func.dfg().value(last_val).kind();
-    matches!(
-        last_valkind,
-        ValueKind::Branch(_) | ValueKind::Return(_) | ValueKind::Jump(_)
-    )
+    let dst = recorder.new_value(program).load(val);
+    recorder.func().push_inst(program, dst);
+
+    dst
 }
 
-pub fn check_and_jump(func: &mut FunctionData, src: BasicBlock, target: BasicBlock) {
-    if !is_finish(func, src) {
-        jump_to(func, src, target);
-    }
+pub fn binary(
+    program: &mut Program,
+    recorder: &ProgramRecorder,
+    op: IR_BinaryOp,
+    lhs: Value,
+    rhs: Value,
+) -> Value {
+    let by = recorder.new_value(program).binary(op, lhs, rhs);
+    recorder.func().push_inst(program, by);
+
+    by
 }
 
-pub fn return_from(
-    symt: &SymbolTable,
-    func: &mut FunctionData,
-    bb: BasicBlock,
-    val: &Option<Box<Exp>>,
-) {
-    let mut insts = Vec::new();
-    let val = match val {
-        Some(exp) => exp.generate(symt, func, &mut insts),
-        None => zero(func),
-    };
-    insts.push(ret(func, val));
-    push_insts(func, bb, &insts);
+pub fn negative(program: &mut Program, recorder: &ProgramRecorder, opr: Value) -> Value {
+    let zero = recorder.new_value(program).integer(0);
+    let neg = recorder
+        .new_value(program)
+        .binary(IR_BinaryOp::Eq, opr, zero);
+    recorder.func().push_inst(program, neg);
+
+    neg
 }
 
-fn ret(func: &mut FunctionData, val: Value) -> Value {
-    func.dfg_mut().new_value().ret(Some(val))
-}
+pub fn logical_not(program: &mut Program, recorder: &ProgramRecorder, opr: Value) -> Value {
+    let zero = recorder.new_value(program).integer(0);
+    let not = recorder
+        .new_value(program)
+        .binary(IR_BinaryOp::Eq, opr, zero);
+    recorder.func().push_inst(program, not);
 
-pub fn store(func: &mut FunctionData, val: Value, dst: Value) -> Value {
-    func.dfg_mut().new_value().store(val, dst)
-}
-
-fn logical(func: &mut FunctionData, val: Value) -> Value {
-    let z = zero(func);
-
-    binary(func, IR_BinaryOp::NotEq, val, z)
-}
-
-pub fn lor(func: &mut FunctionData, lhs: Value, rhs: Value, insts: &mut Vec<Value>) -> Value {
-    let ll = logical(func, lhs);
-    let lr = logical(func, rhs);
-    let result = binary(func, IR_BinaryOp::Or, ll, lr);
-    insts.extend([ll, lr]);
-
-    result
-}
-
-pub fn land(func: &mut FunctionData, lhs: Value, rhs: Value, insts: &mut Vec<Value>) -> Value {
-    let ll = logical(func, lhs);
-    let lr = logical(func, rhs);
-    let result = binary(func, IR_BinaryOp::And, ll, lr);
-    insts.extend([ll, lr]);
-
-    result
-}
-
-pub fn neg(func: &mut FunctionData, val: Value) -> Value {
-    let z = zero(func);
-    binary(func, IR_BinaryOp::Sub, z, val)
-}
-
-pub fn not(func: &mut FunctionData, val: Value) -> Value {
-    let z = zero(func);
-    binary(func, IR_BinaryOp::Eq, z, val)
-}
-
-fn zero(func: &mut FunctionData) -> Value {
-    integer(func, 0)
+    not
 }

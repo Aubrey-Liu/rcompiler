@@ -1,243 +1,395 @@
+use koopa::ir::builder_traits::{LocalInstBuilder, ValueBuilder};
+
 use super::*;
 use crate::ast::*;
 
-impl<'i> CompUnit {
-    pub fn generate(&'i self, symt: &mut SymbolTable<'i>) -> Result<Program> {
-        let mut program = Program::new();
-        self.func_def.generate(symt, &mut program)?;
-        Ok(program)
-    }
+pub trait GenerateIR<'i> {
+    type Out;
+
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out>;
 }
 
-impl<'i> FuncDef {
-    pub fn generate(&'i self, symt: &mut SymbolTable<'i>, program: &mut Program) -> Result<()> {
-        let fib = new_func(program, &self.ident);
-        let func = program.func_mut(fib);
-        let mut flow = FlowGraph::new();
-        self.block.generate_entry(symt, &mut flow, func)?;
+impl<'i> GenerateIR<'i> for UnaryExp {
+    type Out = Value;
 
-        for (bb, flow) in &flow {
-            match flow {
-                Flow::Branch(cond, true_bb, false_bb) => {
-                    branch_from(func, *cond, *bb, *true_bb, *false_bb);
-                }
-                Flow::Jump(target) => {
-                    check_and_jump(func, *bb, *target);
-                }
-            }
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        let opr = self.rhs.generate_ir(program, recorder)?;
+
+        if let ValueKind::Integer(i) = recorder.value_kind(program, opr) {
+            let result = eval_unary(self.op, i.value());
+            return Ok(recorder.new_value(program).integer(result));
         }
 
-        Ok(())
+        let val = match self.op {
+            UnaryOp::Nop => opr,
+            UnaryOp::Neg => negative(program, recorder, opr),
+            UnaryOp::Not => logical_not(program, recorder, opr),
+        };
+
+        Ok(val)
     }
 }
 
-impl<'i> Block {
-    pub fn generate_entry(
+impl<'i> GenerateIR<'i> for BinaryExp {
+    type Out = Value;
+
+    fn generate_ir(
         &'i self,
-        symt: &mut SymbolTable<'i>,
-        flow: &mut FlowGraph,
-        func: &mut FunctionData,
-    ) -> Result<()> {
-        // Create the entry block
-        let bb = new_bb(func, "%entry");
-        self.generate(symt, flow, func, bb, bb)?;
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        let lhs = self.lhs.generate_ir(program, recorder)?;
+        let rhs = self.rhs.generate_ir(program, recorder)?;
 
-        Ok(())
-    }
-
-    pub fn generate(
-        &'i self,
-        symt: &mut SymbolTable<'i>,
-        flow: &mut FlowGraph,
-        func: &mut FunctionData,
-        bb: BasicBlock,
-        link_to: BasicBlock,
-    ) -> Result<()> {
-        let mut bb = bb;
-
-        for item in &self.items {
-            match item {
-                BlockItem::Decl(decl) => decl.generate(symt, func, bb)?,
-                BlockItem::Stmt(stmt) => bb = stmt.generate(symt, flow, func, bb, link_to)?,
-            }
-
-            if is_finish(func, bb) {
-                return Ok(());
-            }
+        let lkind = recorder.value_kind(program, lhs);
+        let rkind = recorder.value_kind(program, rhs);
+        if let (ValueKind::Integer(l), ValueKind::Integer(r)) = (lkind, rkind) {
+            let result = eval_binary(self.op, l.value(), r.value());
+            return Ok(recorder.new_value(program).integer(result));
         }
 
-        Ok(())
+        let val = match self.op {
+            BinaryOp::And => logical_and(program, recorder, lhs, rhs),
+            BinaryOp::Or => logical_or(program, recorder, lhs, rhs),
+            _ => binary(program, recorder, self.op.into(), lhs, rhs),
+        };
+
+        Ok(val)
     }
 }
 
-impl<'i> Decl {
-    pub fn generate(
+impl<'i> GenerateIR<'i> for Exp {
+    type Out = Value;
+
+    fn generate_ir(
         &'i self,
-        symt: &mut SymbolTable<'i>,
-        func: &mut FunctionData,
-        bb: BasicBlock,
-    ) -> Result<()> {
-        let mut insts = Vec::new();
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        let val = match self {
+            Exp::Integer(i) => recorder.new_value(program).integer(*i),
+            Exp::Uxp(uxp) => uxp.generate_ir(program, recorder)?,
+            Exp::Bxp(bxp) => bxp.generate_ir(program, recorder)?,
+            Exp::LVal(name, ..) => match recorder.get_symbol(name).unwrap() {
+                Symbol::ConstVar(i) => recorder.new_value(program).integer(*i),
+                Symbol::Var { val, init } => load_var(program, recorder, *val, *init),
+            },
+            Exp::Error => panic!("expected an expression"),
+        };
+
+        Ok(val)
+    }
+}
+
+impl<'i> GenerateIR<'i> for Decl {
+    type Out = ();
+
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
         match self {
             Decl::ConstDecl(decls) => {
                 for d in decls {
-                    symt.insert_const_var(&d.name, d.init.const_eval(symt))?;
+                    recorder.insert_const_var(&d.name, d.init.const_eval(recorder))?;
                 }
             }
+
             Decl::VarDecl(decls) => {
                 for d in decls {
-                    let dst = alloc(func);
-                    set_value_name(func, dst, &d.name);
-                    insts.push(dst);
+                    let var = recorder.new_value(program).alloc(Type::get_i32());
+                    recorder
+                        .func()
+                        .set_value_name(program, "@".to_owned() + &d.name, var);
+                    recorder.func().push_inst(program, var);
 
                     if let Some(exp) = &d.init {
-                        let val = exp.generate(symt, func, &mut insts);
-                        insts.push(store(func, val, dst));
-                        symt.insert_var(&d.name, dst, true)?;
+                        let init_val = exp.generate_ir(program, recorder)?;
+                        let init = recorder.new_value(program).store(init_val, var);
+                        recorder.func().push_inst(program, init);
+                        recorder.insert_var(&d.name, var, true)?;
                     } else {
-                        symt.insert_var(&d.name, dst, false)?;
+                        recorder.insert_var(&d.name, var, false)?;
                     }
                 }
             }
         }
-        push_insts(func, bb, &mut insts);
 
         Ok(())
     }
 }
 
-impl<'i> Stmt {
-    pub fn generate(
-        &'i self,
-        symt: &mut SymbolTable<'i>,
-        flow: &mut FlowGraph,
-        func: &mut FunctionData,
-        bb: BasicBlock,
-        link_to: BasicBlock,
-    ) -> Result<BasicBlock> {
-        let mut insts = Vec::new();
-        let mut move_to = bb;
+impl<'i> GenerateIR<'i> for Stmt {
+    type Out = ();
 
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
         match self {
             Self::Assign(assign) => {
-                let dst = match symt.get(&assign.name).unwrap() {
-                    Symbol::Var { val, .. } => *val,
-                    Symbol::ConstVar(_) => bail!("\"{}\" must be a modifiable lvalue", assign.name),
-                };
-                let val = assign.val.generate(symt, func, &mut insts);
-                insts.push(store(func, val, dst));
-                symt.initialize(&assign.name)?;
+                assign.generate_ir(program, recorder)?;
             }
             Self::Block(block) => {
-                symt.enter_scope();
-                block.generate(symt, flow, func, bb, link_to)?;
-                symt.exit_scope();
+                block.generate_ir(program, recorder)?;
             }
             Self::Exp(exp) => {
-                exp.as_ref().map(|e| e.generate(symt, func, &mut insts));
+                exp.as_ref().map(|e| e.generate_ir(program, recorder));
             }
-            Self::Return(val) => {
-                return_from(symt, func, bb, val);
+            Self::Return(r) => {
+                r.generate_ir(program, recorder)?;
             }
             Self::Branch(br) => {
-                move_to = br.generate(symt, flow, func, bb, link_to)?;
+                br.generate_ir(program, recorder)?;
             }
             Self::While(w) => {
-                move_to = w.generate(symt, flow, func, bb, link_to)?;
+                w.generate_ir(program, recorder)?;
             }
             _ => todo!(),
         }
 
-        if !insts.is_empty() {
-            push_insts(func, bb, &insts);
-        }
-
-        Ok(move_to)
+        Ok(())
     }
 }
 
-impl UnaryExp {
-    pub fn generate(
-        &self,
-        symt: &SymbolTable,
-        func: &mut FunctionData,
-        insts: &mut Vec<Value>,
-    ) -> Value {
-        let rhs = self.rhs.generate(symt, func, insts);
+impl<'i> GenerateIR<'i> for Block {
+    type Out = ();
 
-        let rkind = func.dfg().value(rhs).kind();
-        if let ValueKind::Integer(r) = rkind {
-            return integer(func, eval_unary(self.op, r.value()));
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        recorder.enter_scope();
+        for item in &self.items {
+            match item {
+                BlockItem::Decl(decl) => decl.generate_ir(program, recorder)?,
+                BlockItem::Stmt(stmt) => stmt.generate_ir(program, recorder)?,
+            }
         }
+        recorder.exit_scope();
 
-        let val = match self.op {
-            UnaryOp::Nop => rhs,
-            UnaryOp::Neg => neg(func, rhs),
-            UnaryOp::Not => not(func, rhs),
+        Ok(())
+    }
+}
+
+impl<'i> GenerateIR<'i> for FuncDef {
+    type Out = ();
+
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        // generate the function and its entry & end blocks
+        recorder.new_func(program, &self.ident, Type::get_i32());
+
+        // enter the entry block
+        let entry_bb = recorder.func().entry_bb();
+        recorder.func_mut().push_bb(program, entry_bb);
+        // allocate the return value
+        let ret_val = recorder.new_value(program).alloc(Type::get_i32());
+        recorder
+            .func()
+            .set_value_name(program, "%ret".to_owned(), ret_val);
+        recorder.func().push_inst(program, ret_val);
+        recorder.func_mut().set_ret_val(ret_val);
+
+        // jump to the main body block
+        let main_body = recorder.func().new_anonymous_bb(program);
+        let jump = recorder.new_value(program).jump(main_body);
+        recorder.func().push_inst(program, jump);
+
+        // enter the main body block
+        recorder.func_mut().push_bb(program, main_body);
+        // generate IR for the main body block
+        self.block.generate_ir(program, recorder)?;
+
+        // jump to the end block
+        let end_bb = recorder.func().end_bb();
+        let jump = recorder.new_value(program).jump(end_bb);
+        recorder.func().push_inst(program, jump);
+
+        // enter the end block
+        recorder.func_mut().push_bb(program, end_bb);
+
+        // load the return value and return
+        let ret_val = recorder.func().ret_val().unwrap();
+        let ld = recorder.new_value(program).load(ret_val);
+        let ret = recorder.new_value(program).ret(Some(ld));
+        recorder.func().push_inst(program, ld);
+        recorder.func().push_inst(program, ret);
+
+        Ok(())
+    }
+}
+
+impl<'i> GenerateIR<'i> for CompUnit {
+    type Out = ();
+
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        self.func_def.generate_ir(program, recorder)
+    }
+}
+
+impl<'i> GenerateIR<'i> for Branch {
+    type Out = ();
+
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        let true_bb = recorder.func().new_bb(program, "%then");
+        let false_bb = recorder.func().new_bb(program, "%else");
+        let end_bb = recorder.func().new_bb(program, "%if_end");
+
+        shortcut(program, recorder, &self.cond, true_bb, false_bb)?;
+
+        // enter the "true" block
+        recorder.func_mut().push_bb(program, true_bb);
+        self.if_stmt.generate_ir(program, recorder)?;
+
+        // jump to the if-end block
+        let jump = recorder.new_value(program).jump(end_bb);
+        recorder.func().push_inst(program, jump);
+
+        // enter the "false" block
+        recorder.func_mut().push_bb(program, false_bb);
+        if let Some(el_stmt) = &self.el_stmt {
+            el_stmt.generate_ir(program, recorder)?;
+        }
+        // jump to the if-end block
+        let jump = recorder.new_value(program).jump(end_bb);
+        recorder.func().push_inst(program, jump);
+
+        // enter the if-end block
+        recorder.func_mut().push_bb(program, end_bb);
+
+        Ok(())
+    }
+}
+
+impl<'i> GenerateIR<'i> for Continue {
+    type Out = ();
+
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        todo!()
+    }
+}
+
+impl<'i> GenerateIR<'i> for While {
+    type Out = ();
+
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        let loop_entry = recorder.func().new_bb(program, "%loop_entry");
+        let loop_body = recorder.func().new_bb(program, "%loop_body");
+        let loop_exit = recorder.func().new_bb(program, "%loop_exit");
+
+        // record the loop information
+        recorder.enter_loop(loop_entry, loop_exit);
+
+        // jump to the loop entry
+        let jump = recorder.new_value(program).jump(loop_entry);
+        recorder.func().push_inst(program, jump);
+
+        // check the loop condition
+        recorder.func_mut().push_bb(program, loop_entry);
+        shortcut(program, recorder, &self.cond, loop_body, loop_exit)?;
+
+        // enter the loop body block
+        recorder.func_mut().push_bb(program, loop_body);
+        self.stmt.generate_ir(program, recorder)?;
+
+        // jump back to the loop entry
+        let jump = recorder.new_value(program).jump(loop_entry);
+        recorder.func().push_inst(program, jump);
+
+        // enter the exit of loop
+        recorder.func_mut().push_bb(program, loop_exit);
+        recorder.exit_loop();
+
+        Ok(())
+    }
+}
+
+impl<'i> GenerateIR<'i> for Break {
+    type Out = ();
+
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        todo!()
+    }
+}
+
+impl<'i> GenerateIR<'i> for Assign {
+    type Out = ();
+
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        let dst = match recorder.get_symbol(&self.name).unwrap() {
+            Symbol::Var { val, .. } => *val,
+            Symbol::ConstVar(_) => bail!("\"{}\" must be a modifiable lvalue", self.name),
         };
-        insts.push(val);
+        let val = self.val.generate_ir(program, recorder)?;
+        let st = recorder.new_value(program).store(val, dst);
+        recorder.func().push_inst(program, st);
+        recorder.initialize(&self.name)?;
 
-        val
+        Ok(())
     }
 }
 
-impl BinaryExp {
-    pub fn generate(
-        &self,
-        symt: &SymbolTable,
-        func: &mut FunctionData,
-        insts: &mut Vec<Value>,
-    ) -> Value {
-        let lhs = self.lhs.generate(symt, func, insts);
-        let rhs = self.rhs.generate(symt, func, insts);
+impl<'i> GenerateIR<'i> for Return {
+    type Out = ();
 
-        // evaluate when expression is const
-        let lkind = func.dfg().value(lhs).kind();
-        let rkind = func.dfg().value(rhs).kind();
-        if let (ValueKind::Integer(l), ValueKind::Integer(r)) = (lkind, rkind) {
-            return integer(func, eval_binary(self.op, l.value(), r.value()));
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        if let Some(ret_val) = &self.ret_val {
+            let ret_val = ret_val.generate_ir(program, recorder)?;
+            let dst = recorder.func().ret_val().unwrap();
+            let st = recorder.new_value(program).store(ret_val, dst);
+            recorder.func().push_inst(program, st);
         }
+        let end_bb = recorder.func().end_bb();
+        let jump = recorder.new_value(program).jump(end_bb);
+        recorder.func().push_inst(program, jump);
 
-        let val = match self.op {
-            BinaryOp::And => land(func, lhs, rhs, insts),
-            BinaryOp::Or => lor(func, lhs, rhs, insts),
-            _ => binary(func, self.op.into(), lhs, rhs),
-        };
+        let next_bb = recorder.func().new_anonymous_bb(program);
+        recorder.func_mut().push_bb(program, next_bb);
 
-        insts.push(val);
-
-        val
-    }
-}
-
-impl Exp {
-    pub fn generate(
-        &self,
-        symt: &SymbolTable,
-        func: &mut FunctionData,
-        insts: &mut Vec<Value>,
-    ) -> Value {
-        match self {
-            Exp::Integer(i) => integer(func, *i),
-            Exp::Uxp(uxp) => uxp.generate(symt, func, insts),
-            Exp::Bxp(bxp) => bxp.generate(symt, func, insts),
-            Exp::LVal(name, ..) => match symt.get(name).unwrap() {
-                Symbol::ConstVar(i) => integer(func, *i),
-                Symbol::Var { val, init } => {
-                    if !init {
-                        panic!(
-                            "uninitialized variable \"{}\" can't be used in an expression",
-                            name
-                        )
-                    }
-                    let load = load(func, *val);
-                    insts.push(load);
-
-                    load
-                }
-            },
-            Exp::Error => panic!("expected an expression"),
-        }
+        Ok(())
     }
 }
 
@@ -257,5 +409,66 @@ impl From<BinaryOp> for IR_BinaryOp {
             BinaryOp::Ge => IR_BinaryOp::Ge,
             _ => unreachable!(),
         }
+    }
+}
+
+/*  impl<'i> While {
+//     pub fn generate(
+//         &'i self,
+//         symt: &mut SymbolTable<'i>,
+//         flow: &mut FlowGraph,
+//         func: &mut FunctionData,
+//         bb: BasicBlock,
+//         link_to: BasicBlock,
+//     ) -> Result<BasicBlock> {
+//         let (entry, body, end) = new_loop(func);
+
+//         flow.insert(bb, Flow::Jump(entry));
+
+//         let info = BranchInfo(entry, body, end);
+//         shortcut(symt, flow, func, info, &self.cond)?;
+
+//         flow.insert(body, Flow::Jump(entry));
+//         if bb != link_to {
+//             flow.insert(end, Flow::Jump(link_to));
+//         }
+
+//         self.stmt.generate(symt, flow, func, body, entry)?;
+
+//         Ok(end)
+//     }
+// }
+*/
+
+fn shortcut<'i>(
+    program: &mut Program,
+    recorder: &mut ProgramRecorder<'i>,
+    cond: &'i Box<Exp>,
+    true_bb: BasicBlock,
+    false_bb: BasicBlock,
+) -> Result<()> {
+    if !cond.is_logical_exp() {
+        let cond = cond.generate_ir(program, recorder)?;
+        let br = recorder.new_value(program).branch(cond, true_bb, false_bb);
+        recorder.func().push_inst(program, br);
+
+        return Ok(());
+    }
+
+    let cond = cond.get_bxp().unwrap();
+    match cond.op {
+        BinaryOp::And => {
+            let check_rhs = recorder.func().new_anonymous_bb(program);
+            shortcut(program, recorder, &cond.lhs, check_rhs, false_bb)?;
+            recorder.func_mut().push_bb(program, check_rhs);
+            shortcut(program, recorder, &cond.rhs, true_bb, false_bb)
+        }
+        BinaryOp::Or => {
+            let check_rhs = recorder.func().new_anonymous_bb(program);
+            shortcut(program, recorder, &cond.lhs, true_bb, check_rhs)?;
+            recorder.func_mut().push_bb(program, check_rhs);
+            shortcut(program, recorder, &cond.rhs, true_bb, false_bb)
+        }
+        _ => unreachable!(),
     }
 }

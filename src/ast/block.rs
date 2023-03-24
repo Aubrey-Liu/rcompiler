@@ -20,13 +20,18 @@ pub enum Decl {
 #[derive(Debug)]
 pub enum Stmt {
     Assign(Assign),
-    Exp(Option<Box<Exp>>),
-    Return(Option<Box<Exp>>),
     Block(Box<Block>),
     Branch(Branch),
-    While(While),
-    Continue(Continue),
     Break(Break),
+    Continue(Continue),
+    Exp(Option<Box<Exp>>),
+    While(While),
+    Return(Return),
+}
+
+#[derive(Debug)]
+pub struct Return {
+    pub ret_val: Option<Box<Exp>>,
 }
 
 #[derive(Debug)]
