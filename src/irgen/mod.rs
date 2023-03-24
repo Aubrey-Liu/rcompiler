@@ -5,7 +5,7 @@ pub mod record;
 
 mod utils;
 
-pub(crate) use ir::generate_ir;
+pub(crate) use ir::*;
 pub(crate) use record::*;
 
 use anyhow::*;
