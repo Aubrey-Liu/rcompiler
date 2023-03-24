@@ -302,10 +302,6 @@ impl SymbolTable<'_> {
     fn next_id(&self) -> SymbolTableID {
         self.data.len()
     }
-
-    // pub fn current_id(&self) -> i32 {
-    //     self.current_node_id as i32
-    // }
 }
 
 impl SymbolTableNode {
