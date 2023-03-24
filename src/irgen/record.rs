@@ -109,7 +109,7 @@ impl<'i> ProgramRecorder<'i> {
     }
 
     pub fn exit_scope(&mut self) {
-        self.symbols.enter_scope();
+        self.symbols.exit_scope();
     }
 
     pub fn enter_loop(&mut self, entry: BasicBlock, exit: BasicBlock) {
