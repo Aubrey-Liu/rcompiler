@@ -23,6 +23,21 @@ pub struct SymbolTable<'i> {
     data: Vec<HashMap<&'i str, Symbol>>,
 }
 
+#[derive(Debug)]
+pub struct ProgramStat<'i> {
+    symbols: SymbolTable<'i>,
+    cur_func: Option<FunctionStat>,
+}
+
+#[derive(Debug)]
+pub struct FunctionStat {
+    id: Function,
+    entry_bb: BasicBlock,
+    end_bb: BasicBlock,
+    cur_bb: BasicBlock,
+    ret_val: Option<Value>,
+}
+
 #[derive(Debug, Clone)]
 struct SymbolTableNode {
     pub children: Vec<SymbolTableID>,
@@ -30,6 +45,20 @@ struct SymbolTableNode {
 }
 
 impl<'i> SymbolTable<'i> {
+    pub fn insert_var(&mut self, name: &'i str, val: Value, init: bool) -> Result<()> {
+        self.data[self.current_node_id]
+            .insert(name, Symbol::Var { val, init })
+            .map_or(Ok(()), |_| Err(anyhow!("{}: duplicate definition", name)))
+    }
+
+    pub fn insert_const_var(&mut self, name: &'i str, init: i32) -> Result<()> {
+        self.data[self.current_node_id]
+            .insert(name, Symbol::ConstVar(init))
+            .map_or(Ok(()), |_| Err(anyhow!("{}: duplicate definition", name)))
+    }
+}
+
+impl SymbolTable<'_> {
     pub fn new() -> Self {
         Self {
             global_node_id: 0,
@@ -107,27 +136,13 @@ impl<'i> SymbolTable<'i> {
         })
     }
 
-    pub fn insert_var(&mut self, name: &'i str, val: Value, init: bool) -> Result<()> {
-        self.data[self.current_node_id]
-            .insert(name, Symbol::Var { val, init })
-            .map_or(Ok(()), |_| Err(anyhow!("{}: duplicate definition", name)))
-    }
-
-    pub fn insert_const_var(&mut self, name: &'i str, init: i32) -> Result<()> {
-        self.data[self.current_node_id]
-            .insert(name, Symbol::ConstVar(init))
-            .map_or(Ok(()), |_| Err(anyhow!("{}: duplicate definition", name)))
+    fn next_id(&self) -> SymbolTableID {
+        self.data.len()
     }
 
     // pub fn current_id(&self) -> i32 {
     //     self.current_node_id as i32
     // }
-}
-
-impl SymbolTable<'_> {
-    fn next_id(&self) -> SymbolTableID {
-        self.data.len()
-    }
 }
 
 impl SymbolTableNode {
@@ -143,11 +158,5 @@ impl SymbolTableNode {
             children: Vec::new(),
             parent: Some(parent_id),
         }
-    }
-}
-
-impl<'i> Default for SymbolTable<'i> {
-    fn default() -> Self {
-        Self::new()
     }
 }

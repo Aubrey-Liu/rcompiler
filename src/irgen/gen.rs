@@ -2,7 +2,7 @@ use super::*;
 use crate::ast::*;
 
 impl<'i> CompUnit {
-    pub(in crate::irgen) fn generate(&'i self, symt: &mut SymbolTable<'i>) -> Result<Program> {
+    pub fn generate(&'i self, symt: &mut SymbolTable<'i>) -> Result<Program> {
         let mut program = Program::new();
         self.func_def.generate(symt, &mut program)?;
         Ok(program)
@@ -10,11 +10,7 @@ impl<'i> CompUnit {
 }
 
 impl<'i> FuncDef {
-    pub(in crate::irgen) fn generate(
-        &'i self,
-        symt: &mut SymbolTable<'i>,
-        program: &mut Program,
-    ) -> Result<()> {
+    pub fn generate(&'i self, symt: &mut SymbolTable<'i>, program: &mut Program) -> Result<()> {
         let fib = new_func(program, &self.ident);
         let func = program.func_mut(fib);
         let mut flow = FlowGraph::new();
@@ -36,7 +32,7 @@ impl<'i> FuncDef {
 }
 
 impl<'i> Block {
-    pub(in crate::irgen) fn generate_entry(
+    pub fn generate_entry(
         &'i self,
         symt: &mut SymbolTable<'i>,
         flow: &mut FlowGraph,
@@ -49,7 +45,7 @@ impl<'i> Block {
         Ok(())
     }
 
-    pub(in crate::irgen) fn generate(
+    pub fn generate(
         &'i self,
         symt: &mut SymbolTable<'i>,
         flow: &mut FlowGraph,
@@ -75,7 +71,7 @@ impl<'i> Block {
 }
 
 impl<'i> Decl {
-    pub(in crate::irgen) fn generate(
+    pub fn generate(
         &'i self,
         symt: &mut SymbolTable<'i>,
         func: &mut FunctionData,
@@ -111,7 +107,7 @@ impl<'i> Decl {
 }
 
 impl<'i> Stmt {
-    pub(in crate::irgen) fn generate(
+    pub fn generate(
         &'i self,
         symt: &mut SymbolTable<'i>,
         flow: &mut FlowGraph,

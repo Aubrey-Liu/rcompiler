@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::fs::remove_file;
 
 use super::*;
-use crate::irgen::*;
+use crate::irgen::generate_ir;
 
 pub fn generate_code(ipath: &str, opath: &str) -> Result<()> {
     let tmp_path = "tmp.koopa";

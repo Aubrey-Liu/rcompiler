@@ -1,13 +1,13 @@
 pub(crate) mod ir;
 
 pub(self) mod gen;
-pub(self) mod symt;
+pub(self) mod stat;
 
 mod control;
 mod utils;
 
 pub(crate) use ir::generate_ir;
-pub(crate) use symt::*;
+pub(crate) use stat::*;
 
 use anyhow::*;
 use control::*;

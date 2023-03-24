@@ -4,15 +4,15 @@ use super::*;
 use crate::ast::*;
 
 #[derive(Debug, Clone, Copy)]
-pub(in crate::irgen) enum Flow {
+pub enum Flow {
     Branch(Value, BasicBlock, BasicBlock),
     Jump(BasicBlock),
 }
 
-pub(in crate::irgen) type FlowGraph = HashMap<BasicBlock, Flow>;
+pub type FlowGraph = HashMap<BasicBlock, Flow>;
 
 impl<'i> While {
-    pub(in crate::irgen) fn generate(
+    pub fn generate(
         &'i self,
         symt: &mut SymbolTable<'i>,
         flow: &mut FlowGraph,
@@ -39,7 +39,7 @@ impl<'i> While {
 }
 
 impl<'i> Branch {
-    pub(in crate::irgen) fn generate(
+    pub fn generate(
         &'i self,
         symt: &mut SymbolTable<'i>,
         flow: &mut FlowGraph,
