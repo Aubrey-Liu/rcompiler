@@ -2,8 +2,8 @@ use std::io::{Result, Write};
 
 use super::*;
 
-pub fn get_bb_name<'p>(program: &'p ProgramStat, bb: BasicBlock) -> &'p str {
-    &program.func_data().dfg().bb(bb).name().as_ref().unwrap()[1..]
+pub fn get_bb_name<'i>(ctx: &'i Context, bb: BasicBlock) -> &'i str {
+    &ctx.func_data().dfg().bb(bb).name().as_ref().unwrap()[1..]
 }
 
 pub struct AsmGenerator<'a> {
@@ -25,13 +25,13 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f, "  li {}, {}", dst, imm)
     }
 
-    pub fn prologue(&mut self, program: &ProgramStat) -> Result<()> {
+    pub fn prologue(&mut self, ctx: &Context) -> Result<()> {
         writeln!(self.f, "entry:")?;
-        self.addi("sp", "sp", -program.curr_func().ss())
+        self.addi("sp", "sp", -ctx.curr_func().ss())
     }
 
-    pub fn enter_bb(&mut self, program: &ProgramStat, bb: BasicBlock) -> Result<()> {
-        writeln!(self.f, "{}:", get_bb_name(program, bb))
+    pub fn enter_bb(&mut self, ctx: &Context, bb: BasicBlock) -> Result<()> {
+        writeln!(self.f, "{}:", get_bb_name(ctx, bb))
     }
 
     pub fn enter_func(&mut self, func_name: &str) -> Result<()> {
@@ -39,8 +39,8 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f, "{}:", func_name)
     }
 
-    pub fn epilogue(&mut self, program: &ProgramStat) -> Result<()> {
-        self.addi("sp", "sp", program.curr_func().ss())?;
+    pub fn epilogue(&mut self, ctx: &Context) -> Result<()> {
+        self.addi("sp", "sp", ctx.curr_func().ss())?;
         writeln!(self.f, "  ret")
     }
 
@@ -48,11 +48,11 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f, "  j {}", target)
     }
 
-    pub fn load(&mut self, program: &ProgramStat, dst: &str, val: Value) -> Result<()> {
-        if let ValueKind::Integer(imm) = program.value_kind(val) {
+    pub fn load(&mut self, ctx: &Context, dst: &str, val: Value) -> Result<()> {
+        if let ValueKind::Integer(imm) = ctx.value_kind(val) {
             return self.loadi(dst, imm.value());
         }
-        let off = program.curr_func().get_offset(&val);
+        let off = ctx.curr_func().get_offset(&val);
         if off >= -2048 && off <= 2047 {
             writeln!(self.f, "  lw {}, {}(sp)", dst, off)
         } else {
@@ -62,8 +62,8 @@ impl<'a> AsmGenerator<'a> {
         }
     }
 
-    pub fn store(&mut self, program: &ProgramStat, src: &str, val: Value) -> Result<()> {
-        let off = program.curr_func().get_offset(&val);
+    pub fn store(&mut self, ctx: &Context, src: &str, val: Value) -> Result<()> {
+        let off = ctx.curr_func().get_offset(&val);
 
         if off >= -2048 && off <= 2047 {
             writeln!(self.f, "  sw {}, {}(sp)", src, off)
@@ -107,13 +107,13 @@ impl<'a> AsmGenerator<'a> {
 
     pub fn branch(
         &mut self,
-        program: &ProgramStat,
+        ctx: &Context,
         cond: &str,
         true_bb: BasicBlock,
         false_bb: BasicBlock,
     ) -> Result<()> {
-        writeln!(self.f, "  bnez {}, {}", cond, get_bb_name(program, true_bb))?;
-        writeln!(self.f, "  j {}", get_bb_name(program, false_bb))
+        writeln!(self.f, "  bnez {}, {}", cond, get_bb_name(ctx, true_bb))?;
+        writeln!(self.f, "  j {}", get_bb_name(ctx, false_bb))
     }
 
     pub fn text(&mut self) -> Result<()> {
