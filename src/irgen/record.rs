@@ -1,6 +1,10 @@
 use std::{collections::HashMap, vec};
 
-use koopa::ir::{builder::LocalBuilder, builder_traits::BasicBlockBuilder, Value};
+use koopa::ir::{
+    builder::LocalBuilder,
+    builder_traits::{BasicBlockBuilder, LocalInstBuilder},
+    Value,
+};
 
 use super::*;
 
@@ -96,6 +100,35 @@ impl<'i> ProgramRecorder<'i> {
         program.func_mut(self.func().id()).dfg_mut().new_value()
     }
 
+    pub fn alloc(&self, program: &mut Program, ty: Type, name: String) -> Value {
+        let entry = self.func().entry_bb();
+        let val = self.new_value(program).alloc(ty);
+        self.func().set_value_name(program, name, val);
+        self.func().push_inst_to(program, entry, val);
+
+        val
+    }
+
+    pub fn wind_up(&mut self, program: &mut Program, main_body: BasicBlock) {
+        let entry = self.func().entry_bb();
+        let jump = self.new_value(program).jump(main_body);
+        self.func().push_inst_to(program, entry, jump);
+
+        let end_bb = self.func().end_bb();
+        let jump = self.new_value(program).jump(end_bb);
+        self.func().push_inst(program, jump);
+
+        // enter the end block
+        self.func_mut().push_bb(program, end_bb);
+
+        // load the return value and return
+        let ret_val = self.func().ret_val().unwrap();
+        let ld = self.new_value(program).load(ret_val);
+        let ret = self.new_value(program).ret(Some(ld));
+        self.func().push_inst(program, ld);
+        self.func().push_inst(program, ret);
+    }
+
     pub fn get_symbol(&self, name: &str) -> Result<&Symbol> {
         self.symbols.get(name)
     }
@@ -147,6 +180,16 @@ impl FunctionStat {
             .func_mut(self.id)
             .layout_mut()
             .bb_mut(self.cur_bb)
+            .insts_mut()
+            .push_key_back(inst)
+            .unwrap()
+    }
+
+    pub fn push_inst_to(&self, program: &mut Program, bb: BasicBlock, inst: Value) {
+        program
+            .func_mut(self.id)
+            .layout_mut()
+            .bb_mut(bb)
             .insts_mut()
             .push_key_back(inst)
             .unwrap()

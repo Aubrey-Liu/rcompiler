@@ -40,37 +40,18 @@ impl<'i> GenerateIR<'i> for FuncDef {
         let entry_bb = recorder.func().entry_bb();
         recorder.func_mut().push_bb(program, entry_bb);
         // allocate the return value
-        let ret_val = recorder.new_value(program).alloc(Type::get_i32());
-        recorder
-            .func()
-            .set_value_name(program, "%ret".to_owned(), ret_val);
-        recorder.func().push_inst(program, ret_val);
+
+        let ret_val = recorder.alloc(program, Type::get_i32(), "%ret".to_owned());
         recorder.func_mut().set_ret_val(ret_val);
 
-        // jump to the main body block
-        let main_body = recorder.func().new_anonymous_bb(program);
-        let jump = recorder.new_value(program).jump(main_body);
-        recorder.func().push_inst(program, jump);
-
         // enter the main body block
+        let main_body = recorder.func().new_anonymous_bb(program);
         recorder.func_mut().push_bb(program, main_body);
         // generate IR for the main body block
         self.block.generate_ir(program, recorder)?;
 
-        // jump to the end block
-        let end_bb = recorder.func().end_bb();
-        let jump = recorder.new_value(program).jump(end_bb);
-        recorder.func().push_inst(program, jump);
-
-        // enter the end block
-        recorder.func_mut().push_bb(program, end_bb);
-
-        // load the return value and return
-        let ret_val = recorder.func().ret_val().unwrap();
-        let ld = recorder.new_value(program).load(ret_val);
-        let ret = recorder.new_value(program).ret(Some(ld));
-        recorder.func().push_inst(program, ld);
-        recorder.func().push_inst(program, ret);
+        // finishing off the function
+        recorder.wind_up(program, main_body);
 
         Ok(())
     }
@@ -114,11 +95,12 @@ impl<'i> GenerateIR<'i> for Decl {
 
             Decl::VarDecl(decls) => {
                 for d in decls {
-                    let var = recorder.new_value(program).alloc(Type::get_i32());
-                    recorder
-                        .func()
-                        .set_value_name(program, format!("@{}", &d.name), var);
-                    recorder.func().push_inst(program, var);
+                    let var = recorder.alloc(program, Type::get_i32(), format!("@{}", &d.name));
+                    // let var = recorder.new_value(program).alloc(Type::get_i32());
+                    // recorder
+                    //     .func()
+                    //     .set_value_name(program, format!("@{}", &d.name), var);
+                    // recorder.func().push_inst(program, var);
 
                     if let Some(exp) = &d.init {
                         let init_val = exp.generate_ir(program, recorder)?;
