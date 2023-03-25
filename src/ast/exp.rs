@@ -1,5 +1,3 @@
-use koopa::ir::Value;
-
 use super::*;
 use crate::irgen::record::Symbol;
 use crate::irgen::ProgramRecorder;
@@ -7,7 +5,7 @@ use crate::irgen::ProgramRecorder;
 #[derive(Debug)]
 pub enum Exp {
     Integer(i32),
-    LVal(String, Option<Value>),
+    LVal(String),
     Uxp(UnaryExp),
     Bxp(BinaryExp),
     Error,
@@ -93,7 +91,7 @@ impl ConstEval for Exp {
             Exp::Integer(i) => *i,
             Exp::Uxp(uxp) => uxp.const_eval(recorder),
             Exp::Bxp(bxp) => bxp.const_eval(recorder),
-            Exp::LVal(name, ..) => {
+            Exp::LVal(name) => {
                 if let Symbol::ConstVar(i) = recorder.get_symbol(name).unwrap() {
                     *i
                 } else {

@@ -131,7 +131,7 @@ Exp: Box<Exp> = {
 PrimaryExp: Box<Exp> = {
   "(" <Exp> ")" => <>,
   IntConst => Box::new(Exp::Integer(<>)),
-  LVal => Box::new(Exp::LVal(<>, None)),
+  LVal => Box::new(Exp::LVal(<>)),
   ! => { errors.push(<>); Box::new(Exp::Error) },
 };
 

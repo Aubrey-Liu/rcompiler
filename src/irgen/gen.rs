@@ -324,7 +324,7 @@ impl<'i> GenerateIR<'i> for Exp {
             Exp::Integer(i) => recorder.new_value(program).integer(*i),
             Exp::Uxp(uxp) => uxp.generate_ir(program, recorder)?,
             Exp::Bxp(bxp) => bxp.generate_ir(program, recorder)?,
-            Exp::LVal(name, ..) => match recorder.get_symbol(name).unwrap() {
+            Exp::LVal(name) => match recorder.get_symbol(name).unwrap() {
                 Symbol::ConstVar(i) => recorder.new_value(program).integer(*i),
                 Symbol::Var { val, init } => load_var(program, recorder, *val, *init),
             },
