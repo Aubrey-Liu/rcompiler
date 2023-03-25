@@ -6,9 +6,9 @@ use lalrpop_util::lalrpop_mod;
 use codegen::generate_code;
 use irgen::generate_ir;
 
-pub mod ast;
-pub mod codegen;
-pub mod irgen;
+mod ast;
+mod codegen;
+mod irgen;
 
 lalrpop_mod!(sysy);
 

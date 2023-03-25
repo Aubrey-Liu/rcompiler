@@ -1,10 +1,7 @@
 use std::{collections::HashMap, vec};
 
-use koopa::ir::{
-    builder::LocalBuilder,
-    builder_traits::{BasicBlockBuilder, LocalInstBuilder},
-    Value,
-};
+use koopa::ir::builder::LocalBuilder;
+use koopa::ir::builder_traits::*;
 
 use super::*;
 
@@ -233,20 +230,12 @@ impl FunctionStat {
         self.ret_val = Some(ret_val);
     }
 
-    pub fn set_cur_bb(&mut self, cur_bb: BasicBlock) {
-        self.cur_bb = cur_bb;
-    }
-
     pub fn ret_val(&self) -> Option<Value> {
         self.ret_val
     }
 
     pub fn entry_bb(&self) -> BasicBlock {
         self.entry_bb
-    }
-
-    pub fn cur_bb(&self) -> BasicBlock {
-        self.cur_bb
     }
 
     pub fn end_bb(&self) -> BasicBlock {

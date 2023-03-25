@@ -30,6 +30,7 @@ impl<'a> AsmGenerator<'a> {
     }
 
     pub fn enter_func(&mut self, func_name: &str) -> Result<()> {
+        writeln!(self.f, "  .text")?;
         writeln!(self.f, "  .globl {}", func_name)?;
         writeln!(self.f, "{}:", func_name)
     }
@@ -114,10 +115,6 @@ impl<'a> AsmGenerator<'a> {
             ctx.cur_func().get_bb_name(true_bb)
         )?;
         writeln!(self.f, "  j {}", ctx.cur_func().get_bb_name(false_bb))
-    }
-
-    pub fn text(&mut self) -> Result<()> {
-        writeln!(self.f, "  .text")
     }
 
     pub fn from_path(path: &str, tmpr: &'a str) -> Result<Self> {

@@ -1,7 +1,7 @@
 pub(crate) mod ir;
+pub(crate) mod record;
 
-pub(self) mod gen;
-pub mod record;
+mod gen;
 
 mod utils;
 

@@ -8,7 +8,6 @@ pub trait GenerateAsm {
 
 impl GenerateAsm for Program {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
-        gen.text()?;
         for &func in self.func_layout() {
             ctx.set_func(func);
             self.func(func).generate(gen, ctx)?;

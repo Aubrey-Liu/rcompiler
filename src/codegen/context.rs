@@ -12,7 +12,7 @@ pub struct Context<'i> {
 pub struct FunctionInfo {
     id: Function,
     registry: InstRegistry,
-    names: HashMap<BasicBlock, String>,
+    bbs: HashMap<BasicBlock, String>,
     // stack size
     ss: i32,
 }
@@ -62,7 +62,7 @@ impl FunctionInfo {
         FunctionInfo {
             id,
             registry: InstRegistry::new(),
-            names: HashMap::new(),
+            bbs: HashMap::new(),
             ss: 0,
         }
     }
@@ -88,10 +88,10 @@ impl FunctionInfo {
     }
 
     pub fn register_bb(&mut self, bb: BasicBlock, name: String) {
-        self.names.insert(bb, name);
+        self.bbs.insert(bb, name);
     }
 
     pub fn get_bb_name(&self, bb: BasicBlock) -> &String {
-        self.names.get(&bb).unwrap()
+        self.bbs.get(&bb).unwrap()
     }
 }
