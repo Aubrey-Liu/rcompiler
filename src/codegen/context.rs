@@ -18,7 +18,9 @@ pub struct FunctionInfo {
 }
 
 impl<'i> Context<'i> {
-    thread_local! {static NAMETAG: Cell<u32> = Cell::default(); }
+    thread_local! {
+        static NAMETAG: Cell<u32> = Cell::new(0);
+    }
 
     pub fn new_with_program(program: &'i Program) -> Self {
         Self {
@@ -27,8 +29,12 @@ impl<'i> Context<'i> {
         }
     }
 
-    pub fn set_func(&mut self, func: Function) {
-        self.cur_func = Some(FunctionInfo::new(func))
+    pub fn value_kind(&self, val: Value) -> &ValueKind {
+        self.func_data().dfg().value(val).kind()
+    }
+
+    pub fn func_data(&self) -> &FunctionData {
+        self.program.func(self.cur_func().id())
     }
 
     pub fn cur_func(&self) -> &FunctionInfo {
@@ -39,20 +45,13 @@ impl<'i> Context<'i> {
         self.cur_func.as_mut().unwrap()
     }
 
-    pub fn func_data(&self) -> &FunctionData {
-        self.program.func(self.cur_func().id())
-    }
-
-    pub fn value_kind(&self, val: Value) -> &ValueKind {
-        self.func_data().dfg().value(val).kind()
+    pub fn set_func(&mut self, func: Function) {
+        self.cur_func = Some(FunctionInfo::new(func))
     }
 
     pub fn register_bb(&mut self, bb: BasicBlock) {
         let id = Self::NAMETAG.with(|id| id.replace(id.get() + 1));
-        let name = match self.func_data().dfg().bb(bb).name() {
-            Some(name) => format!(".L{}_{}", id, &name[1..]),
-            None => format!(".L{}", id),
-        };
+        let name = format!(".LBB0_{}", id);
         self.cur_func_mut().register_bb(bb, name);
     }
 }
@@ -67,31 +66,33 @@ impl FunctionInfo {
         }
     }
 
-    pub fn set_ss(&mut self, ss: i32) {
-        self.ss = ss;
+    pub fn id(&self) -> Function {
+        self.id
+    }
+
+    /// Allocated space of the stack of the current function
+    pub fn ss(&self) -> i32 {
+        self.ss
     }
 
     pub fn get_offset(&self, val: &Value) -> i32 {
         *self.registry.get(val).unwrap()
     }
 
-    pub fn ss(&self) -> i32 {
-        self.ss
+    pub fn get_bb_name(&self, bb: BasicBlock) -> &String {
+        self.bbs.get(&bb).unwrap()
     }
 
-    pub fn id(&self) -> Function {
-        self.id
+    pub fn set_ss(&mut self, ss: i32) {
+        self.ss = ss;
     }
 
     pub fn register_var(&mut self, inst: Value, off: i32) {
         self.registry.insert(inst, off);
     }
 
+    /// Record the name of a basic block
     pub fn register_bb(&mut self, bb: BasicBlock, name: String) {
         self.bbs.insert(bb, name);
-    }
-
-    pub fn get_bb_name(&self, bb: BasicBlock) -> &String {
-        self.bbs.get(&bb).unwrap()
     }
 }
