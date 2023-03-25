@@ -113,9 +113,7 @@ impl GenerateAsm for Binary {
 
 impl GenerateAsm for Return {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
-        if self.value().is_none() {
-            gen.loadi("a0", 0)?;
-        } else {
+        if self.value().is_some() {
             gen.load(ctx, "a0", self.value().unwrap())?;
         }
         gen.epilogue(ctx)
