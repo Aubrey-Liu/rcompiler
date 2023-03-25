@@ -117,7 +117,7 @@ impl<'i> GenerateIR<'i> for Decl {
                     let var = recorder.new_value(program).alloc(Type::get_i32());
                     recorder
                         .func()
-                        .set_value_name(program, "@".to_owned() + &d.name, var);
+                        .set_value_name(program, format!("@{}", &d.name), var);
                     recorder.func().push_inst(program, var);
 
                     if let Some(exp) = &d.init {

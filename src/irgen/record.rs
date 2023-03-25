@@ -56,7 +56,7 @@ impl<'i> ProgramRecorder<'i> {
 
     pub fn new_func(&mut self, program: &mut Program, name: &str, ret_ty: Type) {
         let id = program.new_func(FunctionData::with_param_names(
-            "@".to_owned() + name,
+            format!("@{}", name),
             vec![],
             ret_ty,
         ));
