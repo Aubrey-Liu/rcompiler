@@ -152,9 +152,21 @@ PrimaryExp: Box<Exp> = {
 
 UnaryExp: Box<Exp> = {
   PrimaryExp => <>,
+  Call => Box::new(Exp::Uxp(UnaryExp::Call(<>))),
   <op: UnaryOp> <uxp: UnaryExp> => {
-    Box::new(Exp::Uxp(UnaryExp { op: op, rhs: uxp }))
+    Box::new(Exp::Uxp(UnaryExp::Unary(op, uxp)))
   },
+};
+
+Call: Call = {
+  <func_id: Ident> "(" ")" => Call { func_id, args: vec![] },
+  <func_id: Ident> "(" <arg: Exp>  <mut args: ("," <Exp>)*> ")" => {
+    args.insert(0, arg);
+    Call {
+      func_id,
+      args
+    }
+  }
 };
 
 // macro for all the binary expressions

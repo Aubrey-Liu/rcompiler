@@ -1,6 +1,64 @@
-use super::*;
+use core::panic;
+
 use crate::irgen::record::Symbol;
 use crate::irgen::ProgramRecorder;
+
+#[derive(Debug)]
+pub enum Exp {
+    Integer(i32),
+    LVal(String),
+    Uxp(UnaryExp),
+    Bxp(BinaryExp),
+    Error,
+}
+
+#[derive(Debug)]
+pub struct BinaryExp {
+    pub op: BinaryOp,
+    pub lhs: Box<Exp>,
+    pub rhs: Box<Exp>,
+}
+
+#[derive(Debug)]
+pub enum UnaryExp {
+    Unary(UnaryOp, Box<Exp>),
+    Call(Call),
+}
+
+#[derive(Debug)]
+pub struct Call {
+    pub func_id: String,
+    pub args: Vec<Box<Exp>>,
+}
+
+#[derive(Debug)]
+pub struct LVal {
+    pub ident: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum BinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    And,
+    Or,
+    Eq,
+    Neq,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum UnaryOp {
+    Nop,
+    Neg,
+    Not,
+}
 
 impl Exp {
     pub fn is_logical_exp(&self) -> bool {
@@ -26,8 +84,11 @@ pub trait ConstEval {
 
 impl ConstEval for UnaryExp {
     fn const_eval(&self, recorder: &ProgramRecorder) -> i32 {
-        let rhs = self.rhs.const_eval(recorder);
-        eval_unary(self.op, rhs)
+        if let UnaryExp::Unary(op, exp) = self {
+            let opr = exp.const_eval(recorder);
+            return eval_unary(*op, opr);
+        }
+        panic!("attempt to const evaluate a function call");
     }
 }
 

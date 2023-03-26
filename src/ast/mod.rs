@@ -100,52 +100,6 @@ pub struct VarDecl {
     pub init: Option<Box<Exp>>,
 }
 
-#[derive(Debug)]
-pub enum Exp {
-    Integer(i32),
-    LVal(String),
-    Uxp(UnaryExp),
-    Bxp(BinaryExp),
-    Error,
-}
-
-#[derive(Debug)]
-pub struct BinaryExp {
-    pub op: BinaryOp,
-    pub lhs: Box<Exp>,
-    pub rhs: Box<Exp>,
-}
-
-#[derive(Debug)]
-pub struct UnaryExp {
-    pub op: UnaryOp,
-    pub rhs: Box<Exp>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum BinaryOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-    And,
-    Or,
-    Eq,
-    Neq,
-    Lt,
-    Le,
-    Gt,
-    Ge,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum UnaryOp {
-    Nop,
-    Neg,
-    Not,
-}
-
 impl Block {
     pub fn new_with_vec(items: Vec<BlockItem>) -> Self {
         Self { items }
@@ -166,10 +120,10 @@ impl DataType {
         }
     }
 
-    pub fn into_pointer_ty(&self) -> Type {
-        match self {
-            DataType::Int => Type::get_pointer(Type::get_i32()),
-            _ => panic!("attempt to get a pointer type of void"),
-        }
-    }
+    // pub fn into_pointer_ty(&self) -> Type {
+    //     match self {
+    //         DataType::Int => Type::get_pointer(Type::get_i32()),
+    //         _ => panic!("attempt to get a pointer type of void"),
+    //     }
+    // }
 }

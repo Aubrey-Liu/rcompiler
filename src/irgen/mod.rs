@@ -22,7 +22,6 @@ pub fn generate_mem_ir(ipath: &str) -> Result<Program> {
     let ast = sysy::CompUnitParser::new()
         .parse(&mut errors, &input)
         .unwrap();
-    dbg!(&ast);
     let mut program = Program::new();
     let mut recorder = ProgramRecorder::new();
     ast.generate_ir(&mut program, &mut recorder)?;

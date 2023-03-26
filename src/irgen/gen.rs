@@ -40,7 +40,8 @@ impl<'i> GenerateIR<'i> for FuncDef {
         recorder.enter_scope();
 
         // generate the function and its entry & end blocks
-        recorder.new_func(program, self);
+        let id = recorder.new_func(program, self);
+        recorder.insert_function(&self.ident, id)?;
 
         // enter the entry block
         let entry_bb = recorder.func().entry_bb();
@@ -386,20 +387,39 @@ impl<'i> GenerateIR<'i> for UnaryExp {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        let opr = self.rhs.generate_ir(program, recorder)?;
-
-        if let ValueKind::Integer(i) = recorder.value_kind(program, opr) {
-            let result = eval_unary(self.op, i.value());
-            return Ok(recorder.new_value(program).integer(result));
+        match self {
+            UnaryExp::Unary(op, exp) => {
+                let opr = exp.generate_ir(program, recorder)?;
+                let val = match op {
+                    UnaryOp::Nop => opr,
+                    UnaryOp::Neg => negative(program, recorder, opr),
+                    UnaryOp::Not => logical_not(program, recorder, opr),
+                };
+                Ok(val)
+            }
+            UnaryExp::Call(call) => call.generate_ir(program, recorder),
         }
+    }
+}
 
-        let val = match self.op {
-            UnaryOp::Nop => opr,
-            UnaryOp::Neg => negative(program, recorder, opr),
-            UnaryOp::Not => logical_not(program, recorder, opr),
-        };
+impl<'i> GenerateIR<'i> for Call {
+    type Out = Value;
 
-        Ok(val)
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        let mut arg_values = Vec::new();
+        for arg in &self.args {
+            let val = arg.generate_ir(program, recorder)?;
+            arg_values.push(val);
+        }
+        let func_id = *recorder.get_function(&self.func_id).unwrap();
+        let call = recorder.new_value(program).call(func_id, arg_values);
+        recorder.func().push_inst(program, call);
+
+        Ok(call)
     }
 }
 

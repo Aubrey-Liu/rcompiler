@@ -32,6 +32,7 @@ pub struct SymbolTable<'i> {
     current_node_id: SymbolTableID,
     nodes: Vec<SymbolTableNode>,
     data: Vec<HashMap<&'i str, Symbol>>,
+    functions: HashMap<&'i str, Function>,
 }
 
 #[derive(Debug, Clone)]
@@ -64,7 +65,7 @@ impl<'i> ProgramRecorder<'i> {
         }
     }
 
-    pub fn new_func(&mut self, program: &mut Program, func_def: &'i FuncDef) {
+    pub fn new_func(&mut self, program: &mut Program, func_def: &'i FuncDef) -> Function {
         let params: Vec<(Option<String>, Type)> = func_def
             .params
             .iter()
@@ -94,6 +95,8 @@ impl<'i> ProgramRecorder<'i> {
             cur_bb: entry_bb,
             ret_val: None,
         });
+
+        id
     }
 
     pub fn func(&self) -> &FunctionStat {
@@ -186,6 +189,14 @@ impl<'i> ProgramRecorder<'i> {
     pub fn insert_const_var(&mut self, name: &'i str, val: i32) -> Result<()> {
         self.symbols.insert_const_var(name, val)
     }
+
+    pub fn insert_function(&mut self, name: &'i str, id: Function) -> Result<()> {
+        self.symbols.insert_function(name, id)
+    }
+
+    pub fn get_function(&self, name: &str) -> Option<&Function> {
+        self.symbols.get_function(name)
+    }
 }
 
 impl FunctionStat {
@@ -196,7 +207,7 @@ impl FunctionStat {
             .bb_mut(self.cur_bb)
             .insts_mut()
             .push_key_back(inst)
-            .unwrap()
+            .unwrap();
     }
 
     pub fn push_inst_to(&self, program: &mut Program, bb: BasicBlock, inst: Value) {
@@ -277,12 +288,23 @@ impl<'i> SymbolTable<'i> {
             .map_or(Ok(()), |_| Err(anyhow!("redefinition of '{}'", name)))
     }
 
+    pub fn insert_function(&mut self, name: &'i str, id: Function) -> Result<()> {
+        self.functions
+            .insert(name, id)
+            .map_or(Ok(()), |_| Err(anyhow!("redefinition of '{}'", name)))
+    }
+
+    pub fn get_function(&self, name: &str) -> Option<&Function> {
+        self.functions.get(name)
+    }
+
     pub fn new() -> Self {
         Self {
             global_node_id: 0,
             current_node_id: 0,
-            nodes: vec![SymbolTableNode::new(); 1],
-            data: vec![HashMap::new(); 1],
+            nodes: vec![SymbolTableNode::new()],
+            data: vec![HashMap::new()],
+            functions: HashMap::new(),
         }
     }
 
