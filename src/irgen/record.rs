@@ -3,6 +3,8 @@ use std::{collections::HashMap, vec};
 use koopa::ir::builder::LocalBuilder;
 use koopa::ir::builder_traits::*;
 
+use crate::ast::FuncDef;
+
 use super::*;
 
 type SymbolTableID = usize;
@@ -62,12 +64,19 @@ impl<'i> ProgramRecorder<'i> {
         }
     }
 
-    pub fn new_func(&mut self, program: &mut Program, name: &str, ret_ty: Type) {
+    pub fn new_func(&mut self, program: &mut Program, func_def: &'i FuncDef) {
+        let params: Vec<(Option<String>, Type)> = func_def
+            .params
+            .iter()
+            .map(|p| (Some(format!("@{}", &p.ident)), p.ty.into_ty()))
+            .collect();
+
         let id = program.new_func(FunctionData::with_param_names(
-            format!("@{}", name),
-            vec![],
-            ret_ty,
+            format!("@{}", &func_def.ident),
+            params,
+            func_def.ret_ty.into_ty(),
         ));
+
         let entry_bb = program
             .func_mut(id)
             .dfg_mut()

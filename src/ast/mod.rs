@@ -1,20 +1,31 @@
 pub(crate) mod exp;
 
 pub(crate) use exp::*;
+use koopa::ir::Type;
 
 #[derive(Debug)]
 pub struct CompUnit {
-    pub func_def: FuncDef,
+    pub funcs: Vec<FuncDef>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum DataType {
+    Int,
+    Void,
 }
 
 #[derive(Debug)]
-pub struct FuncType(pub String);
+pub struct FuncDef {
+    pub ret_ty: DataType,
+    pub ident: String,
+    pub params: Vec<FuncParam>,
+    pub block: Block,
+}
 
 #[derive(Debug)]
-pub struct FuncDef {
-    pub func_type: FuncType,
+pub struct FuncParam {
+    pub ty: DataType,
     pub ident: String,
-    pub block: Block,
 }
 
 #[derive(Debug)]
@@ -144,5 +155,21 @@ impl Block {
 impl VarDecl {
     pub fn new(name: String, init: Option<Box<Exp>>) -> Self {
         Self { name, init }
+    }
+}
+
+impl DataType {
+    pub fn into_ty(&self) -> Type {
+        match self {
+            DataType::Int => Type::get_i32(),
+            DataType::Void => Type::get_unit(),
+        }
+    }
+
+    pub fn into_pointer_ty(&self) -> Type {
+        match self {
+            DataType::Int => Type::get_pointer(Type::get_i32()),
+            _ => panic!("attempt to get a pointer type of void"),
+        }
     }
 }

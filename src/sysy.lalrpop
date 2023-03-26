@@ -13,15 +13,30 @@ match {
   _
 }
 
-pub CompUnit: CompUnit = <func_def: FuncDef> => CompUnit { <> };
+pub CompUnit: CompUnit = <funcs: FuncDef+> => CompUnit { <> };
 
 FuncDef: FuncDef = {
-  <func_type: FuncType> <ident: Ident> "(" ")" <block: Block> => {
+  <ret_ty: DataType> <ident: Ident> "(" ")" <block: Block> => {
+    FuncDef { ret_ty, ident, params: vec![], block }
+  },
+  <ret_ty: DataType> <ident: Ident> "(" <params: FuncParams> ")" <block: Block> => {
     FuncDef { <> }
   }
 };
 
-FuncType: FuncType = "int" => FuncType("int".to_string());
+FuncParams: Vec<FuncParam> = {
+  <p: FuncFParam> <mut params: ("," <FuncFParam>)*> => {
+    params.insert(0, p);
+    params
+  }
+};
+
+FuncFParam: FuncParam = <ty: DataType> <ident: Ident> => FuncParam { <> };
+
+DataType: DataType = {
+  "int" => DataType::Int,
+  "void" => DataType::Void,
+};
 
 Block: Block = "{" <BlockItem+> "}" => Block::new_with_vec(<>);
 

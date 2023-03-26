@@ -21,7 +21,11 @@ impl<'i> GenerateIR<'i> for CompUnit {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        self.func_def.generate_ir(program, recorder)
+        for func in &self.funcs {
+            func.generate_ir(program, recorder)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -33,14 +37,29 @@ impl<'i> GenerateIR<'i> for FuncDef {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
+        recorder.enter_scope();
+
         // generate the function and its entry & end blocks
-        recorder.new_func(program, &self.ident, Type::get_i32());
+        recorder.new_func(program, self);
 
         // enter the entry block
         let entry_bb = recorder.func().entry_bb();
         recorder.func_mut().push_bb(program, entry_bb);
-        // allocate the return value
 
+        let param_values: Vec<Value> = program
+            .func(recorder.func().id())
+            .params()
+            .iter()
+            .map(|v| *v)
+            .collect();
+        for (value, param) in param_values.iter().zip(&self.params) {
+            let dst = recorder.alloc(program, param.ty.into_ty(), format!("%{}", &param.ident));
+            recorder.insert_var(&param.ident, dst, true).unwrap();
+            let st = recorder.new_value(program).store(*value, dst);
+            recorder.func().push_inst(program, st);
+        }
+
+        // allocate the return value
         let ret_val = recorder.alloc(program, Type::get_i32(), "%ret".to_owned());
         recorder.func_mut().set_ret_val(ret_val);
 
@@ -52,6 +71,8 @@ impl<'i> GenerateIR<'i> for FuncDef {
 
         // finishing off the function
         recorder.wind_up(program, main_body);
+
+        recorder.exit_scope();
 
         Ok(())
     }
