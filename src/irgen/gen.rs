@@ -415,20 +415,20 @@ fn shortcut<'i>(
     }
 }
 
-impl From<BinaryOp> for IR_BinaryOp {
+impl From<BinaryOp> for IrBinaryOp {
     fn from(value: BinaryOp) -> Self {
         match value {
-            BinaryOp::Add => IR_BinaryOp::Add,
-            BinaryOp::Sub => IR_BinaryOp::Sub,
-            BinaryOp::Mul => IR_BinaryOp::Mul,
-            BinaryOp::Div => IR_BinaryOp::Div,
-            BinaryOp::Mod => IR_BinaryOp::Mod,
-            BinaryOp::Eq => IR_BinaryOp::Eq,
-            BinaryOp::Neq => IR_BinaryOp::NotEq,
-            BinaryOp::Lt => IR_BinaryOp::Lt,
-            BinaryOp::Le => IR_BinaryOp::Le,
-            BinaryOp::Gt => IR_BinaryOp::Gt,
-            BinaryOp::Ge => IR_BinaryOp::Ge,
+            BinaryOp::Add => IrBinaryOp::Add,
+            BinaryOp::Sub => IrBinaryOp::Sub,
+            BinaryOp::Mul => IrBinaryOp::Mul,
+            BinaryOp::Div => IrBinaryOp::Div,
+            BinaryOp::Mod => IrBinaryOp::Mod,
+            BinaryOp::Eq => IrBinaryOp::Eq,
+            BinaryOp::Neq => IrBinaryOp::NotEq,
+            BinaryOp::Lt => IrBinaryOp::Lt,
+            BinaryOp::Le => IrBinaryOp::Le,
+            BinaryOp::Gt => IrBinaryOp::Gt,
+            BinaryOp::Ge => IrBinaryOp::Ge,
             _ => unreachable!(),
         }
     }

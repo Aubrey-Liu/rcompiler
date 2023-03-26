@@ -46,8 +46,8 @@ VarDecl: Vec<VarDecl> = {
 };
 
 VarDef: VarDecl = {
-  Ident => VarDecl::new_without_init(<>),
-  <name: Ident> "=" <exp: Exp> => VarDecl::new_with_init(name, exp),
+  Ident => VarDecl::new(<>, None),
+  <name: Ident> "=" <exp: Exp> => VarDecl::new(name, Some(exp)),
 };
 
 ConstDecl: Vec<ConstDecl> = {

@@ -6,7 +6,7 @@ pub fn logical_check(program: &mut Program, recorder: &ProgramRecorder, opr: Val
     let zero = recorder.new_value(program).integer(0);
     let checked = recorder
         .new_value(program)
-        .binary(IR_BinaryOp::NotEq, opr, zero);
+        .binary(IrBinaryOp::NotEq, opr, zero);
     recorder.func().push_inst(program, checked);
 
     checked
@@ -22,7 +22,7 @@ pub fn logical_and(
     let rhs = logical_check(program, recorder, rhs);
     let and = recorder
         .new_value(program)
-        .binary(IR_BinaryOp::And, lhs, rhs);
+        .binary(IrBinaryOp::And, lhs, rhs);
     recorder.func().push_inst(program, and);
 
     and
@@ -36,9 +36,7 @@ pub fn logical_or(
 ) -> Value {
     let lhs = logical_check(program, recorder, lhs);
     let rhs = logical_check(program, recorder, rhs);
-    let or = recorder
-        .new_value(program)
-        .binary(IR_BinaryOp::Or, lhs, rhs);
+    let or = recorder.new_value(program).binary(IrBinaryOp::Or, lhs, rhs);
     recorder.func().push_inst(program, or);
 
     or
@@ -62,7 +60,7 @@ pub fn load_var(
 pub fn binary(
     program: &mut Program,
     recorder: &ProgramRecorder,
-    op: IR_BinaryOp,
+    op: IrBinaryOp,
     lhs: Value,
     rhs: Value,
 ) -> Value {
@@ -76,7 +74,7 @@ pub fn negative(program: &mut Program, recorder: &ProgramRecorder, opr: Value) -
     let zero = recorder.new_value(program).integer(0);
     let neg = recorder
         .new_value(program)
-        .binary(IR_BinaryOp::Eq, opr, zero);
+        .binary(IrBinaryOp::Eq, opr, zero);
     recorder.func().push_inst(program, neg);
 
     neg
@@ -86,7 +84,7 @@ pub fn logical_not(program: &mut Program, recorder: &ProgramRecorder, opr: Value
     let zero = recorder.new_value(program).integer(0);
     let not = recorder
         .new_value(program)
-        .binary(IR_BinaryOp::Eq, opr, zero);
+        .binary(IrBinaryOp::Eq, opr, zero);
     recorder.func().push_inst(program, not);
 
     not
