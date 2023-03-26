@@ -51,7 +51,7 @@ pub fn load_var(
     init: bool,
 ) -> Value {
     if !init {
-        panic!("uninitialized variable can't be used in expressions",)
+        panic!("variable used but it isn't initialized",)
     }
     let dst = recorder.new_value(program).load(val);
     recorder.func().push_inst(program, dst);

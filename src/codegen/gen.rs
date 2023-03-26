@@ -33,9 +33,9 @@ impl GenerateAsm for FunctionData {
             ctx.register_bb(bb);
         }
 
-        // align to 16
-        let alloc = (off + 15) / 16 * 16;
-        ctx.cur_func_mut().set_ss(alloc);
+        // align stack size to 16
+        let ss = (off + 15) / 16 * 16;
+        ctx.cur_func_mut().set_ss(ss);
 
         for (&bb, node) in self.layout().bbs() {
             gen.enter_bb(ctx, bb)?;

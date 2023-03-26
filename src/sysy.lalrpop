@@ -39,8 +39,8 @@ Decl: Decl = {
 }
 
 VarDecl: Vec<VarDecl> = {
-  "int" <mut defs: (<VarDef> ",")*> <def: VarDef> ";" => {
-    defs.push(def);
+  "int" <def: VarDef> <mut defs: ("," <VarDef>)*> ";" => {
+    defs.insert(0, def);
     defs
   }
 };
@@ -51,8 +51,8 @@ VarDef: VarDecl = {
 };
 
 ConstDecl: Vec<ConstDecl> = {
-  "const" "int" <mut defs: (<ConstDef> ",")*> <def: ConstDef>  ";" => {
-    defs.push(def);
+  "const" "int" <def: ConstDef> <mut defs: ("," <ConstDef>)*> ";" => {
+    defs.insert(0, def);
     defs
   }
 };
@@ -172,7 +172,7 @@ AddOp: BinaryOp = {
 RelOp: BinaryOp = {
   "<" => BinaryOp::Lt,
   "<=" => BinaryOp::Le,
-  ">" => BinaryOp:: Gt,
+  ">" => BinaryOp::Gt,
   ">=" => BinaryOp::Ge,
 };
 

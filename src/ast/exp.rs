@@ -95,7 +95,7 @@ impl ConstEval for Exp {
                 if let Symbol::ConstVar(i) = recorder.get_symbol(name).unwrap() {
                     *i
                 } else {
-                    panic!("{} is not a const value", name)
+                    panic!("attempt to use a non-constant value in a constant")
                 }
             }
             Exp::Error => panic!("expected an expression"),

@@ -96,12 +96,6 @@ impl<'i> GenerateIR<'i> for Decl {
             Decl::VarDecl(decls) => {
                 for d in decls {
                     let var = recorder.alloc(program, Type::get_i32(), format!("@{}", &d.name));
-                    // let var = recorder.new_value(program).alloc(Type::get_i32());
-                    // recorder
-                    //     .func()
-                    //     .set_value_name(program, format!("@{}", &d.name), var);
-                    // recorder.func().push_inst(program, var);
-
                     if let Some(exp) = &d.init {
                         let init_val = exp.generate_ir(program, recorder)?;
                         let init = recorder.new_value(program).store(init_val, var);

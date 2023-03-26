@@ -7,12 +7,20 @@ use super::*;
 
 type SymbolTableID = usize;
 
-#[derive(Debug, Clone)]
-pub enum Symbol {
-    ConstVar(i32),
-    // val: the allocated position on the stack
-    // init: is the variable initialized with a expression?
-    Var { val: Value, init: bool },
+#[derive(Debug)]
+pub struct ProgramRecorder<'i> {
+    symbols: SymbolTable<'i>,
+    cur_func: Option<FunctionStat>,
+    loops: Vec<LoopInfo>,
+}
+
+#[derive(Debug)]
+pub struct FunctionStat {
+    id: Function,
+    entry_bb: BasicBlock,
+    end_bb: BasicBlock,
+    cur_bb: BasicBlock,
+    ret_val: Option<Value>,
 }
 
 #[derive(Debug)]
@@ -24,26 +32,25 @@ pub struct SymbolTable<'i> {
     data: Vec<HashMap<&'i str, Symbol>>,
 }
 
-#[derive(Debug)]
-pub struct ProgramRecorder<'i> {
-    symbols: SymbolTable<'i>,
-    cur_func: Option<FunctionStat>,
-    loops: Vec<LoopInfo>,
+#[derive(Debug, Clone)]
+struct SymbolTableNode {
+    pub children: Vec<SymbolTableID>,
+    pub parent: Option<SymbolTableID>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Symbol {
+    ConstVar(i32),
+    Var {
+        val: Value, // the allocated position on the stack
+        init: bool, // is the variable initialized with a expression?
+    },
 }
 
 #[derive(Debug)]
 pub struct LoopInfo {
     entry: BasicBlock,
     exit: BasicBlock,
-}
-
-#[derive(Debug)]
-pub struct FunctionStat {
-    id: Function,
-    entry_bb: BasicBlock,
-    end_bb: BasicBlock,
-    cur_bb: BasicBlock,
-    ret_val: Option<Value>,
 }
 
 impl<'i> ProgramRecorder<'i> {
@@ -106,6 +113,7 @@ impl<'i> ProgramRecorder<'i> {
         val
     }
 
+    /// Finish off the current function
     pub fn wind_up(&mut self, program: &mut Program, main_body: BasicBlock) {
         let entry = self.func().entry_bb();
         let jump = self.new_value(program).jump(main_body);
@@ -247,27 +255,19 @@ impl FunctionStat {
     }
 }
 
-#[derive(Debug, Clone)]
-struct SymbolTableNode {
-    pub children: Vec<SymbolTableID>,
-    pub parent: Option<SymbolTableID>,
-}
-
 impl<'i> SymbolTable<'i> {
     pub fn insert_var(&mut self, name: &'i str, val: Value, init: bool) -> Result<()> {
         self.data[self.current_node_id]
             .insert(name, Symbol::Var { val, init })
-            .map_or(Ok(()), |_| Err(anyhow!("{}: duplicate definition", name)))
+            .map_or(Ok(()), |_| Err(anyhow!("redefinition of '{}'", name)))
     }
 
     pub fn insert_const_var(&mut self, name: &'i str, val: i32) -> Result<()> {
         self.data[self.current_node_id]
             .insert(name, Symbol::ConstVar(val))
-            .map_or(Ok(()), |_| Err(anyhow!("{}: duplicate definition", name)))
+            .map_or(Ok(()), |_| Err(anyhow!("redefinition of '{}'", name)))
     }
-}
 
-impl SymbolTable<'_> {
     pub fn new() -> Self {
         Self {
             global_node_id: 0,
