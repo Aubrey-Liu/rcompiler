@@ -21,6 +21,25 @@ impl<'i> GenerateIR<'i> for CompUnit {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
+        recorder.declare_func(program, "getint", vec![], Type::get_i32())?;
+        recorder.declare_func(program, "getch", vec![], Type::get_i32())?;
+        recorder.declare_func(
+            program,
+            "getarray",
+            vec![Type::get_pointer(Type::get_i32())],
+            Type::get_i32(),
+        )?;
+        recorder.declare_func(program, "putint", vec![Type::get_i32()], Type::get_unit())?;
+        recorder.declare_func(program, "putch", vec![Type::get_i32()], Type::get_unit())?;
+        recorder.declare_func(
+            program,
+            "putarray",
+            vec![Type::get_i32(), Type::get_pointer(Type::get_i32())],
+            Type::get_unit(),
+        )?;
+        recorder.declare_func(program, "starttime", vec![], Type::get_unit())?;
+        recorder.declare_func(program, "stoptime", vec![], Type::get_unit())?;
+
         for func in &self.funcs {
             func.generate_ir(program, recorder)?;
         }

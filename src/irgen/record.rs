@@ -65,6 +65,22 @@ impl<'i> ProgramRecorder<'i> {
         }
     }
 
+    pub fn declare_func(
+        &mut self,
+        program: &mut Program,
+        name: &'i str,
+        params_ty: Vec<Type>,
+        ret_ty: Type,
+    ) -> Result<()> {
+        let id = program.new_func(FunctionData::new_decl(
+            format!("@{}", name),
+            params_ty,
+            ret_ty,
+        ));
+
+        self.insert_function(name, id)
+    }
+
     pub fn new_func(&mut self, program: &mut Program, func_def: &'i FuncDef) -> Function {
         let params: Vec<(Option<String>, Type)> = func_def
             .params
@@ -78,16 +94,9 @@ impl<'i> ProgramRecorder<'i> {
             func_def.ret_ty.into_ty(),
         ));
 
-        let entry_bb = program
-            .func_mut(id)
-            .dfg_mut()
-            .new_bb()
-            .basic_block(Some("%entry".to_owned()));
-        let end_bb = program
-            .func_mut(id)
-            .dfg_mut()
-            .new_bb()
-            .basic_block(Some("%end".to_owned()));
+        let builder = program.func_mut(id).dfg_mut();
+        let entry_bb = builder.new_bb().basic_block(Some("%entry".to_owned()));
+        let end_bb = builder.new_bb().basic_block(Some("%end".to_owned()));
         self.cur_func = Some(FunctionStat {
             id,
             entry_bb,
