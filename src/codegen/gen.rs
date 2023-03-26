@@ -9,6 +9,9 @@ pub trait GenerateAsm {
 impl GenerateAsm for Program {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
         for &func in self.func_layout() {
+            if self.func(func).dfg().values().is_empty() {
+                continue;
+            }
             ctx.set_func(func);
             self.func(func).generate(gen, ctx)?;
         }
