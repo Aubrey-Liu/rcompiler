@@ -61,8 +61,10 @@ impl<'i> GenerateIR<'i> for FuncDef {
         }
 
         // allocate the return value
-        let ret_val = recorder.alloc(program, Type::get_i32(), "%ret".to_owned());
-        recorder.func_mut().set_ret_val(ret_val);
+        if !matches!(self.ret_ty, DataType::Void) {
+            let ret_val = recorder.alloc(program, Type::get_i32(), "%ret".to_owned());
+            recorder.func_mut().set_ret_val(ret_val);
+        }
 
         // enter the main body block
         let main_body = recorder.func().new_anonymous_bb(program);
@@ -71,8 +73,28 @@ impl<'i> GenerateIR<'i> for FuncDef {
         self.block.generate_ir(program, recorder)?;
 
         // finishing off the function
-        recorder.wind_up(program, main_body);
+        let entry = recorder.func().entry_bb();
+        let jump = recorder.new_value(program).jump(main_body);
+        recorder.func().push_inst_to(program, entry, jump);
 
+        let end_bb = recorder.func().end_bb();
+        let jump = recorder.new_value(program).jump(end_bb);
+        recorder.func().push_inst(program, jump);
+
+        // enter the end block
+        recorder.func_mut().push_bb(program, end_bb);
+
+        // load the return value and return
+        if matches!(self.ret_ty, DataType::Void) {
+            let ret = recorder.new_value(program).ret(None);
+            recorder.func().push_inst(program, ret);
+        } else {
+            let ret_val = recorder.func().ret_val().unwrap();
+            let ld = recorder.new_value(program).load(ret_val);
+            let ret = recorder.new_value(program).ret(Some(ld));
+            recorder.func().push_inst(program, ld);
+            recorder.func().push_inst(program, ret);
+        }
         recorder.exit_scope();
 
         Ok(())

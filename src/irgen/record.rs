@@ -125,27 +125,6 @@ impl<'i> ProgramRecorder<'i> {
         val
     }
 
-    /// Finish off the current function
-    pub fn wind_up(&mut self, program: &mut Program, main_body: BasicBlock) {
-        let entry = self.func().entry_bb();
-        let jump = self.new_value(program).jump(main_body);
-        self.func().push_inst_to(program, entry, jump);
-
-        let end_bb = self.func().end_bb();
-        let jump = self.new_value(program).jump(end_bb);
-        self.func().push_inst(program, jump);
-
-        // enter the end block
-        self.func_mut().push_bb(program, end_bb);
-
-        // load the return value and return
-        let ret_val = self.func().ret_val().unwrap();
-        let ld = self.new_value(program).load(ret_val);
-        let ret = self.new_value(program).ret(Some(ld));
-        self.func().push_inst(program, ld);
-        self.func().push_inst(program, ret);
-    }
-
     pub fn get_symbol(&self, name: &str) -> Result<&Symbol> {
         self.symbols.get(name)
     }
