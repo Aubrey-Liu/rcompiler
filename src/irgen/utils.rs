@@ -74,7 +74,7 @@ pub fn negative(program: &mut Program, recorder: &ProgramRecorder, opr: Value) -
     let zero = recorder.new_value(program).integer(0);
     let neg = recorder
         .new_value(program)
-        .binary(IrBinaryOp::Eq, opr, zero);
+        .binary(IrBinaryOp::Sub, zero, opr);
     recorder.func().push_inst(program, neg);
 
     neg
