@@ -12,6 +12,7 @@ impl GenerateAsm for Program {
             if self.func(func).dfg().values().is_empty() {
                 continue;
             }
+            ctx.new_func(func);
             ctx.set_func(func);
             self.func(func).generate(gen, ctx)?;
         }

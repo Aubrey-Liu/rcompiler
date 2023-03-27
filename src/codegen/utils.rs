@@ -22,7 +22,11 @@ impl<'a> AsmGenerator<'a> {
     }
 
     pub fn prologue(&mut self, ctx: &Context) -> Result<()> {
-        self.addi("sp", "sp", -ctx.cur_func().ss())
+        if ctx.cur_func().ss() != 0 {
+            self.addi("sp", "sp", -ctx.cur_func().ss())
+        } else {
+            Ok(())
+        }
     }
 
     pub fn enter_bb(&mut self, ctx: &Context, bb: BasicBlock) -> Result<()> {
@@ -36,8 +40,11 @@ impl<'a> AsmGenerator<'a> {
     }
 
     pub fn epilogue(&mut self, ctx: &Context) -> Result<()> {
-        self.addi("sp", "sp", ctx.cur_func().ss())?;
-        writeln!(self.f, "  ret")
+        if ctx.cur_func().ss() != 0 {
+            self.addi("sp", "sp", ctx.cur_func().ss())?;
+        }
+        writeln!(self.f, "  ret")?;
+        writeln!(self.f)
     }
 
     pub fn jump(&mut self, target: &String) -> Result<()> {
@@ -117,10 +124,10 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f, "  j {}", ctx.cur_func().get_bb_name(false_bb))
     }
 
-    pub fn from_path(path: &str, tmpr: &'a str) -> Result<Self> {
-        Ok(Self {
-            f: File::create(path)?,
+    pub fn from_path(path: &str, tmpr: &'a str) -> Self {
+        Self {
+            f: File::create(path).unwrap(),
             tmpr,
-        })
+        }
     }
 }

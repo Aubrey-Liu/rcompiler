@@ -6,6 +6,7 @@ type InstRegistry = HashMap<Value, i32>;
 
 pub struct Context<'i> {
     program: &'i Program,
+    functions: HashMap<Function, usize>,
     cur_func: Option<FunctionInfo>,
 }
 
@@ -25,6 +26,7 @@ impl<'i> Context<'i> {
     pub fn new_with_program(program: &'i Program) -> Self {
         Self {
             program,
+            functions: HashMap::new(),
             cur_func: None,
         }
     }
@@ -49,9 +51,17 @@ impl<'i> Context<'i> {
         self.cur_func = Some(FunctionInfo::new(func))
     }
 
+    pub fn new_func(&mut self, func: Function) {
+        let id = self.functions.len();
+        self.functions
+            .insert(func, id)
+            .map_or((), |_| panic!("redifinition of function"));
+    }
+
     pub fn register_bb(&mut self, bb: BasicBlock) {
         let id = Self::NAMETAG.with(|id| id.replace(id.get() + 1));
-        let name = format!(".LBB0_{}", id);
+        let func_id = self.functions.get(&self.cur_func().id()).unwrap();
+        let name = format!(".LBB{}_{}", func_id, id);
         self.cur_func_mut().register_bb(bb, name);
     }
 }
