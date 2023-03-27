@@ -3,27 +3,32 @@ use std::{collections::HashMap, vec};
 use koopa::ir::builder::LocalBuilder;
 use koopa::ir::builder_traits::*;
 
-use crate::ast::FuncDef;
-
 use super::*;
-
-type SymbolTableID = usize;
+use crate::ast::FuncDef;
 
 #[derive(Debug)]
 pub struct ProgramRecorder<'i> {
     symbols: SymbolTable<'i>,
-    cur_func: Option<FunctionStat>,
+    cur_func: Option<FunctionInfo>,
     loops: Vec<LoopInfo>,
 }
 
 #[derive(Debug)]
-pub struct FunctionStat {
+pub struct FunctionInfo {
     id: Function,
     entry_bb: BasicBlock,
     end_bb: BasicBlock,
     cur_bb: BasicBlock,
     ret_val: Option<Value>,
 }
+
+#[derive(Debug)]
+pub struct LoopInfo {
+    entry: BasicBlock,
+    exit: BasicBlock,
+}
+
+type SymbolTableID = usize;
 
 #[derive(Debug)]
 pub struct SymbolTable<'i> {
@@ -35,25 +40,19 @@ pub struct SymbolTable<'i> {
     functions: HashMap<&'i str, Function>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct SymbolTableNode {
     pub children: Vec<SymbolTableID>,
     pub parent: Option<SymbolTableID>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Symbol {
     ConstVar(i32),
     Var {
         val: Value, // the allocated position on the stack
         init: bool, // is the variable initialized with a expression?
     },
-}
-
-#[derive(Debug)]
-pub struct LoopInfo {
-    entry: BasicBlock,
-    exit: BasicBlock,
 }
 
 impl<'i> ProgramRecorder<'i> {
@@ -65,20 +64,8 @@ impl<'i> ProgramRecorder<'i> {
         }
     }
 
-    pub fn declare_func(
-        &mut self,
-        program: &mut Program,
-        name: &'i str,
-        params_ty: Vec<Type>,
-        ret_ty: Type,
-    ) -> Result<()> {
-        let id = program.new_func(FunctionData::new_decl(
-            format!("@{}", name),
-            params_ty,
-            ret_ty,
-        ));
-
-        self.insert_function(name, id)
+    pub fn new_value<'p>(&self, program: &'p mut Program) -> LocalBuilder<'p> {
+        program.func_mut(self.func().id()).dfg_mut().new_value()
     }
 
     pub fn new_func(&mut self, program: &mut Program, func_def: &'i FuncDef) -> Function {
@@ -97,7 +84,7 @@ impl<'i> ProgramRecorder<'i> {
         let builder = program.func_mut(id).dfg_mut();
         let entry_bb = builder.new_bb().basic_block(Some("%entry".to_owned()));
         let end_bb = builder.new_bb().basic_block(Some("%end".to_owned()));
-        self.cur_func = Some(FunctionStat {
+        self.cur_func = Some(FunctionInfo {
             id,
             entry_bb,
             end_bb,
@@ -108,40 +95,56 @@ impl<'i> ProgramRecorder<'i> {
         id
     }
 
-    pub fn func(&self) -> &FunctionStat {
+    pub fn declare_func(
+        &mut self,
+        program: &mut Program,
+        name: &'i str,
+        params_ty: Vec<Type>,
+        ret_ty: Type,
+    ) -> Result<()> {
+        let id = program.new_func(FunctionData::new_decl(
+            format!("@{}", name),
+            params_ty,
+            ret_ty,
+        ));
+
+        self.insert_func(name, id)
+    }
+
+    pub fn func(&self) -> &FunctionInfo {
         self.cur_func.as_ref().unwrap()
     }
 
-    pub fn func_mut(&mut self) -> &mut FunctionStat {
+    pub fn func_mut(&mut self) -> &mut FunctionInfo {
         self.cur_func.as_mut().unwrap()
-    }
-
-    // pub fn value_kind<'p>(&self, program: &Program, val: Value) -> ValueKind {
-    //     let func = self.func().id();
-    //     program.func(func).dfg().value(val).kind().clone()
-    // }
-
-    pub fn new_value<'p>(&self, program: &'p mut Program) -> LocalBuilder<'p> {
-        program.func_mut(self.func().id()).dfg_mut().new_value()
-    }
-
-    pub fn alloc(&self, program: &mut Program, ty: Type, name: Option<String>) -> Value {
-        let entry = self.func().entry_bb();
-        let val = self.new_value(program).alloc(ty);
-        if let Some(name) = name {
-            self.func().set_value_name(program, name, val);
-        }
-        self.func().push_inst_to(program, entry, val);
-
-        val
     }
 
     pub fn get_symbol(&self, name: &str) -> Result<&Symbol> {
         self.symbols.get(name)
     }
 
+    pub fn get_func(&self, name: &str) -> Option<&Function> {
+        self.symbols.get_func(name)
+    }
+
+    pub fn insert_var(&mut self, name: &'i str, val: Value, init: bool) -> Result<()> {
+        self.symbols.insert_var(name, val, init)
+    }
+
+    pub fn insert_const_var(&mut self, name: &'i str, val: i32) -> Result<()> {
+        self.symbols.insert_const_var(name, val)
+    }
+
+    pub fn insert_func(&mut self, name: &'i str, id: Function) -> Result<()> {
+        self.symbols.insert_func(name, id)
+    }
+
     pub fn initialize(&mut self, name: &str) -> Result<()> {
         self.symbols.initialize(name)
+    }
+
+    pub fn is_global(&self) -> bool {
+        self.symbols.current_node_id == self.symbols.global_node_id
     }
 
     pub fn enter_scope(&mut self) {
@@ -171,49 +174,9 @@ impl<'i> ProgramRecorder<'i> {
     pub fn loop_exit(&self) -> BasicBlock {
         self.loops.last().unwrap().exit
     }
-
-    pub fn insert_var(&mut self, name: &'i str, val: Value, init: bool) -> Result<()> {
-        self.symbols.insert_var(name, val, init)
-    }
-
-    pub fn insert_const_var(&mut self, name: &'i str, val: i32) -> Result<()> {
-        self.symbols.insert_const_var(name, val)
-    }
-
-    pub fn insert_function(&mut self, name: &'i str, id: Function) -> Result<()> {
-        self.symbols.insert_function(name, id)
-    }
-
-    pub fn get_function(&self, name: &str) -> Option<&Function> {
-        self.symbols.get_function(name)
-    }
-
-    pub fn is_global(&self) -> bool {
-        self.symbols.current_node_id == self.symbols.global_node_id
-    }
 }
 
-impl FunctionStat {
-    pub fn push_inst(&self, program: &mut Program, inst: Value) {
-        program
-            .func_mut(self.id)
-            .layout_mut()
-            .bb_mut(self.cur_bb)
-            .insts_mut()
-            .push_key_back(inst)
-            .unwrap();
-    }
-
-    pub fn push_inst_to(&self, program: &mut Program, bb: BasicBlock, inst: Value) {
-        program
-            .func_mut(self.id)
-            .layout_mut()
-            .bb_mut(bb)
-            .insts_mut()
-            .push_key_back(inst)
-            .unwrap()
-    }
-
+impl FunctionInfo {
     pub fn new_bb(&self, program: &mut Program, name: &str) -> BasicBlock {
         program
             .func_mut(self.id)
@@ -239,6 +202,26 @@ impl FunctionStat {
             .unwrap();
 
         self.cur_bb = bb;
+    }
+
+    pub fn push_inst(&self, program: &mut Program, inst: Value) {
+        program
+            .func_mut(self.id)
+            .layout_mut()
+            .bb_mut(self.cur_bb)
+            .insts_mut()
+            .push_key_back(inst)
+            .unwrap();
+    }
+
+    pub fn push_inst_to(&self, program: &mut Program, bb: BasicBlock, inst: Value) {
+        program
+            .func_mut(self.id)
+            .layout_mut()
+            .bb_mut(bb)
+            .insts_mut()
+            .push_key_back(inst)
+            .unwrap()
     }
 
     pub fn set_value_name(&self, program: &mut Program, name: String, val: Value) {
@@ -282,13 +265,13 @@ impl<'i> SymbolTable<'i> {
             .map_or(Ok(()), |_| Err(anyhow!("redefinition of '{}'", name)))
     }
 
-    pub fn insert_function(&mut self, name: &'i str, id: Function) -> Result<()> {
+    pub fn insert_func(&mut self, name: &'i str, id: Function) -> Result<()> {
         self.functions
             .insert(name, id)
             .map_or(Ok(()), |_| Err(anyhow!("redefinition of '{}'", name)))
     }
 
-    pub fn get_function(&self, name: &str) -> Option<&Function> {
+    pub fn get_func(&self, name: &str) -> Option<&Function> {
         self.functions.get(name)
     }
 

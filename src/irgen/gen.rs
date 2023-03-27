@@ -75,7 +75,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
 
         // generate the function and its entry & end blocks
         let id = recorder.new_func(program, self);
-        recorder.insert_function(&self.ident, id)?;
+        recorder.insert_func(&self.ident, id)?;
 
         // enter the entry block
         let entry_bb = recorder.func().entry_bb();
@@ -88,7 +88,8 @@ impl<'i> GenerateIR<'i> for FuncDef {
             .map(|v| *v)
             .collect();
         for (value, param) in param_values.iter().zip(&self.params) {
-            let dst = recorder.alloc(
+            let dst = alloc(
+                recorder,
                 program,
                 param.ty.into_ty(),
                 Some(format!("%{}", &param.ident)),
@@ -100,7 +101,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
 
         // allocate the return value
         if !matches!(self.ret_ty, DataType::Void) {
-            let ret_val = recorder.alloc(program, Type::get_i32(), Some("%ret".to_owned()));
+            let ret_val = alloc(recorder, program, Type::get_i32(), Some("%ret".to_owned()));
             recorder.func_mut().set_ret_val(ret_val);
         }
 
@@ -205,7 +206,12 @@ impl<'i> GenerateIR<'i> for VarDecl {
 
             Ok(())
         } else {
-            let var = recorder.alloc(program, Type::get_i32(), Some(format!("@{}", &self.name)));
+            let var = alloc(
+                recorder,
+                program,
+                Type::get_i32(),
+                Some(format!("@{}", &self.name)),
+            );
             if let Some(exp) = &self.init {
                 let init_val = exp.generate_ir(program, recorder)?;
                 let init = recorder.new_value(program).store(init_val, var);
@@ -466,7 +472,7 @@ impl<'i> GenerateIR<'i> for BinaryExp {
         Ok(match self.op {
             BinaryOp::And | BinaryOp::Or => {
                 // The result of logical expression
-                let result = recorder.alloc(program, Type::get_i32(), None);
+                let result = alloc(recorder, program, Type::get_i32(), None);
                 // If result is true, go to true_bb
                 let true_bb = recorder.func().new_anonymous_bb(program);
                 // Otherwise, go to false_bb
@@ -547,7 +553,7 @@ impl<'i> GenerateIR<'i> for Call {
             let val = arg.generate_ir(program, recorder)?;
             arg_values.push(val);
         }
-        let func_id = *recorder.get_function(&self.func_id).unwrap();
+        let func_id = *recorder.get_func(&self.func_id).unwrap();
         let call = recorder.new_value(program).call(func_id, arg_values);
         recorder.func().push_inst(program, call);
 

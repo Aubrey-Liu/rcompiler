@@ -2,6 +2,22 @@ use koopa::ir::builder_traits::{LocalInstBuilder, ValueBuilder};
 
 use super::*;
 
+pub fn alloc(
+    recorder: &ProgramRecorder,
+    program: &mut Program,
+    ty: Type,
+    name: Option<String>,
+) -> Value {
+    let entry = recorder.func().entry_bb();
+    let val = recorder.new_value(program).alloc(ty);
+    if let Some(name) = name {
+        recorder.func().set_value_name(program, name, val);
+    }
+    recorder.func().push_inst_to(program, entry, val);
+
+    val
+}
+
 pub fn load_var(
     program: &mut Program,
     recorder: &ProgramRecorder,
