@@ -2,6 +2,7 @@ use lalrpop_util::ErrorRecovery;
 
 use crate::ast::*;
 
+#[LALR]
 grammar<'err>(errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, &'static str>>);
 
 match {
@@ -31,11 +32,6 @@ FuncDef: FuncDef = {
 FuncParams: Vec<FuncParam> = <Comma<FuncParam>> => <>;
 
 FuncParam: FuncParam = "int" <ident: Ident> => FuncParam { ty: DataType::Int, ident };
-
-DataType: DataType = {
-  "int" => DataType::Int,
-  "void" => DataType::Void,
-};
 
 Block: Block = "{" <BlockItem*> "}" => Block::new_with_vec(<>);
 
@@ -226,4 +222,10 @@ Comma<T>: Vec<T> = {
     items.push(item);
     items
   }
+};
+
+#[inline]
+DataType: DataType = {
+  "int" => DataType::Int,
+  "void" => DataType::Void,
 };
