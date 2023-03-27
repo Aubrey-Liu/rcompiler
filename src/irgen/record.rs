@@ -116,10 +116,10 @@ impl<'i> ProgramRecorder<'i> {
         self.cur_func.as_mut().unwrap()
     }
 
-    pub fn value_kind<'p>(&self, program: &Program, val: Value) -> ValueKind {
-        let func = self.func().id();
-        program.func(func).dfg().value(val).kind().clone()
-    }
+    // pub fn value_kind<'p>(&self, program: &Program, val: Value) -> ValueKind {
+    //     let func = self.func().id();
+    //     program.func(func).dfg().value(val).kind().clone()
+    // }
 
     pub fn new_value<'p>(&self, program: &'p mut Program) -> LocalBuilder<'p> {
         program.func_mut(self.func().id()).dfg_mut().new_value()
