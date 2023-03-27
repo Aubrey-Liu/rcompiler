@@ -282,11 +282,15 @@ impl<'i> GenerateIR<'i> for Branch {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        let true_bb = recorder.func().new_bb(program, "%then");
-        let false_bb = recorder.func().new_bb(program, "%else");
-        let end_bb = recorder.func().new_bb(program, "%if_end");
+        let true_bb = recorder.func().new_bb(program, "%br_then");
+        let false_bb = recorder.func().new_bb(program, "%br_else");
+        let end_bb = recorder.func().new_bb(program, "%br_end");
 
-        short_circuit_entry(program, recorder, &self.cond, true_bb, false_bb)?;
+        let result = self.cond.generate_ir(program, recorder)?;
+        let br = recorder
+            .new_value(program)
+            .branch(result, true_bb, false_bb);
+        recorder.func().push_inst(program, br);
 
         // enter the "true" block
         recorder.func_mut().push_bb(program, true_bb);
@@ -333,7 +337,11 @@ impl<'i> GenerateIR<'i> for While {
 
         // check the loop condition
         recorder.func_mut().push_bb(program, loop_entry);
-        short_circuit_entry(program, recorder, &self.cond, loop_body, loop_exit)?;
+        let result = self.cond.generate_ir(program, recorder)?;
+        let br = recorder
+            .new_value(program)
+            .branch(result, loop_body, loop_exit);
+        recorder.func().push_inst(program, br);
 
         // enter the loop body block
         recorder.func_mut().push_bb(program, loop_body);
@@ -455,15 +463,21 @@ impl<'i> GenerateIR<'i> for BinaryExp {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        let val = match self.op {
+        Ok(match self.op {
             BinaryOp::And | BinaryOp::Or => {
+                // The result of logical expression
                 let result = recorder.alloc(program, Type::get_i32(), None);
+                // If result is true, go to true_bb
                 let true_bb = recorder.func().new_anonymous_bb(program);
+                // Otherwise, go to false_bb
                 let false_bb = recorder.func().new_anonymous_bb(program);
+                // Load result and do branch operation in end_bb
                 let end_bb = recorder.func().new_anonymous_bb(program);
+                // Use short circuit to evaluate logical expression
                 short_circuit(program, recorder, self, true_bb, false_bb)?;
-                recorder.func_mut().push_bb(program, true_bb);
 
+                // Store 1 into `result` in true_bb
+                recorder.func_mut().push_bb(program, true_bb);
                 let one = recorder.new_value(program).integer(1);
                 let st = recorder.new_value(program).store(one, result);
                 recorder.func().push_inst(program, st);
@@ -471,6 +485,7 @@ impl<'i> GenerateIR<'i> for BinaryExp {
                 let jump = recorder.new_value(program).jump(end_bb);
                 recorder.func().push_inst(program, jump);
 
+                // Store 0 into `result` in false_bb
                 recorder.func_mut().push_bb(program, false_bb);
                 let zero = recorder.new_value(program).integer(0);
                 let st = recorder.new_value(program).store(zero, result);
@@ -479,6 +494,7 @@ impl<'i> GenerateIR<'i> for BinaryExp {
                 let jump = recorder.new_value(program).jump(end_bb);
                 recorder.func().push_inst(program, jump);
 
+                // Load and check `result` in end_bb
                 recorder.func_mut().push_bb(program, end_bb);
                 let load = recorder.new_value(program).load(result);
                 recorder.func().push_inst(program, load);
@@ -491,9 +507,7 @@ impl<'i> GenerateIR<'i> for BinaryExp {
 
                 binary(program, recorder, self.op.into(), lhs, rhs)
             }
-        };
-
-        Ok(val)
+        })
     }
 }
 
@@ -541,7 +555,7 @@ impl<'i> GenerateIR<'i> for Call {
     }
 }
 
-fn short_circuit_entry<'i>(
+fn short_circuit_detect<'i>(
     program: &mut Program,
     recorder: &mut ProgramRecorder<'i>,
     cond: &'i Box<Exp>,
@@ -570,15 +584,15 @@ fn short_circuit<'i>(
     match cond.op {
         BinaryOp::And => {
             let check_rhs = recorder.func().new_anonymous_bb(program);
-            short_circuit_entry(program, recorder, &cond.lhs, check_rhs, false_bb)?;
+            short_circuit_detect(program, recorder, &cond.lhs, check_rhs, false_bb)?;
             recorder.func_mut().push_bb(program, check_rhs);
-            short_circuit_entry(program, recorder, &cond.rhs, true_bb, false_bb)
+            short_circuit_detect(program, recorder, &cond.rhs, true_bb, false_bb)
         }
         BinaryOp::Or => {
             let check_rhs = recorder.func().new_anonymous_bb(program);
-            short_circuit_entry(program, recorder, &cond.lhs, true_bb, check_rhs)?;
+            short_circuit_detect(program, recorder, &cond.lhs, true_bb, check_rhs)?;
             recorder.func_mut().push_bb(program, check_rhs);
-            short_circuit_entry(program, recorder, &cond.rhs, true_bb, false_bb)
+            short_circuit_detect(program, recorder, &cond.rhs, true_bb, false_bb)
         }
         _ => unreachable!(),
     }
