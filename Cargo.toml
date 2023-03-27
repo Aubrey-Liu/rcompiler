@@ -4,10 +4,10 @@ version = "0.4.1"
 edition = "2021"
 
 [build-dependencies] # <-- We added this and everything after!
-lalrpop = "0.19.8"
+lalrpop = "0.19.9"
 
 [dependencies]
 anyhow = "1.0.69"
 koopa = "0.0.6"
-lalrpop-util = { version = "0.19.8", features = ["lexer"] }
+lalrpop-util = { version = "0.19.9", features = ["lexer"] }
 regex = "1"
