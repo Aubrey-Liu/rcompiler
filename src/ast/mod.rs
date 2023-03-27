@@ -5,8 +5,20 @@ use koopa::ir::Type;
 
 #[derive(Debug)]
 pub struct CompUnit {
-    pub funcs: Vec<FuncDef>,
+    pub items: Vec<GlobalItem>,
 }
+
+#[derive(Debug)]
+pub enum GlobalItem {
+    Decl(Decl),
+    Func(FuncDef),
+}
+
+// #[derive(Debug)]
+// pub enum GlobalDecl {
+//     VarDecl(Vec<VarDecl>),
+//     ConstDecl(Vec<ConstDecl>),
+// }
 
 #[derive(Debug, Clone, Copy)]
 pub enum DataType {

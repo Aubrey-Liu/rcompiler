@@ -185,6 +185,10 @@ impl<'i> ProgramRecorder<'i> {
     pub fn get_function(&self, name: &str) -> Option<&Function> {
         self.symbols.get_function(name)
     }
+
+    pub fn is_global(&self) -> bool {
+        self.symbols.current_node_id == self.symbols.global_node_id
+    }
 }
 
 impl FunctionStat {

@@ -12,15 +12,19 @@ match {
   // default case
   _
 }
+pub CompUnit: CompUnit = <items: GlobalItem+> => CompUnit { <> };
 
-pub CompUnit: CompUnit = <funcs: FuncDef+> => CompUnit { <> };
+GlobalItem: GlobalItem = {
+  Decl => GlobalItem::Decl(<>),
+  FuncDef => GlobalItem::Func(<>),
+};
 
 FuncDef: FuncDef = {
-  <ret_ty: DataType> <ident: Ident> "(" ")" <block: Block> => {
-    FuncDef { ret_ty, ident, params: vec![], block }
+  <head: FuncHead> ")" <block: Block> => {
+    FuncDef { ret_ty: head.0, ident: head.1, params: vec![], block }
   },
-  <ret_ty: DataType> <ident: Ident> "(" <params: FuncParams> ")" <block: Block> => {
-    FuncDef { <> }
+  <head: FuncHead> <params: FuncParams> ")" <block: Block> => {
+    FuncDef { ret_ty: head.0, ident: head.1, params, block }
   }
 };
 
@@ -31,12 +35,12 @@ FuncParams: Vec<FuncParam> = {
   }
 };
 
-FuncFParam: FuncParam = <ty: DataType> <ident: Ident> => FuncParam { <> };
-
-DataType: DataType = {
-  "int" => DataType::Int,
-  "void" => DataType::Void,
+FuncHead: (DataType, String) = {
+  "int" <ident: Ident> "(" => (DataType::Int, ident),
+  "void" <ident: Ident> "(" => (DataType::Void, ident),
 };
+
+FuncFParam: FuncParam = "int" <ident: Ident> => FuncParam { ty: DataType::Int, ident };
 
 Block: Block = "{" <BlockItem*> "}" => Block::new_with_vec(<>);
 

@@ -1,4 +1,4 @@
-use koopa::ir::builder_traits::{LocalInstBuilder, ValueBuilder};
+use koopa::ir::builder_traits::{GlobalInstBuilder, LocalInstBuilder, ValueBuilder};
 
 use super::*;
 use crate::ast::*;
@@ -40,11 +40,26 @@ impl<'i> GenerateIR<'i> for CompUnit {
         recorder.declare_func(program, "starttime", vec![], Type::get_unit())?;
         recorder.declare_func(program, "stoptime", vec![], Type::get_unit())?;
 
-        for func in &self.funcs {
-            func.generate_ir(program, recorder)?;
+        for item in &self.items {
+            item.generate_ir(program, recorder)?;
         }
 
         Ok(())
+    }
+}
+
+impl<'i> GenerateIR<'i> for GlobalItem {
+    type Out = ();
+
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        match self {
+            GlobalItem::Decl(i) => i.generate_ir(program, recorder),
+            GlobalItem::Func(i) => i.generate_ir(program, recorder),
+        }
     }
 }
 
@@ -152,26 +167,62 @@ impl<'i> GenerateIR<'i> for Decl {
         match self {
             Decl::ConstDecl(decls) => {
                 for d in decls {
-                    recorder.insert_const_var(&d.name, d.init.const_eval(recorder))?;
+                    d.generate_ir(program, recorder)?;
                 }
             }
-
             Decl::VarDecl(decls) => {
                 for d in decls {
-                    let var = recorder.alloc(program, Type::get_i32(), format!("@{}", &d.name));
-                    if let Some(exp) = &d.init {
-                        let init_val = exp.generate_ir(program, recorder)?;
-                        let init = recorder.new_value(program).store(init_val, var);
-                        recorder.func().push_inst(program, init);
-                        recorder.insert_var(&d.name, var, true)?;
-                    } else {
-                        recorder.insert_var(&d.name, var, false)?;
-                    }
+                    d.generate_ir(program, recorder)?;
                 }
             }
         }
 
         Ok(())
+    }
+}
+
+impl<'i> GenerateIR<'i> for VarDecl {
+    type Out = ();
+
+    fn generate_ir(
+        &'i self,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        if recorder.is_global() {
+            let init = if let Some(exp) = &self.init {
+                program.new_value().integer(exp.const_eval(recorder))
+            } else {
+                program.new_value().zero_init(Type::get_i32())
+            };
+            let var = program.new_value().global_alloc(init);
+            program.set_value_name(var, Some(format!("@{}", self.name)));
+            recorder.insert_var(&self.name, var, true)?;
+
+            Ok(())
+        } else {
+            let var = recorder.alloc(program, Type::get_i32(), format!("@{}", &self.name));
+            if let Some(exp) = &self.init {
+                let init_val = exp.generate_ir(program, recorder)?;
+                let init = recorder.new_value(program).store(init_val, var);
+                recorder.func().push_inst(program, init);
+                recorder.insert_var(&self.name, var, true)
+            } else {
+                recorder.insert_var(&self.name, var, false)
+            }
+        }
+    }
+}
+
+impl<'i> GenerateIR<'i> for ConstDecl {
+    type Out = ();
+
+    fn generate_ir(
+        &'i self,
+        _program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
+    ) -> Result<Self::Out> {
+        recorder.insert_const_var(&self.name, self.init.const_eval(recorder))
     }
 }
 
