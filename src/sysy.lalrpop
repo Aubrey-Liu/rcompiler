@@ -28,19 +28,14 @@ FuncDef: FuncDef = {
   }
 };
 
-FuncParams: Vec<FuncParam> = {
-  <p: FuncFParam> <mut params: ("," <FuncFParam>)*> => {
-    params.insert(0, p);
-    params
-  }
-};
+FuncParams: Vec<FuncParam> = <Comma<FuncParam>> => <>;
+
+FuncParam: FuncParam = "int" <ident: Ident> => FuncParam { ty: DataType::Int, ident };
 
 DataType: DataType = {
   "int" => DataType::Int,
   "void" => DataType::Void,
 };
-
-FuncFParam: FuncParam = "int" <ident: Ident> => FuncParam { ty: DataType::Int, ident };
 
 Block: Block = "{" <BlockItem*> "}" => Block::new_with_vec(<>);
 
@@ -56,11 +51,10 @@ Decl: Decl = {
 }
 
 VarDecl: Vec<VarDecl> = {
-  <ty: DataType> <def: VarDef> <mut defs: ("," <VarDef>)*> ";" => {
+  <ty: DataType> <defs: Comma<VarDef>> ";" => {
     if !matches!(ty, DataType::Int) {
       panic!("incomplete type is not allowed");
     }
-    defs.insert(0, def);
     defs
   }
 };
@@ -71,11 +65,10 @@ VarDef: VarDecl = {
 };
 
 ConstDecl: Vec<ConstDecl> = {
-  "const" <ty: DataType> <def: ConstDef> <mut defs: ("," <ConstDef>)*> ";" => {
+  "const" <ty: DataType> <defs: Comma<ConstDef>> ";" => {
     if !matches!(ty, DataType::Int) {
       panic!("incomplete type is not allowed");
     }
-    defs.insert(0, def);
     defs
   }
 };
@@ -100,20 +93,20 @@ NonIfStatement: Stmt = {
 };
 
 OpenStatement: Stmt = {
-  "if" "(" <cond: Exp> ")" <stmt: Stmt> => Stmt::Branch(Branch {
+  "if" <cond: Condition> <stmt: Stmt> => Stmt::Branch(Branch {
     cond,
     if_stmt: Box::new(stmt),
     el_stmt: None,
   }),
 
-  "if" "(" <cond: Exp> ")" <if_stmt: ClosedStatement> 
+  "if" <cond: Condition> <if_stmt: ClosedStatement> 
   "else" <el_stmt: OpenStatement> => Stmt::Branch(Branch {
     cond,
     if_stmt: Box::new(if_stmt),
     el_stmt: Some(Box::new(el_stmt)),
   }),
 
-  "while" "(" <cond: Exp> ")" <stmt: OpenStatement> => Stmt::While(While {
+  "while" <cond: Condition> <stmt: OpenStatement> => Stmt::While(While {
     cond,
     stmt: Box::new(stmt),
   }),
@@ -122,14 +115,14 @@ OpenStatement: Stmt = {
 ClosedStatement: Stmt = {
   NonIfStatement => <>,
 
-  "if" "(" <cond: Exp> ")" <if_stmt: ClosedStatement> 
+  "if" <cond: Condition> <if_stmt: ClosedStatement> 
   "else" <el_stmt: ClosedStatement> => Stmt::Branch(Branch {
     cond,
     if_stmt: Box::new(if_stmt),
     el_stmt: Some(Box::new(el_stmt)),
   }),
 
-  "while" "(" <cond: Exp> ")" <stmt: ClosedStatement> => Stmt::While(While {
+  "while" <cond: Condition> <stmt: ClosedStatement> => Stmt::While(While {
     cond,
     stmt: Box::new(stmt),
   }),
@@ -168,13 +161,7 @@ UnaryExp: Box<Exp> = {
 
 Call: Call = {
   <func_id: Ident> "(" ")" => Call { func_id, args: vec![] },
-  <func_id: Ident> "(" <arg: Exp>  <mut args: ("," <Exp>)*> ")" => {
-    args.insert(0, arg);
-    Call {
-      func_id,
-      args
-    }
-  }
+  <func_id: Ident> "(" <args: Comma<Exp>> ")" => Call { func_id, args },
 };
 
 // macro for all the binary expressions
@@ -230,3 +217,13 @@ UnaryOp: UnaryOp = {
   "!" => UnaryOp::Not,
 };
 
+#[inline]
+Condition: Box<Exp> = "(" <Exp> ")" => <>;
+
+#[inline]
+Comma<T>: Vec<T> = {
+  <mut items: (<T> ",")*> <item: T> => {
+    items.push(item);
+    items
+  }
+};
