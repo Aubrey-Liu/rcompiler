@@ -88,7 +88,11 @@ impl<'i> GenerateIR<'i> for FuncDef {
             .map(|v| *v)
             .collect();
         for (value, param) in param_values.iter().zip(&self.params) {
-            let dst = recorder.alloc(program, param.ty.into_ty(), format!("%{}", &param.ident));
+            let dst = recorder.alloc(
+                program,
+                param.ty.into_ty(),
+                Some(format!("%{}", &param.ident)),
+            );
             recorder.insert_var(&param.ident, dst, true).unwrap();
             let st = recorder.new_value(program).store(*value, dst);
             recorder.func().push_inst(program, st);
@@ -96,7 +100,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
 
         // allocate the return value
         if !matches!(self.ret_ty, DataType::Void) {
-            let ret_val = recorder.alloc(program, Type::get_i32(), "%ret".to_owned());
+            let ret_val = recorder.alloc(program, Type::get_i32(), Some("%ret".to_owned()));
             recorder.func_mut().set_ret_val(ret_val);
         }
 
@@ -201,7 +205,7 @@ impl<'i> GenerateIR<'i> for VarDecl {
 
             Ok(())
         } else {
-            let var = recorder.alloc(program, Type::get_i32(), format!("@{}", &self.name));
+            let var = recorder.alloc(program, Type::get_i32(), Some(format!("@{}", &self.name)));
             if let Some(exp) = &self.init {
                 let init_val = exp.generate_ir(program, recorder)?;
                 let init = recorder.new_value(program).store(init_val, var);
@@ -282,7 +286,7 @@ impl<'i> GenerateIR<'i> for Branch {
         let false_bb = recorder.func().new_bb(program, "%else");
         let end_bb = recorder.func().new_bb(program, "%if_end");
 
-        shortcut(program, recorder, &self.cond, true_bb, false_bb)?;
+        short_circuit_entry(program, recorder, &self.cond, true_bb, false_bb)?;
 
         // enter the "true" block
         recorder.func_mut().push_bb(program, true_bb);
@@ -329,7 +333,7 @@ impl<'i> GenerateIR<'i> for While {
 
         // check the loop condition
         recorder.func_mut().push_bb(program, loop_entry);
-        shortcut(program, recorder, &self.cond, loop_body, loop_exit)?;
+        short_circuit_entry(program, recorder, &self.cond, loop_body, loop_exit)?;
 
         // enter the loop body block
         recorder.func_mut().push_bb(program, loop_body);
@@ -451,20 +455,42 @@ impl<'i> GenerateIR<'i> for BinaryExp {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        let lhs = self.lhs.generate_ir(program, recorder)?;
-        let rhs = self.rhs.generate_ir(program, recorder)?;
-
-        let lkind = recorder.value_kind(program, lhs);
-        let rkind = recorder.value_kind(program, rhs);
-        if let (ValueKind::Integer(l), ValueKind::Integer(r)) = (lkind, rkind) {
-            let result = eval_binary(self.op, l.value(), r.value());
-            return Ok(recorder.new_value(program).integer(result));
-        }
-
         let val = match self.op {
-            BinaryOp::And => logical_and(program, recorder, lhs, rhs),
-            BinaryOp::Or => logical_or(program, recorder, lhs, rhs),
-            _ => binary(program, recorder, self.op.into(), lhs, rhs),
+            BinaryOp::And | BinaryOp::Or => {
+                let result = recorder.alloc(program, Type::get_i32(), None);
+                let true_bb = recorder.func().new_anonymous_bb(program);
+                let false_bb = recorder.func().new_anonymous_bb(program);
+                let end_bb = recorder.func().new_anonymous_bb(program);
+                short_circuit(program, recorder, self, true_bb, false_bb)?;
+                recorder.func_mut().push_bb(program, true_bb);
+
+                let one = recorder.new_value(program).integer(1);
+                let st = recorder.new_value(program).store(one, result);
+                recorder.func().push_inst(program, st);
+
+                let jump = recorder.new_value(program).jump(end_bb);
+                recorder.func().push_inst(program, jump);
+
+                recorder.func_mut().push_bb(program, false_bb);
+                let zero = recorder.new_value(program).integer(0);
+                let st = recorder.new_value(program).store(zero, result);
+                recorder.func().push_inst(program, st);
+
+                let jump = recorder.new_value(program).jump(end_bb);
+                recorder.func().push_inst(program, jump);
+
+                recorder.func_mut().push_bb(program, end_bb);
+                let load = recorder.new_value(program).load(result);
+                recorder.func().push_inst(program, load);
+
+                load
+            }
+            _ => {
+                let lhs = self.lhs.generate_ir(program, recorder)?;
+                let rhs = self.rhs.generate_ir(program, recorder)?;
+
+                binary(program, recorder, self.op.into(), lhs, rhs)
+            }
         };
 
         Ok(val)
@@ -515,7 +541,7 @@ impl<'i> GenerateIR<'i> for Call {
     }
 }
 
-fn shortcut<'i>(
+fn short_circuit_entry<'i>(
     program: &mut Program,
     recorder: &mut ProgramRecorder<'i>,
     cond: &'i Box<Exp>,
@@ -527,22 +553,32 @@ fn shortcut<'i>(
         let br = recorder.new_value(program).branch(cond, true_bb, false_bb);
         recorder.func().push_inst(program, br);
 
-        return Ok(());
+        Ok(())
+    } else {
+        let cond = cond.get_bxp().unwrap();
+        short_circuit(program, recorder, cond, true_bb, false_bb)
     }
+}
 
-    let cond = cond.get_bxp().unwrap();
+fn short_circuit<'i>(
+    program: &mut Program,
+    recorder: &mut ProgramRecorder<'i>,
+    cond: &'i BinaryExp,
+    true_bb: BasicBlock,
+    false_bb: BasicBlock,
+) -> Result<()> {
     match cond.op {
         BinaryOp::And => {
             let check_rhs = recorder.func().new_anonymous_bb(program);
-            shortcut(program, recorder, &cond.lhs, check_rhs, false_bb)?;
+            short_circuit_entry(program, recorder, &cond.lhs, check_rhs, false_bb)?;
             recorder.func_mut().push_bb(program, check_rhs);
-            shortcut(program, recorder, &cond.rhs, true_bb, false_bb)
+            short_circuit_entry(program, recorder, &cond.rhs, true_bb, false_bb)
         }
         BinaryOp::Or => {
             let check_rhs = recorder.func().new_anonymous_bb(program);
-            shortcut(program, recorder, &cond.lhs, true_bb, check_rhs)?;
+            short_circuit_entry(program, recorder, &cond.lhs, true_bb, check_rhs)?;
             recorder.func_mut().push_bb(program, check_rhs);
-            shortcut(program, recorder, &cond.rhs, true_bb, false_bb)
+            short_circuit_entry(program, recorder, &cond.rhs, true_bb, false_bb)
         }
         _ => unreachable!(),
     }

@@ -125,10 +125,12 @@ impl<'i> ProgramRecorder<'i> {
         program.func_mut(self.func().id()).dfg_mut().new_value()
     }
 
-    pub fn alloc(&self, program: &mut Program, ty: Type, name: String) -> Value {
+    pub fn alloc(&self, program: &mut Program, ty: Type, name: Option<String>) -> Value {
         let entry = self.func().entry_bb();
         let val = self.new_value(program).alloc(ty);
-        self.func().set_value_name(program, name, val);
+        if let Some(name) = name {
+            self.func().set_value_name(program, name, val);
+        }
         self.func().push_inst_to(program, entry, val);
 
         val
