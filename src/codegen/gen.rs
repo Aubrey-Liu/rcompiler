@@ -8,16 +8,14 @@ pub trait GenerateAsm {
 
 impl GenerateAsm for Program {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
-        for &func in self.func_layout() {
-            if self.func(func).dfg().values().is_empty() {
-                continue;
-            }
-            ctx.new_func(func);
-            ctx.set_func(func);
-            self.func(func).generate(gen, ctx)?;
-        }
-
-        Ok(())
+        self.func_layout()
+            .iter()
+            .filter(|&&f| !self.func(f).dfg().values().is_empty())
+            .try_for_each(|&f| {
+                ctx.new_func(f);
+                ctx.set_func(f);
+                self.func(f).generate(gen, ctx)
+            })
     }
 }
 
@@ -26,16 +24,18 @@ impl GenerateAsm for FunctionData {
         gen.enter_func(&self.name()[1..])?;
 
         let mut off = 0;
-        for (&val, data) in self.dfg().values() {
-            if data.kind().is_local_inst() && !data.used_by().is_empty() {
+        self.dfg()
+            .values()
+            .iter()
+            .filter(|(_, data)| data.kind().is_local_inst())
+            .for_each(|(&val, _)| {
                 ctx.cur_func_mut().register_var(val, off);
                 off += 4;
-            }
-        }
-
-        for (&bb, _) in self.dfg().bbs() {
-            ctx.register_bb(bb);
-        }
+            });
+        self.dfg()
+            .bbs()
+            .iter()
+            .for_each(|(&bb, _)| ctx.register_bb(bb));
 
         // align stack size to 16
         let ss = (off + 15) / 16 * 16;
@@ -46,9 +46,9 @@ impl GenerateAsm for FunctionData {
             if bb == self.layout().entry_bb().unwrap() {
                 gen.prologue(ctx)?;
             }
-            for &inst in node.insts().keys() {
-                inst.generate(gen, ctx)?;
-            }
+            node.insts()
+                .keys()
+                .try_for_each(|inst| inst.generate(gen, ctx))?;
         }
 
         Ok(())

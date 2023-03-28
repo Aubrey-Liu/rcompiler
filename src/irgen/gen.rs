@@ -40,11 +40,9 @@ impl<'i> GenerateIR<'i> for CompUnit {
         recorder.declare_func(program, "starttime", vec![], Type::get_unit())?;
         recorder.declare_func(program, "stoptime", vec![], Type::get_unit())?;
 
-        for item in &self.items {
-            item.generate_ir(program, recorder)?;
-        }
-
-        Ok(())
+        self.items
+            .iter()
+            .try_for_each(|item| item.generate_ir(program, recorder))
     }
 }
 
@@ -149,12 +147,10 @@ impl<'i> GenerateIR<'i> for Block {
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
         recorder.enter_scope();
-        for item in &self.items {
-            match item {
-                BlockItem::Decl(decl) => decl.generate_ir(program, recorder)?,
-                BlockItem::Stmt(stmt) => stmt.generate_ir(program, recorder)?,
-            }
-        }
+        self.items.iter().try_for_each(|item| match item {
+            BlockItem::Decl(decl) => decl.generate_ir(program, recorder),
+            BlockItem::Stmt(stmt) => stmt.generate_ir(program, recorder),
+        })?;
         recorder.exit_scope();
 
         Ok(())
@@ -170,19 +166,13 @@ impl<'i> GenerateIR<'i> for Decl {
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
         match self {
-            Decl::ConstDecl(decls) => {
-                for d in decls {
-                    d.generate_ir(program, recorder)?;
-                }
-            }
-            Decl::VarDecl(decls) => {
-                for d in decls {
-                    d.generate_ir(program, recorder)?;
-                }
-            }
+            Decl::ConstDecl(decls) => decls
+                .iter()
+                .try_for_each(|d| d.generate_ir(program, recorder)),
+            Decl::VarDecl(decls) => decls
+                .iter()
+                .try_for_each(|d| d.generate_ir(program, recorder)),
         }
-
-        Ok(())
     }
 }
 
@@ -471,7 +461,12 @@ impl<'i> GenerateIR<'i> for BinaryExp {
     ) -> Result<Self::Out> {
         let val = match self.op {
             BinaryOp::And | BinaryOp::Or => {
-                let end_bb = recorder.func().new_bb(program, "%logical_end");
+                let name = if matches!(self.op, BinaryOp::And) {
+                    "%land_end"
+                } else {
+                    "%lor_end"
+                };
+                let end_bb = recorder.func().new_bb(program, name);
                 let result = short_circuit(program, recorder, self, end_bb)?;
                 recorder.func_mut().push_bb(program, end_bb);
                 let ld = recorder.new_value(program).load(result);

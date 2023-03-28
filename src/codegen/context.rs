@@ -48,7 +48,8 @@ impl<'i> Context<'i> {
     }
 
     pub fn set_func(&mut self, func: Function) {
-        self.cur_func = Some(FunctionInfo::new(func))
+        self.cur_func = Some(FunctionInfo::new(func));
+        Self::NAMETAG.with(|id| id.set(0));
     }
 
     pub fn new_func(&mut self, func: Function) {
