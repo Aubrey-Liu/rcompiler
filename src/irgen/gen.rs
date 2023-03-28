@@ -469,39 +469,15 @@ impl<'i> GenerateIR<'i> for BinaryExp {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        Ok(match self.op {
+        let val = match self.op {
             BinaryOp::And | BinaryOp::Or => {
-                // The result of logical expression
-                let result = alloc(recorder, program, Type::get_i32(), None);
-                // If result is true, go to true_bb
                 let end_bb = recorder.func().new_bb(program, "%logical_end");
-
-                short_circuit(program, recorder, self, end_bb, result)?;
-
-                // Store 1 into `result` in true_bb
-                // recorder.func_mut().push_bb(program, true_bb);
-                // let one = recorder.new_value(program).integer(1);
-                // let st = recorder.new_value(program).store(one, result);
-                // recorder.func().push_inst(program, st);
-
-                // let jump = recorder.new_value(program).jump(end_bb);
-                // recorder.func().push_inst(program, jump);
-
-                // // Store 0 into `result` in false_bb
-                // recorder.func_mut().push_bb(program, false_bb);
-                // let zero = recorder.new_value(program).integer(0);
-                // let st = recorder.new_value(program).store(zero, result);
-                // recorder.func().push_inst(program, st);
-
-                // let jump = recorder.new_value(program).jump(end_bb);
-                // recorder.func().push_inst(program, jump);
-
-                // Load and check `result` in end_bb
+                let result = short_circuit(program, recorder, self, end_bb)?;
                 recorder.func_mut().push_bb(program, end_bb);
-                let load = recorder.new_value(program).load(result);
-                recorder.func().push_inst(program, load);
+                let ld = recorder.new_value(program).load(result);
+                recorder.func().push_inst(program, ld);
 
-                load
+                ld
             }
             _ => {
                 let lhs = self.lhs.generate_ir(program, recorder)?;
@@ -509,7 +485,9 @@ impl<'i> GenerateIR<'i> for BinaryExp {
 
                 binary(program, recorder, self.op.into(), lhs, rhs)
             }
-        })
+        };
+
+        Ok(val)
     }
 }
 
@@ -557,113 +535,74 @@ impl<'i> GenerateIR<'i> for Call {
     }
 }
 
-// fn short_circuit_detect<'i>(
-//     program: &mut Program,
-//     recorder: &mut ProgramRecorder<'i>,
-//     cond: &'i Box<Exp>,
-//     check_rhs: BasicBlock,
-//     end_bb: BasicBlock,
-//     result: Value,
-// ) -> Result<()> {
-//     if !cond.is_logical_exp() {
-//         let cond = cond.generate_ir(program, recorder)?;
-//         let st = recorder.new_value(program).store(cond, result);
-//         recorder.func().push_inst(program, st);
-
-//         let jump = recorder.new_value(program).jump(end_bb);
-//         recorder.func().push_inst(program, jump);
-
-//         Ok(())
-//     } else {
-//         let cond = cond.get_bxp().unwrap();
-//         short_circuit(program, recorder, cond, end_bb, result)
-//     }
-// }
-
 fn short_circuit<'i>(
     program: &mut Program,
     recorder: &mut ProgramRecorder<'i>,
     cond: &'i BinaryExp,
     end_bb: BasicBlock,
-    result: Value,
-) -> Result<()> {
+) -> Result<Value> {
+    let result = alloc(recorder, program, Type::get_i32(), None);
+
     match cond.op {
         BinaryOp::And => {
-            let check_rhs = recorder.func().new_anonymous_bb(program);
-            if !cond.lhs.is_logical_exp() {
-                let lhs = cond.lhs.generate_ir(program, recorder)?;
-                let zero = recorder.new_value(program).integer(0);
-                let lhs_checked = recorder
-                    .new_value(program)
-                    .binary(IrBinaryOp::NotEq, lhs, zero);
-                let st = recorder.new_value(program).store(lhs_checked, result);
-                let br = recorder
-                    .new_value(program)
-                    .branch(lhs_checked, check_rhs, end_bb);
-                recorder.func().push_inst(program, lhs_checked);
-                recorder.func().push_inst(program, st);
-                recorder.func().push_inst(program, br);
-            } else {
-                let lhs = cond.lhs.get_bxp().unwrap();
-                short_circuit(program, recorder, lhs, check_rhs, result)?;
-            }
+            let check_rhs = recorder.func().new_bb(program, "%land_rhs");
+            let lhs = cond.lhs.generate_ir(program, recorder)?;
+            let zero = recorder.new_value(program).integer(0);
+            let lhs_checked = recorder
+                .new_value(program)
+                .binary(IrBinaryOp::NotEq, lhs, zero);
+            let st = recorder.new_value(program).store(lhs_checked, result);
+            let br = recorder
+                .new_value(program)
+                .branch(lhs_checked, check_rhs, end_bb);
+            recorder.func().push_inst(program, lhs_checked);
+            recorder.func().push_inst(program, st);
+            recorder.func().push_inst(program, br);
+
             recorder.func_mut().push_bb(program, check_rhs);
-            if !cond.rhs.is_logical_exp() {
-                let rhs = cond.rhs.generate_ir(program, recorder)?;
-                let zero = recorder.new_value(program).integer(0);
-                let rhs_checked = recorder
-                    .new_value(program)
-                    .binary(IrBinaryOp::NotEq, rhs, zero);
-                let st = recorder.new_value(program).store(rhs_checked, result);
-                let jump = recorder.new_value(program).jump(end_bb);
-                recorder.func().push_inst(program, rhs_checked);
-                recorder.func().push_inst(program, st);
-                recorder.func().push_inst(program, jump);
-            } else {
-                let rhs = cond.rhs.get_bxp().unwrap();
-                short_circuit(program, recorder, rhs, end_bb, result)?;
-            }
+            let rhs = cond.rhs.generate_ir(program, recorder)?;
+            let zero = recorder.new_value(program).integer(0);
+            let rhs_checked = recorder
+                .new_value(program)
+                .binary(IrBinaryOp::NotEq, rhs, zero);
+            let st = recorder.new_value(program).store(rhs_checked, result);
+            let jump = recorder.new_value(program).jump(end_bb);
+            recorder.func().push_inst(program, rhs_checked);
+            recorder.func().push_inst(program, st);
+            recorder.func().push_inst(program, jump);
         }
+
         BinaryOp::Or => {
-            let check_rhs = recorder.func().new_anonymous_bb(program);
-            if !cond.lhs.is_logical_exp() {
-                let lhs = cond.lhs.generate_ir(program, recorder)?;
-                let zero = recorder.new_value(program).integer(0);
-                let lhs_checked = recorder
-                    .new_value(program)
-                    .binary(IrBinaryOp::NotEq, lhs, zero);
-                let st = recorder.new_value(program).store(lhs_checked, result);
-                let br = recorder
-                    .new_value(program)
-                    .branch(lhs_checked, end_bb, check_rhs);
-                recorder.func().push_inst(program, lhs_checked);
-                recorder.func().push_inst(program, st);
-                recorder.func().push_inst(program, br);
-            } else {
-                let lhs = cond.lhs.get_bxp().unwrap();
-                short_circuit(program, recorder, lhs, check_rhs, result)?;
-            }
+            let check_rhs = recorder.func().new_bb(program, "%lor_rhs");
+            let lhs = cond.lhs.generate_ir(program, recorder)?;
+            let zero = recorder.new_value(program).integer(0);
+            let lhs_checked = recorder
+                .new_value(program)
+                .binary(IrBinaryOp::NotEq, lhs, zero);
+            let st = recorder.new_value(program).store(lhs_checked, result);
+            let br = recorder
+                .new_value(program)
+                .branch(lhs_checked, end_bb, check_rhs);
+            recorder.func().push_inst(program, lhs_checked);
+            recorder.func().push_inst(program, st);
+            recorder.func().push_inst(program, br);
+
             recorder.func_mut().push_bb(program, check_rhs);
-            if !cond.rhs.is_logical_exp() {
-                let rhs = cond.rhs.generate_ir(program, recorder)?;
-                let zero = recorder.new_value(program).integer(0);
-                let rhs_checked = recorder
-                    .new_value(program)
-                    .binary(IrBinaryOp::NotEq, rhs, zero);
-                let st = recorder.new_value(program).store(rhs_checked, result);
-                let jump = recorder.new_value(program).jump(end_bb);
-                recorder.func().push_inst(program, rhs_checked);
-                recorder.func().push_inst(program, st);
-                recorder.func().push_inst(program, jump);
-            } else {
-                let rhs = cond.rhs.get_bxp().unwrap();
-                short_circuit(program, recorder, rhs, end_bb, result)?;
-            }
+            let rhs = cond.rhs.generate_ir(program, recorder)?;
+            let zero = recorder.new_value(program).integer(0);
+            let rhs_checked = recorder
+                .new_value(program)
+                .binary(IrBinaryOp::NotEq, rhs, zero);
+            let st = recorder.new_value(program).store(rhs_checked, result);
+            let jump = recorder.new_value(program).jump(end_bb);
+            recorder.func().push_inst(program, rhs_checked);
+            recorder.func().push_inst(program, st);
+            recorder.func().push_inst(program, jump);
         }
         _ => unreachable!(),
     }
 
-    Ok(())
+    Ok(result)
 }
 
 impl From<BinaryOp> for IrBinaryOp {
