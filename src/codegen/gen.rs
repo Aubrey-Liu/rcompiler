@@ -8,13 +8,13 @@ pub trait GenerateAsm {
 
 impl GenerateAsm for Program {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
-        self.func_layout()
+        self.funcs()
             .iter()
-            .filter(|&&f| !self.func(f).dfg().values().is_empty())
-            .try_for_each(|&f| {
+            .filter(|(_, data)| data.layout().entry_bb().is_some())
+            .try_for_each(|(&f, data)| {
                 ctx.new_func(f);
                 ctx.set_func(f);
-                self.func(f).generate(gen, ctx)
+                data.generate(gen, ctx)
             })
     }
 }
@@ -38,7 +38,7 @@ impl GenerateAsm for FunctionData {
             .for_each(|(&bb, _)| ctx.register_bb(bb));
 
         // align stack size to 16
-        let ss = (off + 15) / 16 * 16;
+        let ss = (off + 4 + 15) / 16 * 16;
         ctx.cur_func_mut().set_ss(ss);
 
         for (&bb, node) in self.layout().bbs() {
@@ -67,14 +67,14 @@ impl GenerateAsm for Value {
             ValueKind::Binary(v) => {
                 v.generate(gen, ctx)?;
                 if used_by {
-                    gen.store(ctx, "t1", *self)
+                    gen.store("t1", "sp", ctx.cur_func().get_offset(self))
                 } else {
                     Ok(())
                 }
             }
             ValueKind::Load(v) => {
                 v.generate(gen, ctx)?;
-                gen.store(ctx, "t1", *self)
+                gen.store("t1", "sp", ctx.cur_func().get_offset(self))
             }
             _ => Ok(()),
         }
@@ -83,14 +83,14 @@ impl GenerateAsm for Value {
 
 impl GenerateAsm for Load {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
-        gen.load(ctx, "t1", self.src())
+        load(gen, ctx, "t1", self.src())
     }
 }
 
 impl GenerateAsm for Store {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
-        gen.load(ctx, "t1", self.value())?;
-        gen.store(ctx, "t1", self.dest())
+        load(gen, ctx, "t1", self.value())?;
+        gen.store("t1", "sp", ctx.cur_func().get_offset(&self.dest()))
     }
 }
 
@@ -102,15 +102,15 @@ impl GenerateAsm for Jump {
 
 impl GenerateAsm for Branch {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
-        gen.load(ctx, "t1", self.cond())?;
+        load(gen, ctx, "t1", self.cond())?;
         gen.branch(ctx, "t1", self.true_bb(), self.false_bb())
     }
 }
 
 impl GenerateAsm for Binary {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
-        gen.load(ctx, "t1", self.lhs())?;
-        gen.load(ctx, "t2", self.rhs())?;
+        load(gen, ctx, "t1", self.lhs())?;
+        load(gen, ctx, "t2", self.rhs())?;
         gen.binary(self.op(), "t1", "t2", "t1")
     }
 }
@@ -118,7 +118,7 @@ impl GenerateAsm for Binary {
 impl GenerateAsm for Return {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
         if self.value().is_some() {
-            gen.load(ctx, "a0", self.value().unwrap())?;
+            load(gen, ctx, "a0", self.value().unwrap())?;
         }
         gen.epilogue(ctx)
     }

@@ -22,11 +22,9 @@ impl<'a> AsmGenerator<'a> {
     }
 
     pub fn prologue(&mut self, ctx: &Context) -> Result<()> {
-        if ctx.cur_func().ss() != 0 {
-            self.addi("sp", "sp", -ctx.cur_func().ss())
-        } else {
-            Ok(())
-        }
+        self.addi("sp", "sp", -ctx.cur_func().ss())?;
+        // todo: only protect ra if it's not a leaf function
+        writeln!(self.f, "  sw ra, {}(sp)", ctx.cur_func().ss() - 4)
     }
 
     pub fn enter_bb(&mut self, ctx: &Context, bb: BasicBlock) -> Result<()> {
@@ -40,9 +38,8 @@ impl<'a> AsmGenerator<'a> {
     }
 
     pub fn epilogue(&mut self, ctx: &Context) -> Result<()> {
-        if ctx.cur_func().ss() != 0 {
-            self.addi("sp", "sp", ctx.cur_func().ss())?;
-        }
+        self.load("a0", "sp", ctx.cur_func().ss() - 4)?;
+        self.addi("sp", "sp", ctx.cur_func().ss())?;
         writeln!(self.f, "  ret")?;
         writeln!(self.f)
     }
@@ -51,28 +48,20 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f, "  j {}", target)
     }
 
-    pub fn load(&mut self, ctx: &Context, dst: &str, val: Value) -> Result<()> {
-        if let ValueKind::Integer(imm) = ctx.value_kind(val) {
-            return self.loadi(dst, imm.value());
-        }
-        let off = ctx.cur_func().get_offset(&val);
+    pub fn load(&mut self, dst: &str, src: &str, off: i32) -> Result<()> {
         if off >= -2048 && off <= 2047 {
-            writeln!(self.f, "  lw {}, {}(sp)", dst, off)
+            writeln!(self.f, "  lw {}, {}({})", dst, off, src)
         } else {
-            writeln!(self.f, "  li {}, {}", self.tmpr, off)?;
-            writeln!(self.f, "  add {}, {}, sp", self.tmpr, self.tmpr)?;
+            self.addi(self.tmpr, src, off)?;
             writeln!(self.f, "  lw {}, 0({})", dst, self.tmpr)
         }
     }
 
-    pub fn store(&mut self, ctx: &Context, src: &str, val: Value) -> Result<()> {
-        let off = ctx.cur_func().get_offset(&val);
-
+    pub fn store(&mut self, src: &str, dst: &str, off: i32) -> Result<()> {
         if off >= -2048 && off <= 2047 {
-            writeln!(self.f, "  sw {}, {}(sp)", src, off)
+            writeln!(self.f, "  sw {}, {}({})", src, off, dst)
         } else {
-            writeln!(self.f, "  li {}, {}", self.tmpr, off)?;
-            writeln!(self.f, "  add {}, {}, sp", self.tmpr, self.tmpr)?;
+            self.addi(self.tmpr, dst, off)?;
             writeln!(self.f, "  sw {}, 0({})", src, self.tmpr)
         }
     }
@@ -129,5 +118,13 @@ impl<'a> AsmGenerator<'a> {
             f: File::create(path).unwrap(),
             tmpr,
         }
+    }
+}
+
+pub fn load(gen: &mut AsmGenerator, ctx: &mut Context, dst: &str, val: Value) -> Result<()> {
+    if let ValueKind::Integer(imm) = ctx.value_kind(val) {
+        gen.loadi(dst, imm.value())
+    } else {
+        gen.load(dst, "sp", ctx.cur_func().get_offset(&val))
     }
 }
