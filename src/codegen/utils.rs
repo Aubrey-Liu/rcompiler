@@ -31,6 +31,14 @@ impl<'a> AsmGenerator<'a> {
         }
     }
 
+    pub fn la(&mut self, dst: &str, src: &str) -> Result<()> {
+        writeln!(self.f, "  la {}, {}", dst, src)
+    }
+
+    pub fn mv(&mut self, dst: &str, src: &str) -> Result<()> {
+        writeln!(self.f, "  mv {}, {}", dst, src)
+    }
+
     pub fn sw(&mut self, src: &str, dst: &str, off: i32) -> Result<()> {
         if off >= -2048 && off <= 2047 {
             writeln!(self.f, "  sw {}, {}({})", src, off, dst)
@@ -46,6 +54,10 @@ impl<'a> AsmGenerator<'a> {
 
     pub fn bnez(&mut self, cond: &str, target: &str) -> Result<()> {
         writeln!(self.f, "  bnez {}, {}", cond, target)
+    }
+
+    pub fn call(&mut self, callee: &str) -> Result<()> {
+        writeln!(self.f, "  call {}", callee)
     }
 
     pub fn binary(&mut self, op: BinaryOp, lhs: &str, rhs: &str, dst: &str) -> Result<()> {
@@ -83,21 +95,38 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f, "  ret")
     }
 
+    pub fn global_alloc(&mut self, init: i32, id: &usize) -> Result<()> {
+        writeln!(self.f, "  .data")?;
+        writeln!(self.f, "  .globl var{}", id)?;
+        writeln!(self.f, "var{}:", id)?;
+        if init == 0 {
+            writeln!(self.f, "  .zero 4")?;
+        } else {
+            writeln!(self.f, "  .word {}", init)?;
+        }
+        writeln!(self.f)
+    }
+
     pub fn enter_bb(&mut self, name: &str) -> Result<()> {
         writeln!(self.f, "{}:", name)
     }
 
-    pub fn prologue(&mut self, func_name: &str, ss: i32) -> Result<()> {
+    pub fn prologue(&mut self, func_name: &str, ss: i32, is_leaf: bool) -> Result<()> {
         writeln!(self.f, "  .text")?;
         writeln!(self.f, "  .globl {}", func_name)?;
         writeln!(self.f, "{}:", func_name)?;
         self.addi("sp", "sp", -ss)?;
-        // todo: only protect ra if it's not a leaf function
-        self.sw("ra", "sp", ss - 4)
+        if !is_leaf {
+            self.sw("ra", "sp", ss - 4)
+        } else {
+            Ok(())
+        }
     }
 
-    pub fn epilogue(&mut self, ss: i32) -> Result<()> {
-        self.lw("ra", "sp", ss - 4)?;
+    pub fn epilogue(&mut self, ss: i32, is_leaf: bool) -> Result<()> {
+        if !is_leaf {
+            self.lw("ra", "sp", ss - 4)?;
+        }
         self.addi("sp", "sp", ss)?;
         self.ret()?;
         writeln!(self.f)
@@ -111,11 +140,41 @@ impl<'a> AsmGenerator<'a> {
     }
 }
 
-pub fn read_to(gen: &mut AsmGenerator, ctx: &Context, dst: &str, val: Value) -> Result<()> {
-    if let ValueKind::Integer(imm) = ctx.value_kind(val) {
-        gen.li(dst, imm.value())
+pub fn write_to(gen: &mut AsmGenerator, ctx: &Context, src: &str, val: Value) -> Result<()> {
+    if ctx.is_global(&val) {
+        let id = ctx.get_global_var(&val);
+        let name = format!("var{}", id);
+        gen.la("t0", &name)?;
+        gen.sw(src, "t0", 0)
     } else {
-        gen.lw(dst, "sp", ctx.cur_func().get_offset(&val))
+        gen.sw(src, "sp", ctx.cur_func().get_offset(&val))
+    }
+}
+
+pub fn read_to(gen: &mut AsmGenerator, ctx: &Context, dst: &str, val: Value) -> Result<()> {
+    if ctx.is_global(&val) {
+        let id = ctx.get_global_var(&val);
+        let name = format!("var{}", id);
+        gen.la("t0", &name)?;
+        return gen.lw(dst, "t0", 0);
+    }
+    match ctx.cur_func().params().get(&val) {
+        Some(id) => {
+            if *id < 8 {
+                let src = format!("a{}", id);
+                gen.mv(dst, &src)
+            } else {
+                let off = ctx.cur_func().ss() + (id - 8) * 4;
+                gen.lw(dst, "sp", off)
+            }
+        }
+        None => {
+            if let ValueKind::Integer(imm) = ctx.value_kind(val) {
+                gen.li(dst, imm.value())
+            } else {
+                gen.lw(dst, "sp", ctx.cur_func().get_offset(&val))
+            }
+        }
     }
 }
 

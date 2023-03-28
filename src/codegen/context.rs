@@ -2,20 +2,21 @@ use std::{cell::Cell, collections::HashMap};
 
 use super::*;
 
-type InstRegistry = HashMap<Value, i32>;
-
 pub struct Context<'i> {
     program: &'i Program,
+    global_vars: HashMap<Value, usize>,
     functions: HashMap<Function, usize>,
     cur_func: Option<FunctionInfo>,
 }
 
 pub struct FunctionInfo {
     id: Function,
-    registry: InstRegistry,
+    registry: HashMap<Value, i32>,
+    params: HashMap<Value, i32>,
     bbs: HashMap<BasicBlock, String>,
     // stack size
     ss: i32,
+    is_leaf: bool,
 }
 
 impl<'i> Context<'i> {
@@ -26,16 +27,41 @@ impl<'i> Context<'i> {
     pub fn new_with_program(program: &'i Program) -> Self {
         Self {
             program,
+            global_vars: HashMap::new(),
             functions: HashMap::new(),
             cur_func: None,
         }
     }
 
     pub fn value_kind(&self, val: Value) -> &ValueKind {
-        self.func_data().dfg().value(val).kind()
+        self.cur_func_data().dfg().value(val).kind()
     }
 
-    pub fn func_data(&self) -> &FunctionData {
+    pub fn global_alloc(&mut self, gen: &mut AsmGenerator, alloc: Value) {
+        if let ValueKind::GlobalAlloc(g) = self.program.borrow_value(alloc).kind() {
+            g.generate(gen, self, alloc).unwrap();
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn global_init(&self, init: Value) -> i32 {
+        match self.program.borrow_value(init).kind() {
+            ValueKind::ZeroInit(_) => 0,
+            ValueKind::Integer(i) => i.value(),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn get_func_name(&'i self, id: Function) -> &'i str {
+        self.program.func(id).name()
+    }
+
+    pub fn func_data(&self, id: Function) -> &FunctionData {
+        self.program.func(id)
+    }
+
+    pub fn cur_func_data(&self) -> &FunctionData {
         self.program.func(self.cur_func().id())
     }
 
@@ -66,8 +92,21 @@ impl<'i> Context<'i> {
         self.cur_func_mut().register_bb(bb, name);
     }
 
+    pub fn register_global_var(&mut self, global_var: Value) {
+        let id = self.global_vars.len();
+        self.global_vars.insert(global_var, id);
+    }
+
+    pub fn get_global_var(&self, global_var: &Value) -> usize {
+        *self.global_vars.get(global_var).unwrap()
+    }
+
     pub fn is_used(&self, val: Value) -> bool {
-        !self.func_data().dfg().value(val).used_by().is_empty()
+        !self.cur_func_data().dfg().value(val).used_by().is_empty()
+    }
+
+    pub fn is_global(&self, val: &Value) -> bool {
+        self.global_vars.contains_key(val)
     }
 }
 
@@ -75,10 +114,22 @@ impl FunctionInfo {
     pub fn new(id: Function) -> Self {
         FunctionInfo {
             id,
-            registry: InstRegistry::new(),
+            registry: HashMap::new(),
+            params: HashMap::new(),
             bbs: HashMap::new(),
             ss: 0,
+            is_leaf: false,
         }
+    }
+
+    pub fn set_params(&mut self, params: &[Value]) {
+        params.iter().enumerate().for_each(|(id, &val)| {
+            self.params.insert(val, id as i32);
+        });
+    }
+
+    pub fn params(&self) -> &HashMap<Value, i32> {
+        &self.params
     }
 
     pub fn id(&self) -> Function {
@@ -88,6 +139,14 @@ impl FunctionInfo {
     /// Allocated space of the stack of the current function
     pub fn ss(&self) -> i32 {
         self.ss
+    }
+
+    pub fn is_leaf(&self) -> bool {
+        self.is_leaf
+    }
+
+    pub fn set_is_leaf(&mut self, is_leaf: bool) {
+        self.is_leaf = is_leaf;
     }
 
     pub fn get_offset(&self, val: &Value) -> i32 {
