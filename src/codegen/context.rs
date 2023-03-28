@@ -65,6 +65,10 @@ impl<'i> Context<'i> {
         let name = format!(".LBB{}_{}", func_id, id);
         self.cur_func_mut().register_bb(bb, name);
     }
+
+    pub fn is_used(&self, val: Value) -> bool {
+        !self.func_data().dfg().value(val).used_by().is_empty()
+    }
 }
 
 impl FunctionInfo {

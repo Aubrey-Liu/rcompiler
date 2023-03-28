@@ -4,6 +4,7 @@ use super::*;
 
 pub struct AsmGenerator<'a> {
     f: File,
+    // temporary registor name
     tmpr: &'a str,
 }
 
@@ -12,16 +13,16 @@ impl<'a> AsmGenerator<'a> {
         if imm >= -2048 && imm <= 2047 {
             writeln!(self.f, "  addi {}, {}, {}", dst, opr, imm)
         } else {
-            writeln!(self.f, "  li {}, {}", self.tmpr, imm)?;
+            self.li(self.tmpr, imm)?;
             writeln!(self.f, "  add, {}, {}, {}", dst, opr, self.tmpr)
         }
     }
 
-    pub fn loadi(&mut self, dst: &str, imm: i32) -> Result<()> {
+    pub fn li(&mut self, dst: &str, imm: i32) -> Result<()> {
         writeln!(self.f, "  li {}, {}", dst, imm)
     }
 
-    pub fn load(&mut self, dst: &str, src: &str, off: i32) -> Result<()> {
+    pub fn lw(&mut self, dst: &str, src: &str, off: i32) -> Result<()> {
         if off >= -2048 && off <= 2047 {
             writeln!(self.f, "  lw {}, {}({})", dst, off, src)
         } else {
@@ -30,7 +31,7 @@ impl<'a> AsmGenerator<'a> {
         }
     }
 
-    pub fn store(&mut self, src: &str, dst: &str, off: i32) -> Result<()> {
+    pub fn sw(&mut self, src: &str, dst: &str, off: i32) -> Result<()> {
         if off >= -2048 && off <= 2047 {
             writeln!(self.f, "  sw {}, {}({})", src, off, dst)
         } else {
@@ -39,7 +40,7 @@ impl<'a> AsmGenerator<'a> {
         }
     }
 
-    pub fn jump(&mut self, target: &String) -> Result<()> {
+    pub fn j(&mut self, target: &String) -> Result<()> {
         writeln!(self.f, "  j {}", target)
     }
 
@@ -86,10 +87,20 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f, "{}:", name)
     }
 
-    pub fn enter_func(&mut self, name: &str) -> Result<()> {
+    pub fn prologue(&mut self, func_name: &str, ss: i32) -> Result<()> {
         writeln!(self.f, "  .text")?;
-        writeln!(self.f, "  .globl {}", name)?;
-        writeln!(self.f, "{}:", name)
+        writeln!(self.f, "  .globl {}", func_name)?;
+        writeln!(self.f, "{}:", func_name)?;
+        self.addi("sp", "sp", -ss)?;
+        // todo: only protect ra if it's not a leaf function
+        self.sw("ra", "sp", ss - 4)
+    }
+
+    pub fn epilogue(&mut self, ss: i32) -> Result<()> {
+        self.lw("ra", "sp", ss - 4)?;
+        self.addi("sp", "sp", ss)?;
+        self.ret()?;
+        writeln!(self.f)
     }
 
     pub fn from_path(path: &str, tmpr: &'a str) -> Self {
@@ -100,11 +111,11 @@ impl<'a> AsmGenerator<'a> {
     }
 }
 
-pub fn load(gen: &mut AsmGenerator, ctx: &Context, dst: &str, val: Value) -> Result<()> {
+pub fn read_to(gen: &mut AsmGenerator, ctx: &Context, dst: &str, val: Value) -> Result<()> {
     if let ValueKind::Integer(imm) = ctx.value_kind(val) {
-        gen.loadi(dst, imm.value())
+        gen.li(dst, imm.value())
     } else {
-        gen.load(dst, "sp", ctx.cur_func().get_offset(&val))
+        gen.lw(dst, "sp", ctx.cur_func().get_offset(&val))
     }
 }
 
@@ -118,17 +129,5 @@ pub fn branch(
     let true_bb = ctx.cur_func().get_bb_name(true_bb);
     let false_bb = ctx.cur_func().get_bb_name(false_bb);
     gen.bnez(cond, true_bb)?;
-    gen.jump(false_bb)
-}
-
-pub fn prologue(gen: &mut AsmGenerator, ctx: &Context) -> Result<()> {
-    gen.addi("sp", "sp", -ctx.cur_func().ss())?;
-    // todo: only protect ra if it's not a leaf function
-    gen.store("ra", "sp", ctx.cur_func().ss() - 4)
-}
-
-pub fn epilogue(gen: &mut AsmGenerator, ctx: &Context) -> Result<()> {
-    gen.load("ra", "sp", ctx.cur_func().ss() - 4)?;
-    gen.addi("sp", "sp", ctx.cur_func().ss())?;
-    gen.ret()
+    gen.j(false_bb)
 }
