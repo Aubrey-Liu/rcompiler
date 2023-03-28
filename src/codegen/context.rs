@@ -90,8 +90,8 @@ impl FunctionInfo {
         *self.registry.get(val).unwrap()
     }
 
-    pub fn get_bb_name(&self, bb: BasicBlock) -> &String {
-        self.bbs.get(&bb).unwrap()
+    pub fn get_bb_name(&self, bb: &BasicBlock) -> &String {
+        self.bbs.get(bb).unwrap()
     }
 
     pub fn set_ss(&mut self, ss: i32) {

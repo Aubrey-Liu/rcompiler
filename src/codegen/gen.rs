@@ -41,10 +41,10 @@ impl GenerateAsm for FunctionData {
         let ss = (off + 4 + 15) / 16 * 16;
         ctx.cur_func_mut().set_ss(ss);
 
-        for (&bb, node) in self.layout().bbs() {
-            gen.enter_bb(ctx, bb)?;
-            if bb == self.layout().entry_bb().unwrap() {
-                gen.prologue(ctx)?;
+        for (bb, node) in self.layout().bbs() {
+            gen.enter_bb(ctx.cur_func().get_bb_name(bb))?;
+            if *bb == self.layout().entry_bb().unwrap() {
+                prologue(gen, ctx)?;
             }
             node.insts()
                 .keys()
@@ -96,14 +96,14 @@ impl GenerateAsm for Store {
 
 impl GenerateAsm for Jump {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
-        gen.jump(ctx.cur_func().get_bb_name(self.target()))
+        gen.jump(ctx.cur_func().get_bb_name(&self.target()))
     }
 }
 
 impl GenerateAsm for Branch {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
         load(gen, ctx, "t1", self.cond())?;
-        gen.branch(ctx, "t1", self.true_bb(), self.false_bb())
+        branch(gen, ctx, "t1", &self.true_bb(), &self.false_bb())
     }
 }
 
@@ -120,6 +120,6 @@ impl GenerateAsm for Return {
         if self.value().is_some() {
             load(gen, ctx, "a0", self.value().unwrap())?;
         }
-        gen.epilogue(ctx)
+        epilogue(gen, ctx)
     }
 }
