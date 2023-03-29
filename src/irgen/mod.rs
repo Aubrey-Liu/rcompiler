@@ -10,7 +10,8 @@ use std::fs::read_to_string;
 use anyhow::*;
 use koopa::back::KoopaGenerator;
 use koopa::ir::BinaryOp as IrBinaryOp;
-use koopa::ir::{BasicBlock, Function, FunctionData, Program, Type, Value};
+use koopa::ir::Type as IrType;
+use koopa::ir::{BasicBlock, Function, FunctionData, Program, Value};
 
 use crate::sysy;
 use gen::*;

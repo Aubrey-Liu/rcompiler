@@ -21,24 +21,34 @@ impl<'i> GenerateIR<'i> for CompUnit {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        recorder.declare_func(program, "getint", vec![], Type::get_i32())?;
-        recorder.declare_func(program, "getch", vec![], Type::get_i32())?;
+        recorder.declare_func(program, "getint", vec![], IrType::get_i32())?;
+        recorder.declare_func(program, "getch", vec![], IrType::get_i32())?;
         recorder.declare_func(
             program,
             "getarray",
-            vec![Type::get_pointer(Type::get_i32())],
-            Type::get_i32(),
+            vec![IrType::get_pointer(IrType::get_i32())],
+            IrType::get_i32(),
         )?;
-        recorder.declare_func(program, "putint", vec![Type::get_i32()], Type::get_unit())?;
-        recorder.declare_func(program, "putch", vec![Type::get_i32()], Type::get_unit())?;
+        recorder.declare_func(
+            program,
+            "putint",
+            vec![IrType::get_i32()],
+            IrType::get_unit(),
+        )?;
+        recorder.declare_func(
+            program,
+            "putch",
+            vec![IrType::get_i32()],
+            IrType::get_unit(),
+        )?;
         recorder.declare_func(
             program,
             "putarray",
-            vec![Type::get_i32(), Type::get_pointer(Type::get_i32())],
-            Type::get_unit(),
+            vec![IrType::get_i32(), IrType::get_pointer(IrType::get_i32())],
+            IrType::get_unit(),
         )?;
-        recorder.declare_func(program, "starttime", vec![], Type::get_unit())?;
-        recorder.declare_func(program, "stoptime", vec![], Type::get_unit())?;
+        recorder.declare_func(program, "starttime", vec![], IrType::get_unit())?;
+        recorder.declare_func(program, "stoptime", vec![], IrType::get_unit())?;
 
         self.items
             .iter()
@@ -98,8 +108,13 @@ impl<'i> GenerateIR<'i> for FuncDef {
         }
 
         // allocate the return value
-        if !matches!(self.ret_ty, DataType::Void) {
-            let ret_val = alloc(recorder, program, Type::get_i32(), Some("%ret".to_owned()));
+        if !matches!(self.ret_ty, Type::Void) {
+            let ret_val = alloc(
+                recorder,
+                program,
+                IrType::get_i32(),
+                Some("%ret".to_owned()),
+            );
             recorder.func_mut().set_ret_val(ret_val);
         }
 
@@ -122,7 +137,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
         recorder.func_mut().push_bb(program, end_bb);
 
         // load the return value and return
-        if matches!(self.ret_ty, DataType::Void) {
+        if matches!(self.ret_ty, Type::Void) {
             let ret = recorder.new_value(program).ret(None);
             recorder.func().push_inst(program, ret);
         } else {
@@ -189,7 +204,7 @@ impl<'i> GenerateIR<'i> for VarDecl {
                 let val = exp.const_eval(recorder).unwrap();
                 program.new_value().integer(val)
             } else {
-                program.new_value().zero_init(Type::get_i32())
+                program.new_value().zero_init(IrType::get_i32())
             };
             let var = program.new_value().global_alloc(init);
             program.set_value_name(var, Some(format!("@{}", self.name)));
@@ -200,7 +215,7 @@ impl<'i> GenerateIR<'i> for VarDecl {
             let var = alloc(
                 recorder,
                 program,
-                Type::get_i32(),
+                IrType::get_i32(),
                 Some(format!("@{}", &self.name)),
             );
             if let Some(exp) = &self.init {
@@ -543,7 +558,7 @@ fn short_circuit<'i>(
     cond: &'i BinaryExp,
     end_bb: BasicBlock,
 ) -> Result<Value> {
-    let result = alloc(recorder, program, Type::get_i32(), None);
+    let result = alloc(recorder, program, IrType::get_i32(), None);
 
     match cond.op {
         BinaryOp::And => {

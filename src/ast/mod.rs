@@ -1,7 +1,8 @@
 pub(crate) mod exp;
+pub(crate) mod ty;
 
 pub(crate) use exp::*;
-use koopa::ir::Type;
+pub(crate) use ty::*;
 
 #[derive(Debug)]
 pub struct CompUnit {
@@ -14,21 +15,9 @@ pub enum GlobalItem {
     Func(FuncDef),
 }
 
-// #[derive(Debug)]
-// pub enum GlobalDecl {
-//     VarDecl(Vec<VarDecl>),
-//     ConstDecl(Vec<ConstDecl>),
-// }
-
-#[derive(Debug, Clone, Copy)]
-pub enum DataType {
-    Int,
-    Void,
-}
-
 #[derive(Debug)]
 pub struct FuncDef {
-    pub ret_ty: DataType,
+    pub ret_ty: Type,
     pub ident: String,
     pub params: Vec<FuncParam>,
     pub block: Block,
@@ -36,7 +25,7 @@ pub struct FuncDef {
 
 #[derive(Debug)]
 pub struct FuncParam {
-    pub ty: DataType,
+    pub ty: Type,
     pub ident: String,
 }
 
@@ -122,20 +111,4 @@ impl VarDecl {
     pub fn new(name: String, init: Option<Box<Exp>>) -> Self {
         Self { name, init }
     }
-}
-
-impl DataType {
-    pub fn into_ty(&self) -> Type {
-        match self {
-            DataType::Int => Type::get_i32(),
-            DataType::Void => Type::get_unit(),
-        }
-    }
-
-    // pub fn into_pointer_ty(&self) -> Type {
-    //     match self {
-    //         DataType::Int => Type::get_pointer(Type::get_i32()),
-    //         _ => panic!("attempt to get a pointer type of void"),
-    //     }
-    // }
 }

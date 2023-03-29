@@ -69,7 +69,7 @@ impl<'i> ProgramRecorder<'i> {
     }
 
     pub fn new_func(&mut self, program: &mut Program, func_def: &'i FuncDef) -> Function {
-        let params: Vec<(Option<String>, Type)> = func_def
+        let params: Vec<(Option<String>, IrType)> = func_def
             .params
             .iter()
             .map(|p| (Some(format!("@{}", &p.ident)), p.ty.into_ty()))
@@ -99,8 +99,8 @@ impl<'i> ProgramRecorder<'i> {
         &mut self,
         program: &mut Program,
         name: &'i str,
-        params_ty: Vec<Type>,
-        ret_ty: Type,
+        params_ty: Vec<IrType>,
+        ret_ty: IrType,
     ) -> Result<()> {
         let id = program.new_func(FunctionData::new_decl(
             format!("@{}", name),

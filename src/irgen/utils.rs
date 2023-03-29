@@ -5,7 +5,7 @@ use super::*;
 pub fn alloc(
     recorder: &ProgramRecorder,
     program: &mut Program,
-    ty: Type,
+    ty: IrType,
     name: Option<String>,
 ) -> Value {
     let entry = recorder.func().entry_bb();
