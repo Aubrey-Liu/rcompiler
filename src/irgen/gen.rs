@@ -186,7 +186,8 @@ impl<'i> GenerateIR<'i> for VarDecl {
     ) -> Result<Self::Out> {
         if recorder.is_global() {
             let init = if let Some(exp) = &self.init {
-                program.new_value().integer(exp.const_eval(recorder))
+                let val = exp.const_eval(recorder).unwrap();
+                program.new_value().integer(val)
             } else {
                 program.new_value().zero_init(Type::get_i32())
             };
@@ -222,7 +223,7 @@ impl<'i> GenerateIR<'i> for ConstDecl {
         _program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        recorder.insert_const_var(&self.name, self.init.const_eval(recorder))
+        recorder.insert_const_var(&self.name, self.init.const_eval(recorder).unwrap())
     }
 }
 
@@ -459,7 +460,11 @@ impl<'i> GenerateIR<'i> for BinaryExp {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        let val = match self.op {
+        if let Some(result) = self.const_eval(recorder) {
+            return Ok(recorder.new_value(program).integer(result));
+        }
+
+        match self.op {
             BinaryOp::And | BinaryOp::Or => {
                 let name = if matches!(self.op, BinaryOp::And) {
                     "%land_end"
@@ -472,17 +477,15 @@ impl<'i> GenerateIR<'i> for BinaryExp {
                 let ld = recorder.new_value(program).load(result);
                 recorder.func().push_inst(program, ld);
 
-                ld
+                Ok(ld)
             }
             _ => {
                 let lhs = self.lhs.generate_ir(program, recorder)?;
                 let rhs = self.rhs.generate_ir(program, recorder)?;
 
-                binary(program, recorder, self.op.into(), lhs, rhs)
+                Ok(binary(program, recorder, self.op.into(), lhs, rhs))
             }
-        };
-
-        Ok(val)
+        }
     }
 }
 
@@ -494,6 +497,10 @@ impl<'i> GenerateIR<'i> for UnaryExp {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
+        if let Some(result) = self.const_eval(recorder) {
+            return Ok(recorder.new_value(program).integer(result));
+        }
+
         match self {
             UnaryExp::Unary(op, exp) => {
                 let opr = exp.generate_ir(program, recorder)?;

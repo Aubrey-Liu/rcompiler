@@ -4,18 +4,17 @@ use super::*;
 
 pub struct Context<'i> {
     program: &'i Program,
-    global_vars: HashMap<Value, usize>,
+    global_values: HashMap<Value, usize>,
     functions: HashMap<Function, usize>,
     cur_func: Option<FunctionInfo>,
 }
 
 pub struct FunctionInfo {
     id: Function,
-    registry: HashMap<Value, i32>,
+    local_values: HashMap<Value, i32>,
     params: HashMap<Value, i32>,
-    bbs: HashMap<BasicBlock, String>,
-    // stack size
-    ss: i32,
+    blocks: HashMap<BasicBlock, String>,
+    ss: i32, // stack size
     is_leaf: bool,
 }
 
@@ -27,7 +26,7 @@ impl<'i> Context<'i> {
     pub fn new_with_program(program: &'i Program) -> Self {
         Self {
             program,
-            global_vars: HashMap::new(),
+            global_values: HashMap::new(),
             functions: HashMap::new(),
             cur_func: None,
         }
@@ -93,12 +92,12 @@ impl<'i> Context<'i> {
     }
 
     pub fn register_global_var(&mut self, global_var: Value) {
-        let id = self.global_vars.len();
-        self.global_vars.insert(global_var, id);
+        let id = self.global_values.len();
+        self.global_values.insert(global_var, id);
     }
 
     pub fn get_global_var(&self, global_var: &Value) -> usize {
-        *self.global_vars.get(global_var).unwrap()
+        *self.global_values.get(global_var).unwrap()
     }
 
     pub fn is_used(&self, val: Value) -> bool {
@@ -106,7 +105,7 @@ impl<'i> Context<'i> {
     }
 
     pub fn is_global(&self, val: &Value) -> bool {
-        self.global_vars.contains_key(val)
+        self.global_values.contains_key(val)
     }
 }
 
@@ -114,9 +113,9 @@ impl FunctionInfo {
     pub fn new(id: Function) -> Self {
         FunctionInfo {
             id,
-            registry: HashMap::new(),
+            local_values: HashMap::new(),
             params: HashMap::new(),
-            bbs: HashMap::new(),
+            blocks: HashMap::new(),
             ss: 0,
             is_leaf: false,
         }
@@ -150,11 +149,11 @@ impl FunctionInfo {
     }
 
     pub fn get_offset(&self, val: &Value) -> i32 {
-        *self.registry.get(val).unwrap()
+        *self.local_values.get(val).unwrap()
     }
 
     pub fn get_bb_name(&self, bb: &BasicBlock) -> &String {
-        self.bbs.get(bb).unwrap()
+        self.blocks.get(bb).unwrap()
     }
 
     pub fn set_ss(&mut self, ss: i32) {
@@ -162,11 +161,11 @@ impl FunctionInfo {
     }
 
     pub fn register_var(&mut self, inst: Value, off: i32) {
-        self.registry.insert(inst, off);
+        self.local_values.insert(inst, off);
     }
 
     /// Record the name of a basic block
     pub fn register_bb(&mut self, bb: BasicBlock, name: String) {
-        self.bbs.insert(bb, name);
+        self.blocks.insert(bb, name);
     }
 }

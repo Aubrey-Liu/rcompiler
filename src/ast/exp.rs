@@ -61,38 +61,47 @@ pub enum UnaryOp {
 }
 
 pub trait ConstEval {
-    fn const_eval(&self, recorder: &ProgramRecorder) -> i32;
+    fn const_eval(&self, recorder: &ProgramRecorder) -> Option<i32>;
 }
 
 impl ConstEval for UnaryExp {
-    fn const_eval(&self, recorder: &ProgramRecorder) -> i32 {
-        if let UnaryExp::Unary(op, exp) = self {
-            let opr = exp.const_eval(recorder);
-            return eval_unary(*op, opr);
+    fn const_eval(&self, recorder: &ProgramRecorder) -> Option<i32> {
+        match self {
+            UnaryExp::Unary(op, exp) => {
+                if let Some(opr) = exp.const_eval(recorder) {
+                    Some(eval_unary(*op, opr))
+                } else {
+                    None
+                }
+            }
+            UnaryExp::Call(_) => None,
         }
-        panic!("attempt to const evaluate a function call");
     }
 }
 
 impl ConstEval for BinaryExp {
-    fn const_eval(&self, recorder: &ProgramRecorder) -> i32 {
+    fn const_eval(&self, recorder: &ProgramRecorder) -> Option<i32> {
         let lhs = self.lhs.const_eval(recorder);
         let rhs = self.rhs.const_eval(recorder);
-        eval_binary(self.op, lhs, rhs)
+        if let (Some(lhs), Some(rhs)) = (lhs, rhs) {
+            Some(eval_binary(self.op, lhs, rhs))
+        } else {
+            None
+        }
     }
 }
 
 impl ConstEval for Exp {
-    fn const_eval(&self, recorder: &ProgramRecorder) -> i32 {
+    fn const_eval(&self, recorder: &ProgramRecorder) -> Option<i32> {
         match self {
-            Exp::Integer(i) => *i,
+            Exp::Integer(i) => Some(*i),
             Exp::Uxp(uxp) => uxp.const_eval(recorder),
             Exp::Bxp(bxp) => bxp.const_eval(recorder),
             Exp::LVal(name) => {
-                if let Symbol::ConstVar(i) = recorder.get_symbol(name).unwrap() {
-                    *i
+                if let Ok(Symbol::ConstVar(i)) = recorder.get_symbol(name) {
+                    Some(*i)
                 } else {
-                    panic!("attempt to use a non-constant value in a constant")
+                    None
                 }
             }
             Exp::Error => panic!("expected an expression"),
@@ -130,10 +139,10 @@ pub fn eval_binary(op: BinaryOp, lhs: i32, rhs: i32) -> i32 {
     }
 }
 
-pub fn eval_unary(op: UnaryOp, rhs: i32) -> i32 {
+pub fn eval_unary(op: UnaryOp, opr: i32) -> i32 {
     match op {
-        UnaryOp::Nop => rhs,
-        UnaryOp::Neg => -rhs,
-        UnaryOp::Not => (rhs == 0) as i32,
+        UnaryOp::Nop => opr,
+        UnaryOp::Neg => -opr,
+        UnaryOp::Not => (opr == 0) as i32,
     }
 }
