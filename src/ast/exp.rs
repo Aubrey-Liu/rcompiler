@@ -6,7 +6,7 @@ use crate::irgen::ProgramRecorder;
 #[derive(Debug)]
 pub enum Exp {
     Integer(i32),
-    LVal(String),
+    LVal(LVal),
     Uxp(UnaryExp),
     Bxp(BinaryExp),
     Error,
@@ -28,12 +28,19 @@ pub enum UnaryExp {
 #[derive(Debug)]
 pub struct Call {
     pub func_id: String,
-    pub args: Vec<Box<Exp>>,
+    pub args: Vec<Exp>,
 }
 
 #[derive(Debug)]
 pub struct LVal {
     pub ident: String,
+    pub dims: Vec<Exp>,
+}
+
+#[derive(Debug)]
+pub enum InitVal {
+    Exp(Exp),
+    List(Vec<InitVal>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -97,8 +104,9 @@ impl ConstEval for Exp {
             Exp::Integer(i) => Some(*i),
             Exp::Uxp(uxp) => uxp.const_eval(recorder),
             Exp::Bxp(bxp) => bxp.const_eval(recorder),
-            Exp::LVal(name) => {
-                if let Ok(Symbol::ConstVar(i)) = recorder.get_symbol(name) {
+            Exp::LVal(lval) => {
+                let id = &lval.ident;
+                if let Ok(Symbol::ConstVar(i)) = recorder.get_symbol(id) {
                     Some(*i)
                 } else {
                     None

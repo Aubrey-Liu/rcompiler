@@ -55,11 +55,6 @@ VarDecl: Vec<VarDecl> = {
   }
 };
 
-VarDef: VarDecl = {
-  Ident => VarDecl::new(<>, None),
-  <name: Ident> "=" <exp: Exp> => VarDecl::new(name, Some(exp)),
-};
-
 ConstDecl: Vec<ConstDecl> = {
   "const" <ty: Type> <defs: Comma<ConstDef>> ";" => {
     if !matches!(ty, Type::Int) {
@@ -69,8 +64,13 @@ ConstDecl: Vec<ConstDecl> = {
   }
 };
 
-ConstDef: ConstDecl = <name: Ident> "=" <init: Exp> => {
-  ConstDecl { name, init }
+VarDef: VarDecl = <lval: LVal> <init: ("=" <InitVal>)?> => VarDecl::new(lval, init);
+
+ConstDef: ConstDecl = <lval: LVal> "=" <init: InitVal> => ConstDecl::new(lval, init);
+
+InitVal: InitVal = {
+  Exp => InitVal::Exp(<>),
+  "{" <Comma<InitVal>> "}" => InitVal::List(<>),
 };
 
 // Statement
@@ -80,8 +80,8 @@ Stmt: Stmt = {
 };
 
 NonIfStatement: Stmt = {
-  <name: LVal> "=" <val: Exp> ";" => Stmt::Assign(Assign { name, val }),
-  Block => Stmt::Block(Box::new(<>)),
+  <lval: LVal> "=" <val: Exp> ";" => Stmt::Assign(Assign { lval, val }),
+  Block => Stmt::Block(<>),
   <Exp?> ";" => Stmt::Exp(<>),
   "return" <Exp?> ";" => Stmt::Return(Return { ret_val: <> }),
   "continue" ";" => Stmt::Continue(Continue),
@@ -124,35 +124,26 @@ ClosedStatement: Stmt = {
   }),
 };
 
-// identifier
-Ident: String = r"[_a-zA-Z][_a-zA-Z0-9]*" => <>.to_string();
+LVal: LVal = <ident: Ident> <dims: Dim*> => LVal {<>};
 
-LVal: String = Ident => <>;
-
-IntConst: i32 = {
-  r"[1-9][0-9]*" => i32::from_str_radix(<>, 10).unwrap(),
-  r"0[0-7]*" => i32::from_str_radix(<>, 8).unwrap(),
-  r"0[xX][0-9a-fA-F]+" => i32::from_str_radix(&<>[2..], 16).unwrap(),
-};
+Dim: Exp = "[" <Exp> "]" => <>;
 
 // Expressions
-Exp: Box<Exp> = {
+Exp: Exp = {
   LOrExp => <>,
 };
 
-PrimaryExp: Box<Exp> = {
+PrimaryExp: Exp = {
   "(" <Exp> ")" => <>,
-  IntConst => Box::new(Exp::Integer(<>)),
-  LVal => Box::new(Exp::LVal(<>)),
-  ! => { errors.push(<>); Box::new(Exp::Error) },
+  IntConst => Exp::Integer(<>),
+  LVal => Exp::LVal(<>),
+  ! => { errors.push(<>); Exp::Error },
 };
 
-UnaryExp: Box<Exp> = {
+UnaryExp: Exp = {
   PrimaryExp => <>,
-  Call => Box::new(Exp::Uxp(UnaryExp::Call(<>))),
-  <op: UnaryOp> <uxp: UnaryExp> => {
-    Box::new(Exp::Uxp(UnaryExp::Unary(op, uxp)))
-  },
+  Call => Exp::Uxp(UnaryExp::Call(<>)),
+  <op: UnaryOp> <uxp: UnaryExp> => Exp::Uxp(UnaryExp::Unary(op, Box::new(uxp))),
 };
 
 Call: Call = {
@@ -161,9 +152,9 @@ Call: Call = {
 };
 
 // macro for all the binary expressions
-Tier<Op, NextTier>: Box<Exp> = {
+Tier<Op, NextTier>: Exp = {
   <l: Tier<Op, NextTier>> <op: Op> <r: NextTier> => {
-    Box::new(Exp::Bxp(BinaryExp { op: op, lhs: l, rhs: r }))
+    Exp::Bxp(BinaryExp { op: op, lhs: Box::new(l), rhs: Box::new(r) })
   },
   NextTier
 };
@@ -213,8 +204,17 @@ UnaryOp: UnaryOp = {
   "!" => UnaryOp::Not,
 };
 
+IntConst: i32 = {
+  r"[1-9][0-9]*" => i32::from_str_radix(<>, 10).unwrap(),
+  r"0[0-7]*" => i32::from_str_radix(<>, 8).unwrap(),
+  r"0[xX][0-9a-fA-F]+" => i32::from_str_radix(&<>[2..], 16).unwrap(),
+};
+
+// identifier
+Ident: String = r"[_a-zA-Z][_a-zA-Z0-9]*" => <>.to_string();
+
 #[inline]
-Condition: Box<Exp> = "(" <Exp> ")" => <>;
+Condition: Exp = "(" <Exp> ")" => <>;
 
 #[inline]
 Comma<T>: Vec<T> = {

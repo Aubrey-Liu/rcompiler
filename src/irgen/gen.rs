@@ -199,32 +199,41 @@ impl<'i> GenerateIR<'i> for VarDecl {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
+        // todo: support array
+        let id = &self.lval.ident;
+
         if recorder.is_global() {
-            let init = if let Some(exp) = &self.init {
-                let val = exp.const_eval(recorder).unwrap();
-                program.new_value().integer(val)
+            let init = if let Some(init) = &self.init {
+                if let InitVal::Exp(exp) = init {
+                    let val = exp.const_eval(recorder).unwrap();
+                    program.new_value().integer(val)
+                } else {
+                    todo!()
+                }
             } else {
                 program.new_value().zero_init(IrType::get_i32())
             };
             let var = program.new_value().global_alloc(init);
-            program.set_value_name(var, Some(format!("@{}", self.name)));
-            recorder.insert_var(&self.name, var, true)?;
-
-            Ok(())
+            program.set_value_name(var, Some(format!("@{}", &id)));
+            recorder.insert_var(&id, var, true)
         } else {
             let var = alloc(
                 recorder,
                 program,
                 IrType::get_i32(),
-                Some(format!("@{}", &self.name)),
+                Some(format!("@{}", &id)),
             );
-            if let Some(exp) = &self.init {
-                let init_val = exp.generate_ir(program, recorder)?;
-                let init = recorder.new_value(program).store(init_val, var);
-                recorder.func().push_inst(program, init);
-                recorder.insert_var(&self.name, var, true)
+            if let Some(init) = &self.init {
+                if let InitVal::Exp(exp) = init {
+                    let init_val = exp.generate_ir(program, recorder)?;
+                    let st = recorder.new_value(program).store(init_val, var);
+                    recorder.func().push_inst(program, st);
+                    recorder.insert_var(&id, var, true)
+                } else {
+                    todo!()
+                }
             } else {
-                recorder.insert_var(&self.name, var, false)
+                recorder.insert_var(&id, var, false)
             }
         }
     }
@@ -238,7 +247,11 @@ impl<'i> GenerateIR<'i> for ConstDecl {
         _program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        recorder.insert_const_var(&self.name, self.init.const_eval(recorder).unwrap())
+        if let InitVal::Exp(exp) = &self.init {
+            recorder.insert_const_var(&self.lval.ident, exp.const_eval(recorder).unwrap())
+        } else {
+            todo!()
+        }
     }
 }
 
@@ -273,14 +286,15 @@ impl<'i> GenerateIR<'i> for Assign {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        let dst = match recorder.get_symbol(&self.name).unwrap() {
+        let id = &self.lval.ident;
+        let dst = match recorder.get_symbol(id).unwrap() {
             Symbol::Var { val, .. } => *val,
-            Symbol::ConstVar(_) => bail!("\"{}\" must be a modifiable lvalue", self.name),
+            Symbol::ConstVar(_) => bail!("\"{}\" must be a modifiable lvalue", id),
         };
         let val = self.val.generate_ir(program, recorder)?;
         let st = recorder.new_value(program).store(val, dst);
         recorder.func().push_inst(program, st);
-        recorder.initialize(&self.name)?;
+        recorder.initialize(id)?;
 
         Ok(())
     }
@@ -456,7 +470,7 @@ impl<'i> GenerateIR<'i> for Exp {
             Exp::Integer(i) => recorder.new_value(program).integer(*i),
             Exp::Uxp(uxp) => uxp.generate_ir(program, recorder)?,
             Exp::Bxp(bxp) => bxp.generate_ir(program, recorder)?,
-            Exp::LVal(name) => match recorder.get_symbol(name).unwrap() {
+            Exp::LVal(lval) => match recorder.get_symbol(&lval.ident).unwrap() {
                 Symbol::ConstVar(i) => recorder.new_value(program).integer(*i),
                 Symbol::Var { val, init } => load_var(program, recorder, *val, *init),
             },

@@ -49,18 +49,18 @@ pub enum Decl {
 #[derive(Debug)]
 pub enum Stmt {
     Assign(Assign),
-    Block(Box<Block>),
+    Block(Block),
     Branch(Branch),
     Break(Break),
     Continue(Continue),
-    Exp(Option<Box<Exp>>),
+    Exp(Option<Exp>),
     While(While),
     Return(Return),
 }
 
 #[derive(Debug)]
 pub struct Return {
-    pub ret_val: Option<Box<Exp>>,
+    pub ret_val: Option<Exp>,
 }
 
 #[derive(Debug)]
@@ -71,13 +71,13 @@ pub struct Break;
 
 #[derive(Debug)]
 pub struct While {
-    pub cond: Box<Exp>,
+    pub cond: Exp,
     pub stmt: Box<Stmt>,
 }
 
 #[derive(Debug)]
 pub struct Branch {
-    pub cond: Box<Exp>,
+    pub cond: Exp,
     pub if_stmt: Box<Stmt>,
     pub el_stmt: Option<Box<Stmt>>,
 }
@@ -85,20 +85,22 @@ pub struct Branch {
 #[derive(Debug)]
 pub struct Assign {
     /// Assignment
-    pub name: String,
-    pub val: Box<Exp>,
+    pub lval: LVal,
+    pub val: Exp,
 }
 
 #[derive(Debug)]
 pub struct ConstDecl {
-    pub name: String,
-    pub init: Box<Exp>,
+    pub lval: LVal,
+    pub init: InitVal,
+    pub ty: Type,
 }
 
 #[derive(Debug)]
 pub struct VarDecl {
-    pub name: String,
-    pub init: Option<Box<Exp>>,
+    pub lval: LVal,
+    pub init: Option<InitVal>,
+    pub ty: Type,
 }
 
 impl Block {
@@ -108,7 +110,15 @@ impl Block {
 }
 
 impl VarDecl {
-    pub fn new(name: String, init: Option<Box<Exp>>) -> Self {
-        Self { name, init }
+    pub fn new(lval: LVal, init: Option<InitVal>) -> Self {
+        let ty = Type::new_from_dims(&lval.dims);
+        Self { lval, init, ty }
+    }
+}
+
+impl ConstDecl {
+    pub fn new(lval: LVal, init: InitVal) -> Self {
+        let ty = Type::new_from_dims(&lval.dims);
+        Self { lval, init, ty }
     }
 }
