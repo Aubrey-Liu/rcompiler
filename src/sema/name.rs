@@ -8,8 +8,10 @@ pub trait Renamer {
 
 impl Renamer for CompUnit {
     fn rename(&mut self, manager: &mut NameManager) {
+        manager.enter_scope();
         manager.install_lib();
         self.items.iter_mut().for_each(|item| item.rename(manager));
+        manager.exit_scope();
     }
 }
 
@@ -117,6 +119,7 @@ impl Renamer for Assign {
 
 impl Renamer for ConstDecl {
     fn rename(&mut self, manager: &mut NameManager) {
+        self.init.rename(manager);
         manager.insert_name(&self.lval.ident);
         self.lval.rename(manager);
     }
@@ -124,8 +127,21 @@ impl Renamer for ConstDecl {
 
 impl Renamer for VarDecl {
     fn rename(&mut self, manager: &mut NameManager) {
+        if let Some(init) = &mut self.init {
+            init.rename(manager);
+        }
+
         manager.insert_name(&self.lval.ident);
         self.lval.rename(manager);
+    }
+}
+
+impl Renamer for InitVal {
+    fn rename(&mut self, manager: &mut NameManager) {
+        match self {
+            Self::Exp(e) => e.rename(manager),
+            Self::List(e) => e.iter_mut().for_each(|e| e.rename(manager)),
+        }
     }
 }
 
@@ -179,7 +195,7 @@ pub struct NameManager {
 impl NameManager {
     pub fn new() -> Self {
         NameManager {
-            mapping: vec![HashMap::new()],
+            mapping: vec![],
             pool: HashSet::new(),
         }
     }

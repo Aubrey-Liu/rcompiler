@@ -15,15 +15,12 @@ use koopa::ir::BinaryOp as IrBinaryOp;
 use koopa::ir::Type as IrType;
 use koopa::ir::{BasicBlock, Function, FunctionData, Program, Value};
 
+use crate::sema::*;
 use crate::sysy;
 use gen::*;
 use utils::*;
 
 pub fn generate_mem_ir(ipath: &str) -> Result<Program> {
-    use crate::sema::analyze::Analyzer;
-    use crate::sema::name::*;
-    use crate::sema::symbol::SymbolTable;
-
     let input = read_to_string(ipath)?;
     let mut errors = vec![];
     let mut ast = sysy::CompUnitParser::new()
@@ -33,13 +30,11 @@ pub fn generate_mem_ir(ipath: &str) -> Result<Program> {
     let mut manager = NameManager::new();
     ast.rename(&mut manager);
 
-    dbg!(&ast);
     let symbols = Rc::new(RefCell::new(SymbolTable::new()));
     ast.analyze(&mut symbols.borrow_mut())?;
 
     let mut program = Program::new();
     let mut recorder = ProgramRecorder::new(&symbols);
-
     ast.generate_ir(&mut program, &mut recorder)?;
 
     Ok(program)

@@ -4,6 +4,9 @@ pub(crate) mod name;
 pub(crate) mod symbol;
 pub(crate) mod ty;
 
+pub use analyze::*;
+pub use name::*;
+pub use symbol::*;
+
 use eval::*;
-use symbol::*;
 use ty::*;
