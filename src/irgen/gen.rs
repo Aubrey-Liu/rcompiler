@@ -1,4 +1,7 @@
+use crate::ast::Type as AstType;
+use crate::sema::symbol::Symbol;
 use koopa::ir::builder_traits::{GlobalInstBuilder, LocalInstBuilder, ValueBuilder};
+use koopa::ir::Type;
 
 use super::*;
 use crate::ast::*;
@@ -21,34 +24,7 @@ impl<'i> GenerateIR<'i> for CompUnit {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        recorder.declare_func(program, "getint", vec![], IrType::get_i32())?;
-        recorder.declare_func(program, "getch", vec![], IrType::get_i32())?;
-        recorder.declare_func(
-            program,
-            "getarray",
-            vec![IrType::get_pointer(IrType::get_i32())],
-            IrType::get_i32(),
-        )?;
-        recorder.declare_func(
-            program,
-            "putint",
-            vec![IrType::get_i32()],
-            IrType::get_unit(),
-        )?;
-        recorder.declare_func(
-            program,
-            "putch",
-            vec![IrType::get_i32()],
-            IrType::get_unit(),
-        )?;
-        recorder.declare_func(
-            program,
-            "putarray",
-            vec![IrType::get_i32(), IrType::get_pointer(IrType::get_i32())],
-            IrType::get_unit(),
-        )?;
-        recorder.declare_func(program, "starttime", vec![], IrType::get_unit())?;
-        recorder.declare_func(program, "stoptime", vec![], IrType::get_unit())?;
+        recorder.install_lib(program);
 
         self.items
             .iter()
@@ -79,11 +55,8 @@ impl<'i> GenerateIR<'i> for FuncDef {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        recorder.enter_scope();
-
         // generate the function and its entry & end blocks
-        let id = recorder.new_func(program, self);
-        recorder.insert_func(&self.ident, id)?;
+        recorder.new_func(program, self);
 
         // enter the entry block
         let entry_bb = recorder.func().entry_bb();
@@ -96,19 +69,19 @@ impl<'i> GenerateIR<'i> for FuncDef {
             .map(|v| *v)
             .collect();
         for (value, param) in param_values.iter().zip(&self.params) {
-            let dst = alloc(
+            let val = alloc(
                 recorder,
                 program,
-                param.ty.into_ty(),
+                Type::get_i32(),
                 Some(format!("%{}", &param.ident)),
             );
-            recorder.insert_var(&param.ident, dst, true).unwrap();
-            let st = recorder.new_value(program).store(*value, dst);
+            recorder.insert_value(&param.ident, val);
+            let st = recorder.new_value(program).store(*value, val);
             recorder.func().push_inst(program, st);
         }
 
         // allocate the return value
-        if !matches!(self.ret_ty, Type::Void) {
+        if !matches!(self.ret_ty, AstType::Void) {
             let ret_val = alloc(
                 recorder,
                 program,
@@ -137,7 +110,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
         recorder.func_mut().push_bb(program, end_bb);
 
         // load the return value and return
-        if matches!(self.ret_ty, Type::Void) {
+        if matches!(self.ret_ty, AstType::Void) {
             let ret = recorder.new_value(program).ret(None);
             recorder.func().push_inst(program, ret);
         } else {
@@ -147,7 +120,6 @@ impl<'i> GenerateIR<'i> for FuncDef {
             recorder.func().push_inst(program, ld);
             recorder.func().push_inst(program, ret);
         }
-        recorder.exit_scope();
 
         Ok(())
     }
@@ -161,12 +133,10 @@ impl<'i> GenerateIR<'i> for Block {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        recorder.enter_scope();
         self.items.iter().try_for_each(|item| match item {
             BlockItem::Decl(decl) => decl.generate_ir(program, recorder),
             BlockItem::Stmt(stmt) => stmt.generate_ir(program, recorder),
         })?;
-        recorder.exit_scope();
 
         Ok(())
     }
@@ -199,43 +169,43 @@ impl<'i> GenerateIR<'i> for VarDecl {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        // todo: support array
         let id = &self.lval.ident;
+        let symbol = recorder.get_symbol(id);
 
         if recorder.is_global() {
-            let init = if let Some(init) = &self.init {
-                if let InitVal::Exp(exp) = init {
-                    let val = exp.const_eval(recorder).unwrap();
-                    program.new_value().integer(val)
-                } else {
-                    todo!()
+            let init_val = match symbol {
+                Symbol::Var(_) => match &self.init {
+                    Some(InitVal::Exp(e)) => program.new_value().integer(e.get_i32()),
+                    None => program.new_value().zero_init(IrType::get_i32()),
+                    _ => unreachable!(),
+                },
+                Symbol::Array(_, Some(e)) => {
+                    let elems: Vec<_> = e.iter().map(|i| program.new_value().integer(*i)).collect();
+                    program.new_value().aggregate(elems)
                 }
-            } else {
-                program.new_value().zero_init(IrType::get_i32())
+                _ => unreachable!(),
             };
-            let var = program.new_value().global_alloc(init);
-            program.set_value_name(var, Some(format!("@{}", &id)));
-            recorder.insert_var(&id, var, true)
+            let alloc = program.new_value().global_alloc(init_val);
+            program.set_value_name(alloc, Some(format!("@{}", &id)));
+            recorder.insert_value(&id, alloc);
         } else {
-            let var = alloc(
-                recorder,
-                program,
-                IrType::get_i32(),
-                Some(format!("@{}", &id)),
-            );
-            if let Some(init) = &self.init {
-                if let InitVal::Exp(exp) = init {
-                    let init_val = exp.generate_ir(program, recorder)?;
-                    let st = recorder.new_value(program).store(init_val, var);
-                    recorder.func().push_inst(program, st);
-                    recorder.insert_var(&id, var, true)
-                } else {
-                    todo!()
+            let ty = symbol.get_var_ir_ty();
+
+            let val = alloc(recorder, program, ty, Some(format!("@{}", &id)));
+            recorder.insert_value(&id, val);
+
+            match &self.init {
+                Some(InitVal::Exp(e)) => {
+                    let init_val = e.generate_ir(program, recorder)?;
+                    let store = recorder.new_value(program).store(init_val, val);
+                    recorder.func().push_inst(program, store);
                 }
-            } else {
-                recorder.insert_var(&id, var, false)
+                Some(InitVal::List(_)) => todo!(),
+                None => {}
             }
         }
+
+        Ok(())
     }
 }
 
@@ -245,13 +215,9 @@ impl<'i> GenerateIR<'i> for ConstDecl {
     fn generate_ir(
         &'i self,
         _program: &mut Program,
-        recorder: &mut ProgramRecorder<'i>,
+        _recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        if let InitVal::Exp(exp) = &self.init {
-            recorder.insert_const_var(&self.lval.ident, exp.const_eval(recorder).unwrap())
-        } else {
-            todo!()
-        }
+        Ok(())
     }
 }
 
@@ -286,15 +252,10 @@ impl<'i> GenerateIR<'i> for Assign {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        let id = &self.lval.ident;
-        let dst = match recorder.get_symbol(id).unwrap() {
-            Symbol::Var { val, .. } => *val,
-            Symbol::ConstVar(_) => bail!("\"{}\" must be a modifiable lvalue", id),
-        };
+        let dst = recorder.get_value(&self.lval.ident);
         let val = self.val.generate_ir(program, recorder)?;
         let st = recorder.new_value(program).store(val, dst);
         recorder.func().push_inst(program, st);
-        recorder.initialize(id)?;
 
         Ok(())
     }
@@ -466,18 +427,13 @@ impl<'i> GenerateIR<'i> for Exp {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        let val = match self {
+        Ok(match self {
             Exp::Integer(i) => recorder.new_value(program).integer(*i),
             Exp::Uxp(uxp) => uxp.generate_ir(program, recorder)?,
             Exp::Bxp(bxp) => bxp.generate_ir(program, recorder)?,
-            Exp::LVal(lval) => match recorder.get_symbol(&lval.ident).unwrap() {
-                Symbol::ConstVar(i) => recorder.new_value(program).integer(*i),
-                Symbol::Var { val, init } => load_var(program, recorder, *val, *init),
-            },
+            Exp::LVal(lval) => load_var(program, recorder, recorder.get_value(&lval.ident)),
             Exp::Error => panic!("expected an expression"),
-        };
-
-        Ok(val)
+        })
     }
 }
 
@@ -489,11 +445,7 @@ impl<'i> GenerateIR<'i> for BinaryExp {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        if let Some(result) = self.const_eval(recorder) {
-            return Ok(recorder.new_value(program).integer(result));
-        }
-
-        match self.op {
+        Ok(match self.op {
             BinaryOp::And | BinaryOp::Or => {
                 let name = if matches!(self.op, BinaryOp::And) {
                     "%land_end"
@@ -506,15 +458,15 @@ impl<'i> GenerateIR<'i> for BinaryExp {
                 let ld = recorder.new_value(program).load(result);
                 recorder.func().push_inst(program, ld);
 
-                Ok(ld)
+                ld
             }
             _ => {
                 let lhs = self.lhs.generate_ir(program, recorder)?;
                 let rhs = self.rhs.generate_ir(program, recorder)?;
 
-                Ok(binary(program, recorder, self.op.into(), lhs, rhs))
+                binary(program, recorder, self.op.into(), lhs, rhs)
             }
-        }
+        })
     }
 }
 
@@ -526,12 +478,8 @@ impl<'i> GenerateIR<'i> for UnaryExp {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        if let Some(result) = self.const_eval(recorder) {
-            return Ok(recorder.new_value(program).integer(result));
-        }
-
         match self {
-            UnaryExp::Unary(op, exp) => {
+            Self::Unary(op, exp) => {
                 let opr = exp.generate_ir(program, recorder)?;
                 let val = match op {
                     UnaryOp::Nop => opr,
@@ -540,7 +488,7 @@ impl<'i> GenerateIR<'i> for UnaryExp {
                 };
                 Ok(val)
             }
-            UnaryExp::Call(call) => call.generate_ir(program, recorder),
+            Self::Call(call) => call.generate_ir(program, recorder),
         }
     }
 }
@@ -553,12 +501,12 @@ impl<'i> GenerateIR<'i> for Call {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        let mut arg_values = Vec::new();
-        for arg in &self.args {
-            let val = arg.generate_ir(program, recorder)?;
-            arg_values.push(val);
-        }
-        let func_id = *recorder.get_func(&self.func_id).unwrap();
+        let arg_values: Vec<_> = self
+            .args
+            .iter()
+            .map(|arg| arg.generate_ir(program, recorder).unwrap())
+            .collect();
+        let func_id = recorder.get_func_id(&self.func_id);
         let call = recorder.new_value(program).call(func_id, arg_values);
         recorder.func().push_inst(program, call);
 

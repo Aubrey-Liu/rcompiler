@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::{collections::HashMap, vec};
 
 use koopa::ir::builder::LocalBuilder;
@@ -5,10 +6,13 @@ use koopa::ir::builder_traits::*;
 
 use super::*;
 use crate::ast::FuncDef;
+use crate::sema::symbol::{Symbol, SymbolTable};
 
 #[derive(Debug)]
 pub struct ProgramRecorder<'i> {
-    symbols: SymbolTable<'i>,
+    symbols: Rc<RefCell<SymbolTable>>,
+    values: HashMap<&'i str, Value>,
+    funcs: HashMap<&'i str, Function>,
     cur_func: Option<FunctionInfo>,
     loops: Vec<LoopInfo>,
 }
@@ -28,37 +32,12 @@ pub struct LoopInfo {
     exit: BasicBlock,
 }
 
-type SymbolTableID = usize;
-
-#[derive(Debug)]
-pub struct SymbolTable<'i> {
-    #[allow(dead_code)]
-    global_node_id: SymbolTableID,
-    current_node_id: SymbolTableID,
-    nodes: Vec<SymbolTableNode>,
-    data: Vec<HashMap<&'i str, Symbol>>,
-    functions: HashMap<&'i str, Function>,
-}
-
-#[derive(Debug)]
-struct SymbolTableNode {
-    pub children: Vec<SymbolTableID>,
-    pub parent: Option<SymbolTableID>,
-}
-
-#[derive(Debug)]
-pub enum Symbol {
-    ConstVar(i32),
-    Var {
-        val: Value, // the allocated position on the stack
-        init: bool, // is the variable initialized with a expression?
-    },
-}
-
 impl<'i> ProgramRecorder<'i> {
-    pub fn new() -> Self {
+    pub fn new(symbols: &Rc<RefCell<SymbolTable>>) -> Self {
         Self {
-            symbols: SymbolTable::new(),
+            symbols: Rc::clone(symbols),
+            values: HashMap::new(),
+            funcs: HashMap::new(),
             cur_func: None,
             loops: vec![],
         }
@@ -68,19 +47,35 @@ impl<'i> ProgramRecorder<'i> {
         program.func_mut(self.func().id()).dfg_mut().new_value()
     }
 
-    pub fn new_func(&mut self, program: &mut Program, func_def: &'i FuncDef) -> Function {
-        let params: Vec<(Option<String>, IrType)> = func_def
+    pub fn get_symbol(&self, name: &str) -> Symbol {
+        self.symbols.borrow().get(name).clone()
+    }
+
+    pub fn insert_value(&mut self, name: &'i str, val: Value) {
+        self.values.insert(name, val);
+    }
+
+    pub fn get_value(&self, name: &str) -> Value {
+        *self.values.get(name).unwrap()
+    }
+
+    pub fn is_global(&self) -> bool {
+        self.cur_func.is_none()
+    }
+
+    pub fn new_func(&mut self, program: &mut Program, func_def: &'i FuncDef) {
+        let (ret_ty, param_ty) = self.get_symbol(&func_def.ident).get_func_ir_ty();
+        let params: Vec<_> = func_def
             .params
             .iter()
-            .map(|p| (Some(format!("@{}", &p.ident)), p.ty.into_ty()))
+            .map(|p| Some(format!("@{}", &p.ident)))
+            .zip(param_ty.into_iter())
             .collect();
-
         let id = program.new_func(FunctionData::with_param_names(
             format!("@{}", &func_def.ident),
             params,
-            func_def.ret_ty.into_ty(),
+            ret_ty,
         ));
-
         let builder = program.func_mut(id).dfg_mut();
         let entry_bb = builder.new_bb().basic_block(Some("%entry".to_owned()));
         let end_bb = builder.new_bb().basic_block(Some("%end".to_owned()));
@@ -91,26 +86,26 @@ impl<'i> ProgramRecorder<'i> {
             cur_bb: entry_bb,
             ret_val: None,
         });
-
-        id
+        self.funcs.insert(&func_def.ident, id);
     }
 
-    pub fn declare_func(
+    fn declare_func(
         &mut self,
         program: &mut Program,
         name: &'i str,
         params_ty: Vec<IrType>,
         ret_ty: IrType,
-    ) -> Result<()> {
-        let id = program.new_func(FunctionData::new_decl(
+    ) {
+        let func_id = program.new_func(FunctionData::new_decl(
             format!("@{}", name),
             params_ty,
             ret_ty,
         ));
-
-        self.insert_func(name, id)
+        self.funcs.insert(name, func_id);
     }
+}
 
+impl ProgramRecorder<'_> {
     pub fn func(&self) -> &FunctionInfo {
         self.cur_func.as_ref().unwrap()
     }
@@ -119,42 +114,12 @@ impl<'i> ProgramRecorder<'i> {
         self.cur_func.as_mut().unwrap()
     }
 
-    pub fn get_symbol(&self, name: &str) -> Result<&Symbol> {
-        self.symbols.get(name)
+    pub fn get_func_id(&self, name: &str) -> Function {
+        *self.funcs.get(name).unwrap()
     }
+}
 
-    pub fn get_func(&self, name: &str) -> Option<&Function> {
-        self.symbols.get_func(name)
-    }
-
-    pub fn insert_var(&mut self, name: &'i str, val: Value, init: bool) -> Result<()> {
-        self.symbols.insert_var(name, val, init)
-    }
-
-    pub fn insert_const_var(&mut self, name: &'i str, val: i32) -> Result<()> {
-        self.symbols.insert_const_var(name, val)
-    }
-
-    pub fn insert_func(&mut self, name: &'i str, id: Function) -> Result<()> {
-        self.symbols.insert_func(name, id)
-    }
-
-    pub fn initialize(&mut self, name: &str) -> Result<()> {
-        self.symbols.initialize(name)
-    }
-
-    pub fn is_global(&self) -> bool {
-        self.symbols.current_node_id == self.symbols.global_node_id
-    }
-
-    pub fn enter_scope(&mut self) {
-        self.symbols.enter_scope();
-    }
-
-    pub fn exit_scope(&mut self) {
-        self.symbols.exit_scope();
-    }
-
+impl ProgramRecorder<'_> {
     pub fn enter_loop(&mut self, entry: BasicBlock, exit: BasicBlock) {
         self.loops.push(LoopInfo { entry, exit });
     }
@@ -173,6 +138,39 @@ impl<'i> ProgramRecorder<'i> {
 
     pub fn loop_exit(&self) -> BasicBlock {
         self.loops.last().unwrap().exit
+    }
+}
+
+impl ProgramRecorder<'_> {
+    pub fn install_lib(&mut self, program: &mut Program) {
+        self.declare_func(program, "getint", vec![], IrType::get_i32());
+        self.declare_func(program, "getch", vec![], IrType::get_i32());
+        self.declare_func(
+            program,
+            "getarray",
+            vec![IrType::get_pointer(IrType::get_i32())],
+            IrType::get_i32(),
+        );
+        self.declare_func(
+            program,
+            "putint",
+            vec![IrType::get_i32()],
+            IrType::get_unit(),
+        );
+        self.declare_func(
+            program,
+            "putch",
+            vec![IrType::get_i32()],
+            IrType::get_unit(),
+        );
+        self.declare_func(
+            program,
+            "putarray",
+            vec![IrType::get_i32(), IrType::get_pointer(IrType::get_i32())],
+            IrType::get_unit(),
+        );
+        self.declare_func(program, "starttime", vec![], IrType::get_unit());
+        self.declare_func(program, "stoptime", vec![], IrType::get_unit());
     }
 }
 
@@ -249,113 +247,5 @@ impl FunctionInfo {
 
     pub fn id(&self) -> Function {
         self.id
-    }
-}
-
-impl<'i> SymbolTable<'i> {
-    pub fn insert_var(&mut self, name: &'i str, val: Value, init: bool) -> Result<()> {
-        self.data[self.current_node_id]
-            .insert(name, Symbol::Var { val, init })
-            .map_or(Ok(()), |_| Err(anyhow!("redefinition of '{}'", name)))
-    }
-
-    pub fn insert_const_var(&mut self, name: &'i str, val: i32) -> Result<()> {
-        self.data[self.current_node_id]
-            .insert(name, Symbol::ConstVar(val))
-            .map_or(Ok(()), |_| Err(anyhow!("redefinition of '{}'", name)))
-    }
-
-    pub fn insert_func(&mut self, name: &'i str, id: Function) -> Result<()> {
-        self.functions
-            .insert(name, id)
-            .map_or(Ok(()), |_| Err(anyhow!("redefinition of '{}'", name)))
-    }
-
-    pub fn get_func(&self, name: &str) -> Option<&Function> {
-        self.functions.get(name)
-    }
-
-    pub fn new() -> Self {
-        Self {
-            global_node_id: 0,
-            current_node_id: 0,
-            nodes: vec![SymbolTableNode::new()],
-            data: vec![HashMap::new()],
-            functions: HashMap::new(),
-        }
-    }
-
-    pub fn enter_scope(&mut self) {
-        let id = self.next_id();
-        self.nodes[self.current_node_id].children.push(id);
-        self.nodes
-            .push(SymbolTableNode::new_with_parent(self.current_node_id));
-        self.data.push(HashMap::new());
-        self.current_node_id = id;
-    }
-
-    pub fn exit_scope(&mut self) {
-        self.current_node_id = self.nodes[self.current_node_id].parent.unwrap();
-    }
-
-    pub fn get(&self, name: &str) -> Result<&Symbol> {
-        let mut id = self.current_node_id;
-        loop {
-            if let Some(sym) = self.data[id].get(name) {
-                return Ok(sym);
-            }
-            match self.nodes[id].parent {
-                Some(i) => id = i,
-                None => break,
-            }
-        }
-        Err(anyhow!("{} is not defined in the current scope", name))
-    }
-
-    pub fn get_mut(&mut self, name: &str) -> Result<&mut Symbol> {
-        let mut id = self.current_node_id;
-        loop {
-            if self.data[id].contains_key(name) {
-                return self.data[id]
-                    .get_mut(name)
-                    .ok_or(anyhow!("unexpected error"));
-            }
-            match self.nodes[id].parent {
-                Some(i) => id = i,
-                None => break,
-            }
-        }
-        Err(anyhow!("{} is not defined in the current scope", name))
-    }
-
-    pub fn initialize(&mut self, name: &str) -> Result<()> {
-        self.get_mut(name).and_then(|sym| {
-            if let Symbol::Var { init, .. } = sym {
-                *init = true;
-                Ok(())
-            } else {
-                Err(anyhow!("{} has to be a variable", name))
-            }
-        })
-    }
-
-    fn next_id(&self) -> SymbolTableID {
-        self.data.len()
-    }
-}
-
-impl SymbolTableNode {
-    pub fn new() -> Self {
-        Self {
-            children: vec![],
-            parent: None,
-        }
-    }
-
-    pub fn new_with_parent(parent_id: SymbolTableID) -> Self {
-        Self {
-            children: vec![],
-            parent: Some(parent_id),
-        }
     }
 }

@@ -18,15 +18,7 @@ pub fn alloc(
     val
 }
 
-pub fn load_var(
-    program: &mut Program,
-    recorder: &ProgramRecorder,
-    val: Value,
-    init: bool,
-) -> Value {
-    if !init {
-        panic!("variable used but it isn't initialized",)
-    }
+pub fn load_var(program: &mut Program, recorder: &ProgramRecorder, val: Value) -> Value {
     let dst = recorder.new_value(program).load(val);
     recorder.func().push_inst(program, dst);
 

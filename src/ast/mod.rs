@@ -1,8 +1,6 @@
 pub(crate) mod exp;
-pub(crate) mod ty;
 
 pub(crate) use exp::*;
-pub(crate) use ty::*;
 
 #[derive(Debug)]
 pub struct CompUnit {
@@ -103,6 +101,13 @@ pub struct VarDecl {
     pub ty: Type,
 }
 
+#[derive(Debug, Clone)]
+pub enum Type {
+    Array,
+    Int,
+    Void,
+}
+
 impl Block {
     pub fn new_with_vec(items: Vec<BlockItem>) -> Self {
         Self { items }
@@ -111,14 +116,22 @@ impl Block {
 
 impl VarDecl {
     pub fn new(lval: LVal, init: Option<InitVal>) -> Self {
-        let ty = Type::new_from_dims(&lval.dims);
+        let ty = if matches!(init, Some(InitVal::List(_))) {
+            Type::Array
+        } else {
+            Type::Int
+        };
         Self { lval, init, ty }
     }
 }
 
 impl ConstDecl {
     pub fn new(lval: LVal, init: InitVal) -> Self {
-        let ty = Type::new_from_dims(&lval.dims);
+        let ty = if matches!(init, InitVal::List(_)) {
+            Type::Array
+        } else {
+            Type::Int
+        };
         Self { lval, init, ty }
     }
 }
