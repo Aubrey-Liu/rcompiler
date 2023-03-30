@@ -153,7 +153,8 @@ impl Analyzer for While {
     type Out = ();
 
     fn analyze(&mut self, symbols: &mut SymbolTable) -> Result<Self::Out> {
-        self.cond.analyze(symbols)
+        self.cond.analyze(symbols)?;
+        self.stmt.analyze(symbols)
     }
 }
 
@@ -161,7 +162,13 @@ impl Analyzer for Branch {
     type Out = ();
 
     fn analyze(&mut self, symbols: &mut SymbolTable) -> Result<Self::Out> {
-        self.cond.analyze(symbols)
+        self.cond.analyze(symbols)?;
+        self.if_stmt.analyze(symbols)?;
+        if let Some(s) = &mut self.el_stmt {
+            s.analyze(symbols)
+        } else {
+            Ok(())
+        }
     }
 }
 

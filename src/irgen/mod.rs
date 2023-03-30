@@ -33,6 +33,7 @@ pub fn generate_mem_ir(ipath: &str) -> Result<Program> {
     let mut manager = NameManager::new();
     ast.rename(&mut manager);
 
+    dbg!(&ast);
     let symbols = Rc::new(RefCell::new(SymbolTable::new()));
     ast.analyze(&mut symbols.borrow_mut())?;
 

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ast::*;
 
@@ -94,12 +94,17 @@ impl Renamer for Return {
 impl Renamer for While {
     fn rename(&mut self, manager: &mut NameManager) {
         self.cond.rename(manager);
+        self.stmt.rename(manager);
     }
 }
 
 impl Renamer for Branch {
     fn rename(&mut self, manager: &mut NameManager) {
         self.cond.rename(manager);
+        self.if_stmt.rename(manager);
+        if let Some(s) = &mut self.el_stmt {
+            s.rename(manager);
+        }
     }
 }
 
@@ -168,14 +173,14 @@ impl Renamer for Call {
 #[derive(Debug)]
 pub struct NameManager {
     mapping: Vec<HashMap<String, u32>>,
-    pool: HashMap<String, u32>,
+    pool: HashSet<String>,
 }
 
 impl NameManager {
     pub fn new() -> Self {
         NameManager {
             mapping: vec![HashMap::new()],
-            pool: HashMap::new(),
+            pool: HashSet::new(),
         }
     }
 
@@ -201,21 +206,20 @@ impl NameManager {
     }
 
     pub fn insert_name(&mut self, old_name: &String) {
-        let name = String::from(old_name);
+        let mut name = String::from(old_name);
+        let mut possible_suffix = self.get_suffix(&old_name);
 
-        if self.pool.contains_key(&name) {
-            let id = self.pool.get(&name).unwrap() + 1;
-            self.pool.insert(name, id);
-        } else {
-            self.pool.insert(name, 0);
-        };
+        while self.pool.contains(&name) {
+            possible_suffix += 1;
+            name = String::from(old_name) + &possible_suffix.to_string();
+        }
+        self.pool.insert(name);
 
-        let id = *self.pool.get(old_name).unwrap();
         match self
             .mapping
             .last_mut()
             .unwrap()
-            .insert(old_name.clone(), id)
+            .insert(old_name.clone(), possible_suffix)
         {
             Some(_) => panic!("redifinition of `{}`", old_name),
             None => {}
@@ -229,7 +233,17 @@ impl NameManager {
         };
         match suffix {
             0 => {}
-            _ => name.push_str(&format!("_{}", suffix)),
+            _ => name.push_str(&suffix.to_string()),
         }
+    }
+
+    fn get_suffix(&self, name: &str) -> u32 {
+        *self
+            .mapping
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name))
+            .or(Some(&0))
+            .unwrap()
     }
 }
