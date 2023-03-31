@@ -31,7 +31,7 @@ FuncDef: FuncDef = {
 
 FuncParams: Vec<FuncParam> = <Comma<FuncParam>> => <>;
 
-FuncParam: FuncParam = "int" <ident: Ident> => FuncParam { ty: Type::Int, ident };
+FuncParam: FuncParam = "int" <ident: Ident> => FuncParam { ty: AstType::Int, ident };
 
 Block: Block = "{" <BlockItem*> "}" => Block::new_with_vec(<>);
 
@@ -48,7 +48,7 @@ Decl: Decl = {
 
 VarDecl: Vec<VarDecl> = {
   <ty: Type> <defs: Comma<VarDef>> ";" => {
-    if !matches!(ty, Type::Int) {
+    if !matches!(ty, AstType::Int) {
       panic!("incomplete type is not allowed");
     }
     defs
@@ -57,7 +57,7 @@ VarDecl: Vec<VarDecl> = {
 
 ConstDecl: Vec<ConstDecl> = {
   "const" <ty: Type> <defs: Comma<ConstDef>> ";" => {
-    if !matches!(ty, Type::Int) {
+    if !matches!(ty, AstType::Int) {
       panic!("incomplete type is not allowed");
     }
     defs
@@ -226,7 +226,7 @@ Comma<T>: Vec<T> = {
 };
 
 #[inline]
-Type: Type = {
-  "int" => Type::Int,
-  "void" => Type::Void,
+Type: AstType = {
+  "int" => AstType::Int,
+  "void" => AstType::Void,
 };

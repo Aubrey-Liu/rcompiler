@@ -15,7 +15,7 @@ pub enum GlobalItem {
 
 #[derive(Debug)]
 pub struct FuncDef {
-    pub ret_ty: Type,
+    pub ret_ty: AstType,
     pub ident: String,
     pub params: Vec<FuncParam>,
     pub block: Block,
@@ -23,7 +23,7 @@ pub struct FuncDef {
 
 #[derive(Debug)]
 pub struct FuncParam {
-    pub ty: Type,
+    pub ty: AstType,
     pub ident: String,
 }
 
@@ -91,18 +91,18 @@ pub struct Assign {
 pub struct ConstDecl {
     pub lval: LVal,
     pub init: InitVal,
-    pub ty: Type,
+    pub ty: AstType,
 }
 
 #[derive(Debug)]
 pub struct VarDecl {
     pub lval: LVal,
     pub init: Option<InitVal>,
-    pub ty: Type,
+    pub ty: AstType,
 }
 
 #[derive(Debug, Clone)]
-pub enum Type {
+pub enum AstType {
     Array,
     Int,
     Void,
@@ -117,9 +117,9 @@ impl Block {
 impl VarDecl {
     pub fn new(lval: LVal, init: Option<InitVal>) -> Self {
         let ty = if !lval.dims.is_empty() {
-            Type::Array
+            AstType::Array
         } else {
-            Type::Int
+            AstType::Int
         };
         Self { lval, init, ty }
     }
@@ -128,9 +128,9 @@ impl VarDecl {
 impl ConstDecl {
     pub fn new(lval: LVal, init: InitVal) -> Self {
         let ty = if matches!(init, InitVal::List(_)) {
-            Type::Array
+            AstType::Array
         } else {
-            Type::Int
+            AstType::Int
         };
         Self { lval, init, ty }
     }

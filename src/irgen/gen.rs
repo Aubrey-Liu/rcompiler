@@ -1,10 +1,9 @@
-use crate::ast::Type as AstType;
+use crate::ast::*;
 use crate::sema::symbol::Symbol;
 use koopa::ir::builder_traits::{GlobalInstBuilder, LocalInstBuilder, ValueBuilder};
 use koopa::ir::Type;
 
 use super::*;
-use crate::ast::*;
 
 pub trait GenerateIR<'i> {
     type Out;
@@ -194,15 +193,19 @@ impl<'i> GenerateIR<'i> for VarDecl {
             let val = alloc(recorder, program, ty, Some(format!("@{}", &id)));
             recorder.insert_value(&id, val);
 
-            // todo: use symbol
-            match &self.init {
-                Some(InitVal::Exp(e)) => {
-                    let init_val = e.generate_ir(program, recorder)?;
-                    let store = recorder.new_value(program).store(init_val, val);
-                    recorder.func().push_inst(program, store);
-                }
-                Some(InitVal::List(_)) => todo!(),
-                None => {}
+            match &symbol {
+                Symbol::Var(_) => match &self.init {
+                    Some(InitVal::Exp(e)) => {
+                        let init_val = e.generate_ir(program, recorder)?;
+                        let store = recorder.new_value(program).store(init_val, val);
+                        recorder.func().push_inst(program, store);
+                    }
+                    None => {}
+                    _ => unreachable!(),
+                },
+                Symbol::Array(ty, Some(init)) => init_array(program, recorder, val, ty, init),
+                Symbol::Array(_, None) => {}
+                _ => unreachable!(),
             }
         }
 

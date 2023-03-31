@@ -2,7 +2,7 @@
 use koopa::ir::Type as IrType;
 use std::collections::HashMap;
 
-use crate::ast::{ConstDecl, FuncDef, InitVal, Type as AstType, VarDecl};
+use crate::ast::{AstType, ConstDecl, FuncDef, InitVal, VarDecl};
 
 use super::*;
 

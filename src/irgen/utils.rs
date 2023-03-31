@@ -2,6 +2,7 @@ use koopa::ir::builder_traits::{LocalInstBuilder, ValueBuilder};
 
 use super::*;
 use crate::ast::LVal;
+use crate::sema::ty::Type;
 
 pub fn alloc(
     recorder: &ProgramRecorder,
@@ -19,21 +20,45 @@ pub fn alloc(
     val
 }
 
+pub fn get_ptr(
+    program: &mut Program,
+    recorder: &ProgramRecorder,
+    src: Value,
+    dims: &[usize],
+) -> Value {
+    let mut dst = src;
+    dims.iter().for_each(|d| {
+        let idx = recorder.new_value(program).integer(*d as i32);
+        let ptr = recorder.new_value(program).get_elem_ptr(dst, idx);
+        recorder.func().push_inst(program, ptr);
+        dst = ptr;
+    });
+    dst
+}
+
+pub fn init_array(
+    program: &mut Program,
+    recorder: &ProgramRecorder,
+    src: Value,
+    ty: &Type,
+    init: &Vec<i32>,
+) {
+    if let Type::Array(_, len) = ty {
+        (0..*len).for_each(|i| {
+            let ptr = get_ptr(program, recorder, src, &[i]);
+            let init_val = recorder.new_value(program).integer(init[i]);
+            let store = recorder.new_value(program).store(init_val, ptr);
+            recorder.func().push_inst(program, store);
+        })
+    } else {
+        unreachable!()
+    }
+}
+
 pub fn load_var(program: &mut Program, recorder: &ProgramRecorder, lval: &LVal) -> Value {
     let src = recorder.get_value(&lval.ident);
-    let val = match recorder.get_symbol(&lval.ident) {
-        Symbol::Var(_) => src,
-        Symbol::Array(_, _) | Symbol::ConstArray(_, _) => {
-            let index = recorder
-                .new_value(program)
-                .integer(lval.dims.first().unwrap().get_i32());
-            let get_ptr = recorder.new_value(program).get_elem_ptr(src, index);
-            recorder.func().push_inst(program, get_ptr);
-
-            get_ptr
-        }
-        _ => unreachable!(),
-    };
+    let dims: Vec<_> = lval.dims.iter().map(|d| d.get_i32() as usize).collect();
+    let val = get_ptr(program, recorder, src, &dims);
     let dst = recorder.new_value(program).load(val);
     recorder.func().push_inst(program, dst);
 

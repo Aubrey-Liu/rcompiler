@@ -1,5 +1,5 @@
 use super::*;
-use crate::ast::{Exp, Type as AstType};
+use crate::ast::{AstType, Exp};
 use koopa::ir::Type as IrType;
 
 #[derive(Debug, Clone)]
