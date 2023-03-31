@@ -172,16 +172,13 @@ impl<'i> GenerateIR<'i> for VarDecl {
         let symbol = recorder.get_symbol(id);
 
         if recorder.is_global() {
-            let init_val = match symbol {
+            let init_val = match &symbol {
                 Symbol::Var(_) => match &self.init {
                     Some(InitVal::Exp(e)) => program.new_value().integer(e.get_i32()),
                     None => program.new_value().zero_init(IrType::get_i32()),
                     _ => unreachable!(),
                 },
-                Symbol::Array(_, Some(e)) => {
-                    let elems: Vec<_> = e.iter().map(|i| program.new_value().integer(*i)).collect();
-                    program.new_value().aggregate(elems)
-                }
+                Symbol::Array(ty, Some(init)) => init_global_array(program, recorder, ty, init),
                 _ => unreachable!(),
             };
             let alloc = program.new_value().global_alloc(init_val);
@@ -189,7 +186,6 @@ impl<'i> GenerateIR<'i> for VarDecl {
             recorder.insert_value(&id, alloc);
         } else {
             let ty = symbol.get_var_ir_ty();
-
             let val = alloc(recorder, program, ty, Some(format!("@{}", &id)));
             recorder.insert_value(&id, val);
 
@@ -218,9 +214,35 @@ impl<'i> GenerateIR<'i> for ConstDecl {
 
     fn generate_ir(
         &'i self,
-        _program: &mut Program,
-        _recorder: &mut ProgramRecorder<'i>,
+        program: &mut Program,
+        recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
+        if matches!(self.ty, AstType::Int) {
+            return Ok(());
+        }
+
+        let id = &self.lval.ident;
+        let symbol = recorder.get_symbol(id);
+
+        if recorder.is_global() {
+            let init_val = match &symbol {
+                Symbol::ConstArray(ty, init) => init_global_array(program, recorder, ty, init),
+                _ => unreachable!(),
+            };
+            let alloc = program.new_value().global_alloc(init_val);
+            program.set_value_name(alloc, Some(format!("@{}", &id)));
+            recorder.insert_value(&id, alloc);
+        } else {
+            let ty = symbol.get_var_ir_ty();
+            let val = alloc(recorder, program, ty, Some(format!("@{}", &id)));
+            recorder.insert_value(&id, val);
+
+            match &symbol {
+                Symbol::ConstArray(ty, init) => init_array(program, recorder, val, ty, init),
+                _ => unreachable!(),
+            }
+        }
+
         Ok(())
     }
 }
@@ -256,7 +278,7 @@ impl<'i> GenerateIR<'i> for Assign {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        let dst = recorder.get_value(&self.lval.ident);
+        let dst = get_lval_ptr(program, recorder, &self.lval);
         let val = self.val.generate_ir(program, recorder)?;
         let st = recorder.new_value(program).store(val, dst);
         recorder.func().push_inst(program, st);
@@ -435,7 +457,7 @@ impl<'i> GenerateIR<'i> for Exp {
             Exp::Integer(i) => recorder.new_value(program).integer(*i),
             Exp::Uxp(uxp) => uxp.generate_ir(program, recorder)?,
             Exp::Bxp(bxp) => bxp.generate_ir(program, recorder)?,
-            Exp::LVal(lval) => load_var(program, recorder, lval),
+            Exp::LVal(lval) => load_lval(program, recorder, lval),
             Exp::Error => panic!("expected an expression"),
         })
     }

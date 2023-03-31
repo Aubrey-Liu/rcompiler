@@ -37,4 +37,15 @@ impl Type {
             Self::Pointer(base_ty) => IrType::get_pointer(base_ty.into_ir_ty()),
         }
     }
+
+    pub fn get_dims(&self, dims: &mut Vec<usize>) {
+        match self {
+            Self::Array(base_ty, len) => {
+                dims.push(*len);
+                base_ty.get_dims(dims);
+            }
+            Self::Int => {}
+            _ => unreachable!(),
+        }
+    }
 }

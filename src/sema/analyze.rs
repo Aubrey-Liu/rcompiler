@@ -186,6 +186,7 @@ impl Analyzer for Assign {
 
     fn analyze(&mut self, symbols: &mut SymbolTable) -> Result<Self::Out> {
         symbols.assign(&self.lval.ident);
+        self.lval.analyze(symbols)?;
         self.val.analyze(symbols)
     }
 }
@@ -204,7 +205,8 @@ impl Analyzer for Exp {
             Self::LVal(e) => {
                 match symbols.get(&e.ident) {
                     Symbol::ConstVar(i) => *self = Exp::Integer(*i),
-                    _ => {}
+                    Symbol::Var(init) if !init => bail!("attempt to use an uninitialized variable"),
+                    _ => e.analyze(symbols)?,
                 }
                 Ok(())
             }
@@ -241,5 +243,13 @@ impl Analyzer for Call {
         self.args
             .iter_mut()
             .try_for_each(|arg| arg.analyze(symbols))
+    }
+}
+
+impl Analyzer for LVal {
+    type Out = ();
+
+    fn analyze(&mut self, symbols: &mut SymbolTable) -> Result<Self::Out> {
+        self.dims.iter_mut().try_for_each(|d| d.analyze(symbols))
     }
 }

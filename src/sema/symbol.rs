@@ -1,5 +1,5 @@
-#![allow(dead_code)]
 use koopa::ir::Type as IrType;
+use std::cmp::min;
 use std::collections::HashMap;
 
 use crate::ast::{AstType, ConstDecl, FuncDef, InitVal, VarDecl};
@@ -70,7 +70,7 @@ impl Symbol {
                 InitVal::List(_) => panic!("incompatible initializer type"),
             },
             AstType::Array => {
-                let elems = init_array(symbols, &value.init, &ty);
+                let elems = init_array(&value.init, &ty);
                 Self::ConstArray(ty, elems)
             }
             _ => unreachable!(),
@@ -91,20 +91,11 @@ impl Symbol {
                 let elems = value
                     .init
                     .as_ref()
-                    .map(|i| init_array(symbols, &i, &ty))
+                    .map(|i| init_array(&i, &ty))
                     .or(Some(vec![0; capacity(&ty)]));
                 Self::Array(ty, elems)
             }
             _ => unreachable!(),
-        }
-    }
-
-    pub fn get_ty(&self) -> &Type {
-        match self {
-            Self::Array(ty, _) => ty,
-            Self::ConstArray(ty, _) => ty,
-            Self::Func(ret_ty, _) => ret_ty,
-            Self::ConstVar(_) | Self::Var(_) => &Type::Int,
         }
     }
 
@@ -137,26 +128,56 @@ pub fn capacity(ty: &Type) -> usize {
     }
 }
 
-pub fn init_array(symbols: &SymbolTable, init: &InitVal, ty: &Type) -> Vec<i32> {
-    let mut elems = Vec::new();
-    let mut first_dim = match ty {
-        Type::Array(_, len) => *len,
-        _ => panic!("incompatible initializer type"),
-    };
+pub fn init_array(init: &InitVal, ty: &Type) -> Vec<i32> {
+    let mut elems = vec![0; capacity(ty)];
+    let mut dims: Vec<usize> = Vec::new();
+    ty.get_dims(&mut dims);
+    dims.reverse();
+
+    fn fill_array(
+        init: &[InitVal],
+        dims: &[usize],
+        depth: usize,
+        pos: usize,
+        elems: &mut Vec<i32>,
+    ) -> usize {
+        let mut pos = pos;
+        let mut depth = depth;
+        let mut next_dim = *dims.iter().skip(depth + 1).next().or(Some(&1)).unwrap();
+        let mut stride = dims.iter().take(depth + 1).fold(1, |acc, &x| acc * x);
+
+        for e in init {
+            match e {
+                InitVal::Exp(e) => {
+                    elems[pos] = e.get_i32();
+                    pos += 1;
+                }
+                InitVal::List(list) => {
+                    if pos % stride != 0 {
+                        panic!("invalid list initializer");
+                    }
+                    let span = min(depth + 2, dims.len());
+                    pos = fill_array(list, &dims[0..span], depth, pos, elems);
+                }
+            };
+            if pos % (next_dim * stride) == 0 {
+                depth += 1;
+                stride *= next_dim;
+                next_dim = *dims.iter().skip(depth + 1).next().or(Some(&1)).unwrap();
+                if depth >= dims.len() - 1 {
+                    break;
+                }
+            }
+        }
+
+        return (pos + stride - 1) / stride * stride;
+    }
 
     if let InitVal::List(list) = init {
-        list.iter().for_each(|e| {
-            first_dim -= 1;
-            match e {
-                InitVal::Exp(e) => elems.push(e.const_eval(symbols).unwrap()),
-                _ => panic!("multi-dim array is not supported yet"),
-            }
-        })
+        fill_array(list, &dims, 0, 0, &mut elems);
     } else {
         panic!("incompatible initializer type")
     }
-    // fill all the remaining space with 0
-    (0..first_dim).for_each(|_| elems.push(0));
 
     elems
 }

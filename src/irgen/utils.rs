@@ -24,16 +24,15 @@ pub fn get_ptr(
     program: &mut Program,
     recorder: &ProgramRecorder,
     src: Value,
-    dims: &[usize],
+    dims: &[Value],
 ) -> Value {
-    let mut dst = src;
-    dims.iter().for_each(|d| {
-        let idx = recorder.new_value(program).integer(*d as i32);
-        let ptr = recorder.new_value(program).get_elem_ptr(dst, idx);
+    let mut dst_ptr = src;
+    dims.iter().for_each(|idx| {
+        let ptr = recorder.new_value(program).get_elem_ptr(dst_ptr, *idx);
         recorder.func().push_inst(program, ptr);
-        dst = ptr;
+        dst_ptr = ptr;
     });
-    dst
+    dst_ptr
 }
 
 pub fn init_array(
@@ -43,22 +42,84 @@ pub fn init_array(
     ty: &Type,
     init: &Vec<i32>,
 ) {
-    if let Type::Array(_, len) = ty {
-        (0..*len).for_each(|i| {
-            let ptr = get_ptr(program, recorder, src, &[i]);
-            let init_val = recorder.new_value(program).integer(init[i]);
-            let store = recorder.new_value(program).store(init_val, ptr);
-            recorder.func().push_inst(program, store);
-        })
-    } else {
-        unreachable!()
-    }
+    let mut dims = Vec::new();
+    ty.get_dims(&mut dims);
+
+    (0..init.len()).for_each(|index| {
+        let mut k = index;
+        let mut depth = 0;
+        let mut unfolded_index = vec![recorder.new_value(program).integer(0); dims.len()];
+        while k > 0 {
+            unfolded_index[depth] = recorder
+                .new_value(program)
+                .integer((k % dims[depth]) as i32);
+            k /= dims[depth];
+            depth += 1;
+        }
+        let ptr = get_ptr(program, recorder, src, &unfolded_index);
+        let init_val = recorder.new_value(program).integer(init[index]);
+        let store = recorder.new_value(program).store(init_val, ptr);
+        recorder.func().push_inst(program, store);
+    });
 }
 
-pub fn load_var(program: &mut Program, recorder: &ProgramRecorder, lval: &LVal) -> Value {
+pub fn init_global_array(
+    program: &mut Program,
+    recorder: &ProgramRecorder,
+    ty: &Type,
+    init: &Vec<i32>,
+) -> Value {
+    let mut dims = Vec::new();
+    ty.get_dims(&mut dims);
+
+    fn init_elems(
+        program: &mut Program,
+        recorder: &ProgramRecorder,
+        dims: &[usize],
+        init: &[i32],
+        pos: usize,
+    ) -> Vec<Value> {
+        if dims.len() == 1 {
+            let len = dims[0];
+            (0..len)
+                .map(|i| program.new_value().integer(init[pos + i]))
+                .collect()
+        } else {
+            let len = dims[0];
+            let stride = dims.iter().skip(1).fold(1, |acc, &x| acc * x);
+            (0..len)
+                .map(|i| {
+                    let elems = init_elems(program, recorder, &dims[1..], init, pos + i * stride);
+                    program.new_value().aggregate(elems)
+                })
+                .collect()
+        }
+    }
+
+    let elems = init_elems(program, recorder, &dims, init, 0);
+    program.new_value().aggregate(elems)
+}
+
+pub fn get_lval_ptr<'i>(
+    program: &mut Program,
+    recorder: &mut ProgramRecorder<'i>,
+    lval: &'i LVal,
+) -> Value {
     let src = recorder.get_value(&lval.ident);
-    let dims: Vec<_> = lval.dims.iter().map(|d| d.get_i32() as usize).collect();
-    let val = get_ptr(program, recorder, src, &dims);
+    let dims: Vec<_> = lval
+        .dims
+        .iter()
+        .map(|e| e.generate_ir(program, recorder).unwrap())
+        .collect();
+    get_ptr(program, recorder, src, &dims)
+}
+
+pub fn load_lval<'i>(
+    program: &mut Program,
+    recorder: &mut ProgramRecorder<'i>,
+    lval: &'i LVal,
+) -> Value {
+    let val = get_lval_ptr(program, recorder, lval);
     let dst = recorder.new_value(program).load(val);
     recorder.func().push_inst(program, dst);
 
