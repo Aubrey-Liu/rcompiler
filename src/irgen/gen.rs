@@ -194,6 +194,7 @@ impl<'i> GenerateIR<'i> for VarDecl {
             let val = alloc(recorder, program, ty, Some(format!("@{}", &id)));
             recorder.insert_value(&id, val);
 
+            // todo: use symbol
             match &self.init {
                 Some(InitVal::Exp(e)) => {
                     let init_val = e.generate_ir(program, recorder)?;
@@ -431,7 +432,7 @@ impl<'i> GenerateIR<'i> for Exp {
             Exp::Integer(i) => recorder.new_value(program).integer(*i),
             Exp::Uxp(uxp) => uxp.generate_ir(program, recorder)?,
             Exp::Bxp(bxp) => bxp.generate_ir(program, recorder)?,
-            Exp::LVal(lval) => load_var(program, recorder, recorder.get_value(&lval.ident)),
+            Exp::LVal(lval) => load_var(program, recorder, lval),
             Exp::Error => panic!("expected an expression"),
         })
     }

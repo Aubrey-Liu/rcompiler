@@ -70,6 +70,7 @@ ConstDef: ConstDecl = <lval: LVal> "=" <init: InitVal> => ConstDecl::new(lval, i
 
 InitVal: InitVal = {
   Exp => InitVal::Exp(<>),
+  "{" "}" => InitVal::List(vec![]),
   "{" <Comma<InitVal>> "}" => InitVal::List(<>),
 };
 

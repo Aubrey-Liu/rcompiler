@@ -116,7 +116,7 @@ impl Block {
 
 impl VarDecl {
     pub fn new(lval: LVal, init: Option<InitVal>) -> Self {
-        let ty = if matches!(init, Some(InitVal::List(_))) {
+        let ty = if !lval.dims.is_empty() {
             Type::Array
         } else {
             Type::Int

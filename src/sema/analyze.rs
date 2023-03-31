@@ -89,9 +89,7 @@ impl Analyzer for ConstDecl {
     type Out = ();
 
     fn analyze(&mut self, symbols: &mut SymbolTable) -> Result<Self::Out> {
-        if let InitVal::Exp(e) = &mut self.init {
-            e.analyze(symbols)?;
-        }
+        self.init.analyze(symbols)?;
 
         let symbol = Symbol::from_const_decl(self, symbols);
         symbols.insert(&self.lval.ident, symbol);
@@ -107,7 +105,7 @@ impl Analyzer for VarDecl {
     type Out = ();
 
     fn analyze(&mut self, symbols: &mut SymbolTable) -> Result<Self::Out> {
-        if let Some(InitVal::Exp(e)) = &mut self.init {
+        if let Some(e) = &mut self.init {
             e.analyze(symbols)?;
         }
 
@@ -118,6 +116,17 @@ impl Analyzer for VarDecl {
             .dims
             .iter_mut()
             .try_for_each(|d| d.analyze(symbols))
+    }
+}
+
+impl Analyzer for InitVal {
+    type Out = ();
+
+    fn analyze(&mut self, symbols: &mut SymbolTable) -> Result<Self::Out> {
+        match self {
+            Self::Exp(e) => e.analyze(symbols),
+            Self::List(e) => e.iter_mut().try_for_each(|e| e.analyze(symbols)),
+        }
     }
 }
 

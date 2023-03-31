@@ -88,7 +88,11 @@ impl Symbol {
                 None => Self::Var(false),
             },
             AstType::Array => {
-                let elems = value.init.as_ref().map(|i| init_array(symbols, &i, &ty));
+                let elems = value
+                    .init
+                    .as_ref()
+                    .map(|i| init_array(symbols, &i, &ty))
+                    .or(Some(vec![0; capacity(&ty)]));
                 Self::Array(ty, elems)
             }
             _ => unreachable!(),
@@ -122,6 +126,14 @@ impl Symbol {
         } else {
             panic!("incompatible symbol type")
         }
+    }
+}
+
+pub fn capacity(ty: &Type) -> usize {
+    match ty {
+        Type::Int => 1,
+        Type::Array(base_ty, len) => len * capacity(base_ty),
+        _ => unreachable!(),
     }
 }
 

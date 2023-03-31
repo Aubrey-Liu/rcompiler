@@ -1,6 +1,7 @@
 use koopa::ir::builder_traits::{LocalInstBuilder, ValueBuilder};
 
 use super::*;
+use crate::ast::LVal;
 
 pub fn alloc(
     recorder: &ProgramRecorder,
@@ -18,7 +19,21 @@ pub fn alloc(
     val
 }
 
-pub fn load_var(program: &mut Program, recorder: &ProgramRecorder, val: Value) -> Value {
+pub fn load_var(program: &mut Program, recorder: &ProgramRecorder, lval: &LVal) -> Value {
+    let src = recorder.get_value(&lval.ident);
+    let val = match recorder.get_symbol(&lval.ident) {
+        Symbol::Var(_) => src,
+        Symbol::Array(_, _) | Symbol::ConstArray(_, _) => {
+            let index = recorder
+                .new_value(program)
+                .integer(lval.dims.first().unwrap().get_i32());
+            let get_ptr = recorder.new_value(program).get_elem_ptr(src, index);
+            recorder.func().push_inst(program, get_ptr);
+
+            get_ptr
+        }
+        _ => unreachable!(),
+    };
     let dst = recorder.new_value(program).load(val);
     recorder.func().push_inst(program, dst);
 
