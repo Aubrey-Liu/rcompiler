@@ -205,8 +205,9 @@ impl Analyzer for Exp {
             Self::LVal(e) => {
                 match symbols.get(&e.ident) {
                     Symbol::ConstVar(i) => *self = Exp::Integer(*i),
-                    Symbol::Var(init) if !init => bail!("attempt to use an uninitialized variable"),
-                    _ => e.analyze(symbols)?,
+                    Symbol::Var(_) => {}
+                    Symbol::Array(_, _) | Symbol::ConstArray(_, _) => e.analyze(symbols)?,
+                    _ => unreachable!(),
                 }
                 Ok(())
             }
