@@ -60,7 +60,7 @@ impl Symbol {
                 InitVal::List(_) => panic!("incompatible initializer type"),
             },
             AstType::Array => {
-                let elems = init_array(&value.init, &ty);
+                let elems = eval_array(&value.init, &ty);
                 Self::ConstArray(ty, elems)
             }
             _ => unreachable!(),
@@ -79,7 +79,7 @@ impl Symbol {
             },
             AstType::Array => match &value.init {
                 Some(InitVal::List(_)) => {
-                    let elems = init_array(value.init.as_ref().unwrap(), &ty);
+                    let elems = eval_array(value.init.as_ref().unwrap(), &ty);
                     Self::Array(ty, Some(elems))
                 }
                 None => Self::Array(ty, None),
@@ -110,16 +110,8 @@ impl Symbol {
     }
 }
 
-pub fn capacity(ty: &Type) -> usize {
-    match ty {
-        Type::Int => 1,
-        Type::Array(base_ty, len) => len * capacity(base_ty),
-        _ => unreachable!(),
-    }
-}
-
-pub fn init_array(init: &InitVal, ty: &Type) -> Vec<i32> {
-    let mut elems = vec![0; capacity(ty)];
+pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
+    let mut elems = Vec::new();
     let mut dims: Vec<usize> = Vec::new();
     ty.get_dims(&mut dims);
     dims.reverse();
@@ -139,7 +131,10 @@ pub fn init_array(init: &InitVal, ty: &Type) -> Vec<i32> {
         for e in init {
             match e {
                 InitVal::Exp(e) => {
-                    elems[pos] = e.get_i32();
+                    if pos > elems.len() {
+                        elems.resize_with(pos, Default::default);
+                    }
+                    elems.push(e.get_i32());
                     pos += 1;
                 }
                 InitVal::List(list) => {

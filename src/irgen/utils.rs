@@ -55,17 +55,20 @@ pub fn init_array(
     ) {
         if dims.is_empty() {
             let ptr = src;
-            let value = recorder.new_value(program).integer(init[pos]);
+            let value = recorder
+                .new_value(program)
+                .integer(*init.get(pos).unwrap_or(&0));
             let store = recorder.new_value(program).store(value, ptr);
             recorder.func().push_inst(program, store);
         } else {
             let stride: usize = dims.iter().skip(1).product();
             let this_dim = *dims.first().unwrap();
-            (0..this_dim).for_each(|i| {
+            for i in 0..this_dim {
+                let next_pos = pos + i * stride;
                 let index = recorder.new_value(program).integer(i as i32);
                 let src = get_elem_ptr(program, recorder, src, &[index]);
-                inner(program, recorder, src, init, &dims[1..], pos + i * stride);
-            })
+                inner(program, recorder, src, init, &dims[1..], next_pos);
+            }
         }
     }
 
@@ -78,9 +81,12 @@ pub fn init_global_array(program: &mut Program, ty: &Type, init: &[i32]) -> Valu
 
     fn inner(program: &mut Program, dims: &[usize], init: &[i32], pos: usize) -> Vec<Value> {
         if dims.len() == 1 {
-            let len = dims[0];
-            (0..len)
-                .map(|i| program.new_value().integer(init[pos + i]))
+            (0..dims[0])
+                .map(|i| {
+                    program
+                        .new_value()
+                        .integer(*init.get(pos + i).unwrap_or(&0))
+                })
                 .collect()
         } else {
             let len = dims[0];
