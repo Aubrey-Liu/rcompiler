@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use std::{collections::HashMap, vec};
 
 use koopa::ir::builder::LocalBuilder;
@@ -10,7 +9,7 @@ use crate::sema::symbol::{Symbol, SymbolTable};
 
 #[derive(Debug)]
 pub struct ProgramRecorder<'i> {
-    symbols: Rc<RefCell<SymbolTable>>,
+    symbols: &'i SymbolTable,
     values: HashMap<&'i str, Value>,
     funcs: HashMap<&'i str, Function>,
     cur_func: Option<FunctionInfo>,
@@ -33,9 +32,9 @@ pub struct LoopInfo {
 }
 
 impl<'i> ProgramRecorder<'i> {
-    pub fn new(symbols: &Rc<RefCell<SymbolTable>>) -> Self {
+    pub fn new(symbols: &'i SymbolTable) -> Self {
         Self {
-            symbols: Rc::clone(symbols),
+            symbols,
             values: HashMap::new(),
             funcs: HashMap::new(),
             cur_func: None,
@@ -47,8 +46,8 @@ impl<'i> ProgramRecorder<'i> {
         program.func_mut(self.func().id()).dfg_mut().new_value()
     }
 
-    pub fn get_symbol(&self, name: &str) -> Symbol {
-        self.symbols.borrow().get(name).clone()
+    pub fn get_symbol(&self, name: &str) -> &Symbol {
+        self.symbols.get(name)
     }
 
     pub fn insert_value(&mut self, name: &'i str, val: Value) {

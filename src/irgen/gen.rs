@@ -162,7 +162,7 @@ impl<'i> GenerateIR<'i> for VarDecl {
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
         let id = &self.lval.ident;
-        let symbol = recorder.get_symbol(id);
+        let symbol = recorder.get_symbol(id).clone();
 
         if recorder.is_global() {
             let init_val = match &symbol {
@@ -216,7 +216,7 @@ impl<'i> GenerateIR<'i> for ConstDecl {
         }
 
         let id = &self.lval.ident;
-        let symbol = recorder.get_symbol(id);
+        let symbol = recorder.get_symbol(id).clone();
 
         if recorder.is_global() {
             let init_val = match &symbol {

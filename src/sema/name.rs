@@ -207,16 +207,14 @@ impl NameManager {
     }
 
     pub fn install_lib(&mut self) {
-        self.mapping.last_mut().unwrap().extend([
-            ("getint".to_owned(), 0),
-            ("getch".to_owned(), 0),
-            ("getarray".to_owned(), 0),
-            ("putint".to_owned(), 0),
-            ("putch".to_owned(), 0),
-            ("putarray".to_owned(), 0),
-            ("starttime".to_owned(), 0),
-            ("stoptime".to_owned(), 0),
-        ]);
+        self.insert_name("getint");
+        self.insert_name("getch");
+        self.insert_name("getarray");
+        self.insert_name("putint");
+        self.insert_name("putch");
+        self.insert_name("putarray");
+        self.insert_name("starttime");
+        self.insert_name("stoptime");
     }
 
     pub fn enter_scope(&mut self) {
@@ -233,7 +231,7 @@ impl NameManager {
 
         while self.pool.contains(&name) {
             possible_suffix += 1;
-            name = String::from(old_name) + &possible_suffix.to_string();
+            name = format!("{}{}", old_name, possible_suffix);
         }
         self.pool.insert(name);
 

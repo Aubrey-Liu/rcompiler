@@ -5,9 +5,7 @@ mod utils;
 
 pub(crate) use record::*;
 
-use std::cell::RefCell;
 use std::fs::read_to_string;
-use std::rc::Rc;
 
 use anyhow::*;
 use koopa::back::KoopaGenerator;
@@ -30,8 +28,8 @@ pub fn generate_mem_ir(ipath: &str) -> Result<Program> {
     let mut manager = NameManager::new();
     ast.rename(&mut manager);
 
-    let symbols = Rc::new(RefCell::new(SymbolTable::new()));
-    ast.analyze(&mut symbols.borrow_mut())?;
+    let mut symbols = SymbolTable::new();
+    ast.analyze(&mut symbols)?;
 
     let mut program = Program::new();
     let mut recorder = ProgramRecorder::new(&symbols);
