@@ -66,7 +66,7 @@ impl<'i> ProgramRecorder<'i> {
         self.cur_func.is_none()
     }
 
-    pub fn new_func(&mut self, program: &mut Program, func_def: &'i FuncDef) {
+    pub fn enter_func(&mut self, program: &mut Program, func_def: &'i FuncDef) {
         let (ret_ty, param_ty) = self.get_symbol(&func_def.ident).get_func_ir_ty();
         let params: Vec<_> = func_def
             .params

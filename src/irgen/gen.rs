@@ -29,12 +29,6 @@ impl<'i> GenerateIR<'i> for CompUnit {
 
         self.items
             .iter()
-            .filter(|i| matches!(i, GlobalItem::Decl(_)))
-            .try_for_each(|item| item.generate_ir(program, recorder))?;
-
-        self.items
-            .iter()
-            .filter(|i| matches!(i, GlobalItem::Func(_)))
             .try_for_each(|item| item.generate_ir(program, recorder))
     }
 }
@@ -63,7 +57,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
         // generate the function and its entry & end blocks
-        recorder.new_func(program, self);
+        recorder.enter_func(program, self);
 
         // enter the entry block
         let entry_bb = recorder.func().entry_bb();
