@@ -4,7 +4,7 @@ use super::*;
 use crate::ast::LVal;
 use crate::sema::ty::Type;
 
-pub fn alloc(
+pub fn local_alloc(
     recorder: &ProgramRecorder,
     program: &mut Program,
     ty: IrType,
@@ -20,7 +20,7 @@ pub fn alloc(
     val
 }
 
-pub fn get_ptr(
+pub fn get_elem_ptr(
     program: &mut Program,
     recorder: &ProgramRecorder,
     src: Value,
@@ -45,22 +45,48 @@ pub fn init_array(
     let mut dims = Vec::new();
     ty.get_dims(&mut dims);
 
-    (0..init.len()).for_each(|index| {
-        let mut k = index;
-        let mut depth = 0;
-        let mut unfolded_index = vec![recorder.new_value(program).integer(0); dims.len()];
-        while k > 0 {
-            unfolded_index[depth] = recorder
-                .new_value(program)
-                .integer((k % dims[depth]) as i32);
-            k /= dims[depth];
-            depth += 1;
+    fn inner(
+        program: &mut Program,
+        recorder: &ProgramRecorder,
+        src: Value,
+        init: &Vec<i32>,
+        dims: &[usize],
+        pos: usize,
+    ) {
+        if dims.is_empty() {
+            let ptr = src;
+            let value = recorder.new_value(program).integer(init[pos]);
+            let store = recorder.new_value(program).store(value, ptr);
+            recorder.func().push_inst(program, store);
+        } else {
+            let stride = dims.iter().skip(1).fold(1, |acc, &x| acc * x);
+            let this_dim = *dims.first().unwrap();
+            (0..this_dim).for_each(|i| {
+                let index = recorder.new_value(program).integer(i as i32);
+                let src = get_elem_ptr(program, recorder, src, &[index]);
+                inner(program, recorder, src, init, &dims[1..], pos + i * stride);
+            })
         }
-        let ptr = get_ptr(program, recorder, src, &unfolded_index);
-        let init_val = recorder.new_value(program).integer(init[index]);
-        let store = recorder.new_value(program).store(init_val, ptr);
-        recorder.func().push_inst(program, store);
-    });
+    }
+
+    inner(program, recorder, src, init, &dims, 0);
+
+    // (0..init.len()).for_each(|index| {
+    //     let mut k = index;
+    //     let mut depth = 0;
+    //     let mut unfolded_index = vec![recorder.new_value(program).integer(0); dims.len()];
+    //     while k > 0 {
+    //         unfolded_index[depth] = recorder
+    //             .new_value(program)
+    //             .integer((k % dims[depth]) as i32);
+    //         k /= dims[depth];
+    //         depth += 1;
+    //     }
+    //     let ptr = get_elem_ptr(program, recorder, src, &unfolded_index);
+    //     let init_val = recorder.new_value(program).integer(init[index]);
+    //     let store = recorder.new_value(program).store(init_val, ptr);
+    //     recorder.func().push_inst(program, store);
+    // });
 }
 
 pub fn init_global_array(
@@ -72,7 +98,7 @@ pub fn init_global_array(
     let mut dims = Vec::new();
     ty.get_dims(&mut dims);
 
-    fn init_elems(
+    fn inner(
         program: &mut Program,
         recorder: &ProgramRecorder,
         dims: &[usize],
@@ -89,14 +115,14 @@ pub fn init_global_array(
             let stride = dims.iter().skip(1).fold(1, |acc, &x| acc * x);
             (0..len)
                 .map(|i| {
-                    let elems = init_elems(program, recorder, &dims[1..], init, pos + i * stride);
+                    let elems = inner(program, recorder, &dims[1..], init, pos + i * stride);
                     program.new_value().aggregate(elems)
                 })
                 .collect()
         }
     }
 
-    let elems = init_elems(program, recorder, &dims, init, 0);
+    let elems = inner(program, recorder, &dims, init, 0);
     program.new_value().aggregate(elems)
 }
 
@@ -111,7 +137,7 @@ pub fn get_lval_ptr<'i>(
         .iter()
         .map(|e| e.generate_ir(program, recorder).unwrap())
         .collect();
-    get_ptr(program, recorder, src, &dims)
+    get_elem_ptr(program, recorder, src, &dims)
 }
 
 pub fn load_lval<'i>(

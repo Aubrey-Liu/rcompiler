@@ -68,7 +68,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
             .map(|v| *v)
             .collect();
         for (value, param) in param_values.iter().zip(&self.params) {
-            let val = alloc(
+            let val = local_alloc(
                 recorder,
                 program,
                 Type::get_i32(),
@@ -81,7 +81,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
 
         // allocate the return value
         if !matches!(self.ret_ty, AstType::Void) {
-            let ret_val = alloc(
+            let ret_val = local_alloc(
                 recorder,
                 program,
                 IrType::get_i32(),
@@ -179,6 +179,7 @@ impl<'i> GenerateIR<'i> for VarDecl {
                     _ => unreachable!(),
                 },
                 Symbol::Array(ty, Some(init)) => init_global_array(program, recorder, ty, init),
+                Symbol::Array(ty, None) => program.new_value().zero_init(ty.into_ir_ty()),
                 _ => unreachable!(),
             };
             let alloc = program.new_value().global_alloc(init_val);
@@ -186,7 +187,7 @@ impl<'i> GenerateIR<'i> for VarDecl {
             recorder.insert_value(&id, alloc);
         } else {
             let ty = symbol.get_var_ir_ty();
-            let val = alloc(recorder, program, ty, Some(format!("@{}", &id)));
+            let val = local_alloc(recorder, program, ty, Some(format!("@{}", &id)));
             recorder.insert_value(&id, val);
 
             match &symbol {
@@ -234,7 +235,7 @@ impl<'i> GenerateIR<'i> for ConstDecl {
             recorder.insert_value(&id, alloc);
         } else {
             let ty = symbol.get_var_ir_ty();
-            let val = alloc(recorder, program, ty, Some(format!("@{}", &id)));
+            let val = local_alloc(recorder, program, ty, Some(format!("@{}", &id)));
             recorder.insert_value(&id, val);
 
             match &symbol {
@@ -381,7 +382,7 @@ impl<'i> GenerateIR<'i> for Break {
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
         if !recorder.inside_loop() {
-            bail!("break statement occurs outside the loop");
+            bail!("break outside of loop");
         }
 
         let loop_exit = recorder.loop_exit();
@@ -404,7 +405,7 @@ impl<'i> GenerateIR<'i> for Continue {
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
         if !recorder.inside_loop() {
-            bail!("continue statement occurs outside the loop");
+            bail!("continue outside of loop");
         }
 
         // instantly jump to the loop entry
@@ -546,7 +547,7 @@ fn short_circuit<'i>(
     cond: &'i BinaryExp,
     end_bb: BasicBlock,
 ) -> Result<Value> {
-    let result = alloc(recorder, program, IrType::get_i32(), None);
+    let result = local_alloc(recorder, program, IrType::get_i32(), None);
 
     match cond.op {
         BinaryOp::And => {

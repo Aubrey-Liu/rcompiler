@@ -87,14 +87,14 @@ impl Symbol {
                 Some(InitVal::List(_)) => panic!("incompatible initializer type"),
                 None => Self::Var(false),
             },
-            AstType::Array => {
-                let elems = value
-                    .init
-                    .as_ref()
-                    .map(|i| init_array(&i, &ty))
-                    .or(Some(vec![0; capacity(&ty)]));
-                Self::Array(ty, elems)
-            }
+            AstType::Array => match &value.init {
+                Some(InitVal::List(_)) => {
+                    let elems = init_array(value.init.as_ref().unwrap(), &ty);
+                    Self::Array(ty, Some(elems))
+                }
+                None => Self::Array(ty, None),
+                _ => unreachable!(),
+            },
             _ => unreachable!(),
         }
     }
