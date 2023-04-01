@@ -229,7 +229,7 @@ impl NameManager {
 
     pub fn insert_name(&mut self, old_name: &str) {
         let mut name = String::from(old_name);
-        let mut possible_suffix = self.get_suffix(&old_name);
+        let mut possible_suffix = self.get_suffix(old_name);
 
         while self.pool.contains(&name) {
             possible_suffix += 1;
@@ -237,14 +237,14 @@ impl NameManager {
         }
         self.pool.insert(name);
 
-        match self
+        if self
             .mapping
             .last_mut()
             .unwrap()
             .insert(old_name.to_owned(), possible_suffix)
+            .is_some()
         {
-            Some(_) => panic!("redifinition of `{}`", old_name),
-            None => {}
+            panic!("redifinition of `{}`", old_name);
         }
     }
 
@@ -265,7 +265,6 @@ impl NameManager {
             .iter()
             .rev()
             .find_map(|scope| scope.get(name))
-            .or(Some(&0))
-            .unwrap()
+            .unwrap_or(&0)
     }
 }

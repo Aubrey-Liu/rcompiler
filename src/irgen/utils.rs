@@ -40,7 +40,7 @@ pub fn init_array(
     recorder: &ProgramRecorder,
     src: Value,
     ty: &Type,
-    init: &Vec<i32>,
+    init: &[i32],
 ) {
     let mut dims = Vec::new();
     ty.get_dims(&mut dims);
@@ -49,7 +49,7 @@ pub fn init_array(
         program: &mut Program,
         recorder: &ProgramRecorder,
         src: Value,
-        init: &Vec<i32>,
+        init: &[i32],
         dims: &[usize],
         pos: usize,
     ) {
@@ -59,7 +59,7 @@ pub fn init_array(
             let store = recorder.new_value(program).store(value, ptr);
             recorder.func().push_inst(program, store);
         } else {
-            let stride = dims.iter().skip(1).fold(1, |acc, &x| acc * x);
+            let stride: usize = dims.iter().skip(1).product();
             let this_dim = *dims.first().unwrap();
             (0..this_dim).for_each(|i| {
                 let index = recorder.new_value(program).integer(i as i32);
@@ -72,22 +72,11 @@ pub fn init_array(
     inner(program, recorder, src, init, &dims, 0);
 }
 
-pub fn init_global_array(
-    program: &mut Program,
-    recorder: &ProgramRecorder,
-    ty: &Type,
-    init: &Vec<i32>,
-) -> Value {
+pub fn init_global_array(program: &mut Program, ty: &Type, init: &[i32]) -> Value {
     let mut dims = Vec::new();
     ty.get_dims(&mut dims);
 
-    fn inner(
-        program: &mut Program,
-        recorder: &ProgramRecorder,
-        dims: &[usize],
-        init: &[i32],
-        pos: usize,
-    ) -> Vec<Value> {
+    fn inner(program: &mut Program, dims: &[usize], init: &[i32], pos: usize) -> Vec<Value> {
         if dims.len() == 1 {
             let len = dims[0];
             (0..len)
@@ -95,17 +84,17 @@ pub fn init_global_array(
                 .collect()
         } else {
             let len = dims[0];
-            let stride = dims.iter().skip(1).fold(1, |acc, &x| acc * x);
+            let stride: usize = dims.iter().skip(1).product();
             (0..len)
                 .map(|i| {
-                    let elems = inner(program, recorder, &dims[1..], init, pos + i * stride);
+                    let elems = inner(program, &dims[1..], init, pos + i * stride);
                     program.new_value().aggregate(elems)
                 })
                 .collect()
         }
     }
 
-    let elems = inner(program, recorder, &dims, init, 0);
+    let elems = inner(program, &dims, init, 0);
     program.new_value().aggregate(elems)
 }
 

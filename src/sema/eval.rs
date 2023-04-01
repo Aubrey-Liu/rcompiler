@@ -8,13 +8,7 @@ pub trait ConstEval {
 impl ConstEval for UnaryExp {
     fn const_eval(&self, symbols: &SymbolTable) -> Option<i32> {
         match self {
-            Self::Unary(op, exp) => {
-                if let Some(opr) = exp.const_eval(symbols) {
-                    Some(eval_unary(*op, opr))
-                } else {
-                    None
-                }
-            }
+            Self::Unary(op, exp) => exp.const_eval(symbols).map(|opr| eval_unary(*op, opr)),
             Self::Call(_) => None,
         }
     }
@@ -50,7 +44,7 @@ impl ConstEval for Exp {
 impl Exp {
     pub fn get_i32(&self) -> i32 {
         if let Self::Integer(i) = self {
-            return *i;
+            *i
         } else {
             panic!("attempt to retrieve an integer from a non-const expression")
         }

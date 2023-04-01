@@ -91,8 +91,8 @@ impl Symbol {
 
     pub fn get_var_ir_ty(&self) -> IrType {
         match self {
-            Self::Array(ty, _) => ty.into_ir_ty(),
-            Self::ConstArray(ty, _) => ty.into_ir_ty(),
+            Self::Array(ty, _) => ty.get_ir_ty(),
+            Self::ConstArray(ty, _) => ty.get_ir_ty(),
             Self::ConstVar(_) | Self::Var(_) => IrType::get_i32(),
             _ => unreachable!(),
         }
@@ -100,8 +100,8 @@ impl Symbol {
 
     pub fn get_func_ir_ty(&self) -> (IrType, Vec<IrType>) {
         if let Self::Func(ret_ty, param_ty) = self {
-            let ret_ty = ret_ty.into_ir_ty();
-            let param_ty: Vec<_> = param_ty.iter().map(|p| p.into_ir_ty()).collect();
+            let ret_ty = ret_ty.get_ir_ty();
+            let param_ty: Vec<_> = param_ty.iter().map(|p| p.get_ir_ty()).collect();
 
             (ret_ty, param_ty)
         } else {
@@ -133,8 +133,8 @@ pub fn init_array(init: &InitVal, ty: &Type) -> Vec<i32> {
     ) -> usize {
         let mut pos = pos;
         let mut depth = depth;
-        let mut next_dim = *dims.iter().skip(depth + 1).next().or(Some(&1)).unwrap();
-        let mut stride = dims.iter().take(depth + 1).fold(1, |acc, &x| acc * x);
+        let mut next_dim = *dims.get(depth + 1).unwrap_or(&1);
+        let mut stride: usize = dims.iter().take(depth + 1).product();
 
         for e in init {
             match e {
@@ -153,14 +153,14 @@ pub fn init_array(init: &InitVal, ty: &Type) -> Vec<i32> {
             if pos % (next_dim * stride) == 0 {
                 depth += 1;
                 stride *= next_dim;
-                next_dim = *dims.iter().skip(depth + 1).next().or(Some(&1)).unwrap();
+                next_dim = *dims.get(depth + 1).unwrap_or(&1);
                 if depth >= dims.len() - 1 {
                     break;
                 }
             }
         }
 
-        return (pos + stride - 1) / stride * stride;
+        (pos + stride - 1) / stride * stride
     }
 
     if let InitVal::List(list) = init {

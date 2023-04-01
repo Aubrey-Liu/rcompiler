@@ -22,19 +22,18 @@ impl Type {
     }
 
     pub fn is_compatible(&self, ast_type: &AstType) -> bool {
-        match (self, ast_type) {
-            (Type::Int, AstType::Int) => true,
-            (Type::Array(_, _), AstType::Array) => true,
-            _ => false,
-        }
+        matches!(
+            (self, ast_type),
+            (Type::Int, AstType::Int) | (Type::Array(_, _), AstType::Array)
+        )
     }
 
-    pub fn into_ir_ty(&self) -> IrType {
+    pub fn get_ir_ty(&self) -> IrType {
         match self {
             Self::Int => IrType::get_i32(),
-            Self::Array(base_ty, len) => IrType::get_array(base_ty.into_ir_ty(), *len),
+            Self::Array(base_ty, len) => IrType::get_array(base_ty.get_ir_ty(), *len),
             Self::Void => IrType::get_unit(),
-            Self::Pointer(base_ty) => IrType::get_pointer(base_ty.into_ir_ty()),
+            Self::Pointer(base_ty) => IrType::get_pointer(base_ty.get_ir_ty()),
         }
     }
 

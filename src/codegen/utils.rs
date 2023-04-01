@@ -10,7 +10,7 @@ pub struct AsmGenerator<'a> {
 
 impl<'a> AsmGenerator<'a> {
     pub fn addi(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
-        if imm >= -2048 && imm <= 2047 {
+        if (-2048..=2047).contains(&imm) {
             writeln!(self.f, "  addi {}, {}, {}", dst, opr, imm)
         } else {
             self.li(self.tmpr, imm)?;
@@ -23,7 +23,7 @@ impl<'a> AsmGenerator<'a> {
     }
 
     pub fn lw(&mut self, dst: &str, src: &str, off: i32) -> Result<()> {
-        if off >= -2048 && off <= 2047 {
+        if (-2048..=2047).contains(&off) {
             writeln!(self.f, "  lw {}, {}({})", dst, off, src)
         } else {
             self.addi(self.tmpr, src, off)?;
@@ -40,7 +40,7 @@ impl<'a> AsmGenerator<'a> {
     }
 
     pub fn sw(&mut self, src: &str, dst: &str, off: i32) -> Result<()> {
-        if off >= -2048 && off <= 2047 {
+        if (-2048..=2047).contains(&off) {
             writeln!(self.f, "  sw {}, {}({})", src, off, dst)
         } else {
             self.addi(self.tmpr, dst, off)?;

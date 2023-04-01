@@ -63,12 +63,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
         let entry_bb = recorder.func().entry_bb();
         recorder.func_mut().push_bb(program, entry_bb);
 
-        let param_values: Vec<Value> = program
-            .func(recorder.func().id())
-            .params()
-            .iter()
-            .map(|v| *v)
-            .collect();
+        let param_values: Vec<Value> = program.func(recorder.func().id()).params().to_vec();
         let (ret_ty, param_tys) = recorder.get_symbol(&self.ident).get_func_ir_ty();
 
         (0..param_values.len()).for_each(|i| {
@@ -78,7 +73,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
             let alloc = local_alloc(recorder, program, ty, Some(format!("%{}", ident)));
             let store = recorder.new_value(program).store(value, alloc);
             recorder.func().push_inst(program, store);
-            recorder.insert_value(&ident, alloc);
+            recorder.insert_value(ident, alloc);
         });
 
         // allocate the return value
@@ -176,17 +171,17 @@ impl<'i> GenerateIR<'i> for VarDecl {
                     None => program.new_value().zero_init(IrType::get_i32()),
                     _ => unreachable!(),
                 },
-                Symbol::Array(ty, Some(init)) => init_global_array(program, recorder, ty, init),
-                Symbol::Array(ty, None) => program.new_value().zero_init(ty.into_ir_ty()),
+                Symbol::Array(ty, Some(init)) => init_global_array(program, ty, init),
+                Symbol::Array(ty, None) => program.new_value().zero_init(ty.get_ir_ty()),
                 _ => unreachable!(),
             };
             let alloc = program.new_value().global_alloc(init_val);
             program.set_value_name(alloc, Some(format!("@{}", &id)));
-            recorder.insert_value(&id, alloc);
+            recorder.insert_value(id, alloc);
         } else {
             let ty = symbol.get_var_ir_ty();
             let val = local_alloc(recorder, program, ty, Some(format!("@{}", &id)));
-            recorder.insert_value(&id, val);
+            recorder.insert_value(id, val);
 
             match &symbol {
                 Symbol::Var(_) => match &self.init {
@@ -225,16 +220,16 @@ impl<'i> GenerateIR<'i> for ConstDecl {
 
         if recorder.is_global() {
             let init_val = match &symbol {
-                Symbol::ConstArray(ty, init) => init_global_array(program, recorder, ty, init),
+                Symbol::ConstArray(ty, init) => init_global_array(program, ty, init),
                 _ => unreachable!(),
             };
             let alloc = program.new_value().global_alloc(init_val);
             program.set_value_name(alloc, Some(format!("@{}", &id)));
-            recorder.insert_value(&id, alloc);
+            recorder.insert_value(id, alloc);
         } else {
             let ty = symbol.get_var_ir_ty();
             let val = local_alloc(recorder, program, ty, Some(format!("@{}", &id)));
-            recorder.insert_value(&id, val);
+            recorder.insert_value(id, val);
 
             match &symbol {
                 Symbol::ConstArray(ty, init) => init_array(program, recorder, val, ty, init),
