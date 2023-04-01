@@ -25,6 +25,7 @@ pub struct FuncDef {
 pub struct FuncParam {
     pub ty: AstType,
     pub ident: String,
+    pub dims: Vec<Exp>,
 }
 
 #[derive(Debug)]

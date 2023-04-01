@@ -31,7 +31,10 @@ FuncDef: FuncDef = {
 
 FuncParams: Vec<FuncParam> = <Comma<FuncParam>> => <>;
 
-FuncParam: FuncParam = "int" <ident: Ident> => FuncParam { ty: AstType::Int, ident };
+FuncParam: FuncParam = {
+  "int" <ident: Ident> => FuncParam { ty: AstType::Int, ident, dims: Vec::new() },
+  "int" <ident: Ident> "[" "]" <dims: Dim*> => FuncParam { ty: AstType::Array, ident, dims },
+}
 
 Block: Block = "{" <BlockItem*> "}" => Block::new_with_vec(<>);
 

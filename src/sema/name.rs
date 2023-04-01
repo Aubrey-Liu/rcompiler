@@ -10,6 +10,11 @@ impl Renamer for CompUnit {
     fn rename(&mut self, manager: &mut NameManager) {
         manager.enter_scope();
         manager.install_lib();
+
+        // preserved name
+        manager.insert_name("entry");
+        manager.insert_name("end");
+
         self.items.iter_mut().for_each(|item| item.rename(manager));
         manager.exit_scope();
     }
@@ -148,6 +153,7 @@ impl Renamer for InitVal {
 impl Renamer for LVal {
     fn rename(&mut self, manager: &mut NameManager) {
         manager.rename(&mut self.ident);
+        self.dims.iter_mut().for_each(|d| d.rename(manager));
     }
 }
 
@@ -221,7 +227,7 @@ impl NameManager {
         self.mapping.pop();
     }
 
-    pub fn insert_name(&mut self, old_name: &String) {
+    pub fn insert_name(&mut self, old_name: &str) {
         let mut name = String::from(old_name);
         let mut possible_suffix = self.get_suffix(&old_name);
 
@@ -235,7 +241,7 @@ impl NameManager {
             .mapping
             .last_mut()
             .unwrap()
-            .insert(old_name.clone(), possible_suffix)
+            .insert(old_name.to_owned(), possible_suffix)
         {
             Some(_) => panic!("redifinition of `{}`", old_name),
             None => {}

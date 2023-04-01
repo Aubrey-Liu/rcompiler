@@ -19,6 +19,52 @@ impl Analyzer for CompUnit {
             .iter_mut()
             .try_for_each(|item| item.analyze(symbols))?;
 
+        /*        self.declare_func(program, "getint", vec![], IrType::get_i32());
+        self.declare_func(program, "getch", vec![], IrType::get_i32());
+        self.declare_func(
+            program,
+            "getarray",
+            vec![IrType::get_pointer(IrType::get_i32())],
+            IrType::get_i32(),
+        );
+        self.declare_func(
+            program,
+            "putint",
+            vec![IrType::get_i32()],
+            IrType::get_unit(),
+        );
+        self.declare_func(
+            program,
+            "putch",
+            vec![IrType::get_i32()],
+            IrType::get_unit(),
+        );
+        self.declare_func(
+            program,
+            "putarray",
+            vec![IrType::get_i32(), IrType::get_pointer(IrType::get_i32())],
+            IrType::get_unit(),
+        );
+        self.declare_func(program, "starttime", vec![], IrType::get_unit());
+        self.declare_func(program, "stoptime", vec![], IrType::get_unit()); */
+        symbols.insert("getint", Symbol::Func(Type::Int, vec![]));
+        symbols.insert("getch", Symbol::Func(Type::Int, vec![]));
+        symbols.insert(
+            "getarray",
+            Symbol::Func(Type::Int, vec![Type::Pointer(Box::new(Type::Int))]),
+        );
+        symbols.insert("putint", Symbol::Func(Type::Void, vec![Type::Int]));
+        symbols.insert("putch", Symbol::Func(Type::Void, vec![Type::Int]));
+        symbols.insert(
+            "putarray",
+            Symbol::Func(
+                Type::Void,
+                vec![Type::Int, Type::Pointer(Box::new(Type::Int))],
+            ),
+        );
+        symbols.insert("starttime", Symbol::Func(Type::Void, vec![]));
+        symbols.insert("stoptime", Symbol::Func(Type::Void, vec![]));
+
         if symbols.contains("main") {
             Ok(())
         } else {
@@ -42,14 +88,40 @@ impl Analyzer for FuncDef {
     type Out = ();
 
     fn analyze(&mut self, symbols: &mut SymbolTable) -> Result<Self::Out> {
-        let symbol: Symbol = Symbol::from_func_def(self);
-        symbols.insert(&self.ident, symbol);
-
-        self.params
-            .iter()
-            .for_each(|p| symbols.insert(&p.ident, Symbol::Var(true)));
+        let ret_ty = match &self.ret_ty {
+            AstType::Int => Type::Int,
+            AstType::Void => Type::Void,
+            _ => unreachable!(),
+        };
+        let param_tys: Vec<_> = self
+            .params
+            .iter_mut()
+            .map(|p| p.analyze(symbols).unwrap())
+            .collect();
+        symbols.insert(&self.ident, Symbol::Func(ret_ty, param_tys));
 
         self.block.analyze(symbols)
+    }
+}
+
+impl Analyzer for FuncParam {
+    type Out = Type;
+
+    fn analyze(&mut self, symbols: &mut SymbolTable) -> Result<Self::Out> {
+        let ty = match &self.ty {
+            AstType::Int => Type::Int,
+            AstType::Array => Type::Pointer(Box::new(Type::infer_from_dims(symbols, &self.dims))),
+            _ => unreachable!(),
+        };
+
+        let symbol = match &ty {
+            Type::Int => Symbol::Var(true),
+            Type::Pointer(_) => Symbol::Pointer(ty.clone()),
+            _ => unreachable!(),
+        };
+        symbols.insert(&self.ident, symbol);
+
+        Ok(ty)
     }
 }
 
@@ -205,8 +277,8 @@ impl Analyzer for Exp {
             Self::LVal(e) => {
                 match symbols.get(&e.ident) {
                     Symbol::ConstVar(i) => *self = Exp::Integer(*i),
-                    Symbol::Var(_) => {}
                     Symbol::Array(_, _) | Symbol::ConstArray(_, _) => e.analyze(symbols)?,
+                    Symbol::Var(_) | Symbol::Pointer(_) => {}
                     _ => unreachable!(),
                 }
                 Ok(())

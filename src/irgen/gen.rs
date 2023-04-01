@@ -1,7 +1,9 @@
 use crate::ast::*;
 use crate::sema::symbol::Symbol;
-use koopa::ir::builder_traits::{GlobalInstBuilder, LocalInstBuilder, ValueBuilder};
-use koopa::ir::Type;
+use koopa::ir::{
+    builder_traits::{GlobalInstBuilder, LocalInstBuilder, ValueBuilder},
+    TypeKind,
+};
 
 use super::*;
 
@@ -67,26 +69,21 @@ impl<'i> GenerateIR<'i> for FuncDef {
             .iter()
             .map(|v| *v)
             .collect();
-        for (value, param) in param_values.iter().zip(&self.params) {
-            let val = local_alloc(
-                recorder,
-                program,
-                Type::get_i32(),
-                Some(format!("%{}", &param.ident)),
-            );
-            recorder.insert_value(&param.ident, val);
-            let st = recorder.new_value(program).store(*value, val);
-            recorder.func().push_inst(program, st);
-        }
+        let (ret_ty, param_tys) = recorder.get_symbol(&self.ident).get_func_ir_ty();
+
+        (0..param_values.len()).for_each(|i| {
+            let ident = &self.params[i].ident;
+            let ty = param_tys[i].clone();
+            let value = param_values[i];
+            let alloc = local_alloc(recorder, program, ty, Some(format!("%{}", ident)));
+            let store = recorder.new_value(program).store(value, alloc);
+            recorder.func().push_inst(program, store);
+            recorder.insert_value(&ident, alloc);
+        });
 
         // allocate the return value
         if !matches!(self.ret_ty, AstType::Void) {
-            let ret_val = local_alloc(
-                recorder,
-                program,
-                IrType::get_i32(),
-                Some("%ret".to_owned()),
-            );
+            let ret_val = local_alloc(recorder, program, ret_ty, Some("%ret".to_owned()));
             recorder.func_mut().set_ret_val(ret_val);
         }
 
@@ -280,9 +277,9 @@ impl<'i> GenerateIR<'i> for Assign {
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
         let dst = get_lval_ptr(program, recorder, &self.lval);
-        let val = self.val.generate_ir(program, recorder)?;
-        let st = recorder.new_value(program).store(val, dst);
-        recorder.func().push_inst(program, st);
+        let value = self.val.generate_ir(program, recorder)?;
+        let store = recorder.new_value(program).store(value, dst);
+        recorder.func().push_inst(program, store);
 
         Ok(())
     }
@@ -528,12 +525,28 @@ impl<'i> GenerateIR<'i> for Call {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
+        let func_id = recorder.get_func_id(&self.func_id);
+        let (_, param_tys) = recorder.get_symbol(&self.func_id).get_func_ir_ty();
         let arg_values: Vec<_> = self
             .args
             .iter()
-            .map(|arg| arg.generate_ir(program, recorder).unwrap())
+            .zip(&param_tys)
+            .map(|(arg, ty)| match (ty.kind(), arg) {
+                (TypeKind::Pointer(_), Exp::LVal(lval)) => {
+                    let mut val = get_lval_ptr(program, recorder, lval);
+                    if matches!(
+                        recorder.get_symbol(&lval.ident),
+                        Symbol::Array(_, _) | Symbol::ConstArray(_, _)
+                    ) || !lval.dims.is_empty()
+                    {
+                        val = into_ptr(program, recorder, val);
+                    }
+
+                    val
+                }
+                _ => arg.generate_ir(program, recorder).unwrap(),
+            })
             .collect();
-        let func_id = recorder.get_func_id(&self.func_id);
         let call = recorder.new_value(program).call(func_id, arg_values);
         recorder.func().push_inst(program, call);
 

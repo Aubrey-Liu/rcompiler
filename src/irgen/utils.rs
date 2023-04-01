@@ -11,13 +11,13 @@ pub fn local_alloc(
     name: Option<String>,
 ) -> Value {
     let entry = recorder.func().entry_bb();
-    let val = recorder.new_value(program).alloc(ty);
+    let alloc = recorder.new_value(program).alloc(ty);
     if let Some(name) = name {
-        recorder.func().set_value_name(program, name, val);
+        recorder.func().set_value_name(program, name, alloc);
     }
-    recorder.func().push_inst_to(program, entry, val);
+    recorder.func().push_inst_to(program, entry, alloc);
 
-    val
+    alloc
 }
 
 pub fn get_elem_ptr(
@@ -70,23 +70,6 @@ pub fn init_array(
     }
 
     inner(program, recorder, src, init, &dims, 0);
-
-    // (0..init.len()).for_each(|index| {
-    //     let mut k = index;
-    //     let mut depth = 0;
-    //     let mut unfolded_index = vec![recorder.new_value(program).integer(0); dims.len()];
-    //     while k > 0 {
-    //         unfolded_index[depth] = recorder
-    //             .new_value(program)
-    //             .integer((k % dims[depth]) as i32);
-    //         k /= dims[depth];
-    //         depth += 1;
-    //     }
-    //     let ptr = get_elem_ptr(program, recorder, src, &unfolded_index);
-    //     let init_val = recorder.new_value(program).integer(init[index]);
-    //     let store = recorder.new_value(program).store(init_val, ptr);
-    //     recorder.func().push_inst(program, store);
-    // });
 }
 
 pub fn init_global_array(
@@ -137,7 +120,27 @@ pub fn get_lval_ptr<'i>(
         .iter()
         .map(|e| e.generate_ir(program, recorder).unwrap())
         .collect();
-    get_elem_ptr(program, recorder, src, &dims)
+    match recorder.get_symbol(&lval.ident) {
+        Symbol::Pointer(_) => {
+            let mut ptr = recorder.new_value(program).load(src);
+            recorder.func().push_inst(program, ptr);
+            if !dims.is_empty() {
+                let get_ptr = recorder.new_value(program).get_ptr(ptr, dims[0]);
+                recorder.func().push_inst(program, get_ptr);
+                ptr = get_elem_ptr(program, recorder, get_ptr, &dims[1..]);
+            }
+            ptr
+        }
+        _ => get_elem_ptr(program, recorder, src, &dims),
+    }
+}
+
+pub fn into_ptr(program: &mut Program, recorder: &ProgramRecorder, val: Value) -> Value {
+    let index = recorder.new_value(program).integer(0);
+    let ptr = recorder.new_value(program).get_elem_ptr(val, index);
+    recorder.func().push_inst(program, ptr);
+
+    ptr
 }
 
 pub fn load_lval<'i>(

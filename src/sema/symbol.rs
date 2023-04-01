@@ -2,7 +2,7 @@ use koopa::ir::Type as IrType;
 use std::cmp::min;
 use std::collections::HashMap;
 
-use crate::ast::{AstType, ConstDecl, FuncDef, InitVal, VarDecl};
+use crate::ast::{AstType, ConstDecl, InitVal, VarDecl};
 
 use super::*;
 
@@ -12,6 +12,7 @@ pub enum Symbol {
     Var(bool), // whether it's initialized or not
     ConstArray(Type, Vec<i32>),
     Array(Type, Option<Vec<i32>>),
+    Pointer(Type),
     Func(Type, Vec<Type>), // return type and parameter's type
 }
 
@@ -49,17 +50,6 @@ impl SymbolTable {
 }
 
 impl Symbol {
-    pub fn from_func_def(value: &FuncDef) -> Self {
-        let ret_ty = match &value.ret_ty {
-            AstType::Int => Type::Int,
-            AstType::Void => Type::Void,
-            _ => unreachable!(),
-        };
-        let param_tys: Vec<_> = value.params.iter().map(|_| Type::Int).collect();
-
-        Symbol::Func(ret_ty, param_tys)
-    }
-
     pub fn from_const_decl(value: &ConstDecl, symbols: &SymbolTable) -> Self {
         let ty = Type::infer_from_dims(symbols, &value.lval.dims);
         assert!(ty.is_compatible(&value.ty));
