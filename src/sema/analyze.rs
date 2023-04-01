@@ -19,34 +19,6 @@ impl Analyzer for CompUnit {
             .iter_mut()
             .try_for_each(|item| item.analyze(symbols))?;
 
-        /*        self.declare_func(program, "getint", vec![], IrType::get_i32());
-        self.declare_func(program, "getch", vec![], IrType::get_i32());
-        self.declare_func(
-            program,
-            "getarray",
-            vec![IrType::get_pointer(IrType::get_i32())],
-            IrType::get_i32(),
-        );
-        self.declare_func(
-            program,
-            "putint",
-            vec![IrType::get_i32()],
-            IrType::get_unit(),
-        );
-        self.declare_func(
-            program,
-            "putch",
-            vec![IrType::get_i32()],
-            IrType::get_unit(),
-        );
-        self.declare_func(
-            program,
-            "putarray",
-            vec![IrType::get_i32(), IrType::get_pointer(IrType::get_i32())],
-            IrType::get_unit(),
-        );
-        self.declare_func(program, "starttime", vec![], IrType::get_unit());
-        self.declare_func(program, "stoptime", vec![], IrType::get_unit()); */
         symbols.insert("getint", Symbol::Func(Type::Int, vec![]));
         symbols.insert("getch", Symbol::Func(Type::Int, vec![]));
         symbols.insert(
@@ -108,6 +80,8 @@ impl Analyzer for FuncParam {
     type Out = Type;
 
     fn analyze(&mut self, symbols: &mut SymbolTable) -> Result<Self::Out> {
+        self.dims.iter_mut().try_for_each(|d| d.analyze(symbols))?;
+
         let ty = match &self.ty {
             AstType::Int => Type::Int,
             AstType::Array => Type::Pointer(Box::new(Type::infer_from_dims(symbols, &self.dims))),
@@ -277,9 +251,7 @@ impl Analyzer for Exp {
             Self::LVal(e) => {
                 match symbols.get(&e.ident) {
                     Symbol::ConstVar(i) => *self = Exp::Integer(*i),
-                    Symbol::Array(_, _) | Symbol::ConstArray(_, _) => e.analyze(symbols)?,
-                    Symbol::Var(_) | Symbol::Pointer(_) => {}
-                    _ => unreachable!(),
+                    _ => e.analyze(symbols)?,
                 }
                 Ok(())
             }

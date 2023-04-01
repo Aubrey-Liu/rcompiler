@@ -56,7 +56,10 @@ impl<'i> ProgramRecorder<'i> {
     }
 
     pub fn get_value(&self, name: &str) -> Value {
-        *self.values.get(name).unwrap()
+        match self.values.get(name) {
+            Some(value) => *value,
+            None => panic!("`{}` doesn't have a value", name),
+        }
     }
 
     pub fn is_global(&self) -> bool {
@@ -87,6 +90,10 @@ impl<'i> ProgramRecorder<'i> {
             ret_val: None,
         });
         self.funcs.insert(&func_def.ident, id);
+    }
+
+    pub fn exit_func(&mut self) {
+        self.cur_func = None;
     }
 
     fn declare_func(
@@ -175,6 +182,7 @@ impl ProgramRecorder<'_> {
 }
 
 impl FunctionInfo {
+    #[allow(unused)]
     pub fn new_bb(&self, program: &mut Program, name: &str) -> BasicBlock {
         program
             .func_mut(self.id)

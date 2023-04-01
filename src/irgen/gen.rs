@@ -29,6 +29,12 @@ impl<'i> GenerateIR<'i> for CompUnit {
 
         self.items
             .iter()
+            .filter(|i| matches!(i, GlobalItem::Decl(_)))
+            .try_for_each(|item| item.generate_ir(program, recorder))?;
+
+        self.items
+            .iter()
+            .filter(|i| matches!(i, GlobalItem::Func(_)))
             .try_for_each(|item| item.generate_ir(program, recorder))
     }
 }
@@ -116,6 +122,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
             recorder.func().push_inst(program, ld);
             recorder.func().push_inst(program, ret);
         }
+        recorder.exit_func();
 
         Ok(())
     }
@@ -293,9 +300,9 @@ impl<'i> GenerateIR<'i> for Branch {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        let true_bb = recorder.func().new_bb(program, "%br_then");
-        let false_bb = recorder.func().new_bb(program, "%br_else");
-        let end_bb = recorder.func().new_bb(program, "%br_end");
+        let true_bb = recorder.func().new_anonymous_bb(program);
+        let false_bb = recorder.func().new_anonymous_bb(program);
+        let end_bb = recorder.func().new_anonymous_bb(program);
 
         let result = self.cond.generate_ir(program, recorder)?;
         let br = recorder
@@ -335,9 +342,9 @@ impl<'i> GenerateIR<'i> for While {
         program: &mut Program,
         recorder: &mut ProgramRecorder<'i>,
     ) -> Result<Self::Out> {
-        let loop_entry = recorder.func().new_bb(program, "%loop_entry");
-        let loop_body = recorder.func().new_bb(program, "%loop_body");
-        let loop_exit = recorder.func().new_bb(program, "%loop_exit");
+        let loop_entry = recorder.func().new_anonymous_bb(program);
+        let loop_body = recorder.func().new_anonymous_bb(program);
+        let loop_exit = recorder.func().new_anonymous_bb(program);
 
         // record the loop information
         recorder.enter_loop(loop_entry, loop_exit);
@@ -471,12 +478,7 @@ impl<'i> GenerateIR<'i> for BinaryExp {
     ) -> Result<Self::Out> {
         Ok(match self.op {
             BinaryOp::And | BinaryOp::Or => {
-                let name = if matches!(self.op, BinaryOp::And) {
-                    "%land_end"
-                } else {
-                    "%lor_end"
-                };
-                let end_bb = recorder.func().new_bb(program, name);
+                let end_bb = recorder.func().new_anonymous_bb(program);
                 let result = short_circuit(program, recorder, self, end_bb)?;
                 recorder.func_mut().push_bb(program, end_bb);
                 let ld = recorder.new_value(program).load(result);
@@ -564,7 +566,7 @@ fn short_circuit<'i>(
 
     match cond.op {
         BinaryOp::And => {
-            let check_rhs = recorder.func().new_bb(program, "%land_rhs");
+            let check_rhs = recorder.func().new_anonymous_bb(program);
             let lhs = cond.lhs.generate_ir(program, recorder)?;
             let zero = recorder.new_value(program).integer(0);
             let lhs_checked = recorder
@@ -592,7 +594,7 @@ fn short_circuit<'i>(
         }
 
         BinaryOp::Or => {
-            let check_rhs = recorder.func().new_bb(program, "%lor_rhs");
+            let check_rhs = recorder.func().new_anonymous_bb(program);
             let lhs = cond.lhs.generate_ir(program, recorder)?;
             let zero = recorder.new_value(program).integer(0);
             let lhs_checked = recorder

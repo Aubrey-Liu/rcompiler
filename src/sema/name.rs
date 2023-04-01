@@ -118,7 +118,7 @@ impl Renamer for Branch {
 impl Renamer for Assign {
     fn rename(&mut self, manager: &mut NameManager) {
         self.val.rename(manager);
-        manager.rename(&mut self.lval.ident);
+        self.lval.rename(manager);
     }
 }
 
