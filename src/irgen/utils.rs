@@ -58,9 +58,10 @@ pub fn init_array(
         pos: usize,
     ) {
         if dims.is_empty() {
-            let value = recorder
-                .new_value(program)
-                .integer(*init.get(pos).unwrap_or(&0));
+            if let Some(&0) = init.get(pos) {
+                return;
+            }
+            let value = recorder.new_value(program).integer(*init.get(pos).unwrap());
             let store = recorder.new_value(program).store(value, dst);
             recorder.func().push_inst(program, store);
         } else {
