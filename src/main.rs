@@ -15,7 +15,7 @@ lalrpop_mod!(sysy);
 
 fn main() -> Result<()> {
     let mut args = args();
-    let mode = args.nth(2).unwrap();
+    let mode = args.nth(1).unwrap();
     let input = args.next().unwrap();
     let output = args.nth(1).unwrap();
 

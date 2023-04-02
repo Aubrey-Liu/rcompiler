@@ -1,5 +1,4 @@
 use koopa::ir::Type as IrType;
-use std::cmp::min;
 use std::collections::HashMap;
 
 use crate::ast::{AstType, ConstDecl, InitVal, VarDecl};
@@ -124,19 +123,24 @@ pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
     let mut elems = Vec::new();
     let mut dims: Vec<usize> = Vec::new();
     ty.get_dims(&mut dims);
-    dims.reverse();
 
-    fn fill_array(
-        init: &[InitVal],
-        dims: &[usize],
-        depth: usize,
-        pos: usize,
-        elems: &mut Vec<i32>,
-    ) -> usize {
+    let mut acc = 1;
+    let boundaries: Vec<_> = dims
+        .iter()
+        .rev()
+        .map(|d| {
+            acc *= d;
+            acc
+        })
+        .collect();
+
+    fn fill_array(init: &[InitVal], dims: &[usize], pos: usize, elems: &mut Vec<i32>) -> usize {
         let mut pos = pos;
-        let mut depth = depth;
-        let mut next_dim = *dims.get(depth + 1).unwrap_or(&1);
-        let mut stride: usize = dims.iter().take(depth + 1).product();
+        let stride = dims
+            .iter()
+            .rev()
+            .find(|&&d| pos % d == 0)
+            .expect("invalid initializer");
 
         for e in init {
             match e {
@@ -148,28 +152,16 @@ pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
                     pos += 1;
                 }
                 InitVal::List(list) => {
-                    if pos % stride != 0 {
-                        panic!("invalid list initializer");
-                    }
-                    let span = min(depth + 2, dims.len());
-                    pos = fill_array(list, &dims[0..span], depth, pos, elems);
+                    pos = fill_array(list, &dims[..dims.len() - 1], pos, elems);
                 }
             };
-            if pos % (next_dim * stride) == 0 {
-                depth += 1;
-                stride *= next_dim;
-                next_dim = *dims.get(depth + 1).unwrap_or(&1);
-                if depth >= dims.len() - 1 {
-                    break;
-                }
-            }
         }
 
         (pos + stride - 1) / stride * stride
     }
 
     if let InitVal::List(list) = init {
-        fill_array(list, &dims, 0, 0, &mut elems);
+        fill_array(list, &boundaries, 0, &mut elems);
     } else {
         panic!("incompatible initializer type")
     }
