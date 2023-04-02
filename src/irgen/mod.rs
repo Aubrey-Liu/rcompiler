@@ -18,8 +18,8 @@ use crate::sysy;
 use gen::*;
 use utils::*;
 
-pub fn generate_mem_ir(ipath: &str) -> Result<Program> {
-    let input = read_to_string(ipath)?;
+pub fn generate_mem_ir(input: &str) -> Result<Program> {
+    let input = read_to_string(input)?;
     let mut errors = vec![];
     let mut ast = sysy::CompUnitParser::new()
         .parse(&mut errors, &input)
@@ -38,9 +38,9 @@ pub fn generate_mem_ir(ipath: &str) -> Result<Program> {
     Ok(program)
 }
 
-pub fn generate_ir(ipath: &str, opath: &str) -> Result<()> {
-    let program = generate_mem_ir(ipath)?;
-    let mut gen = KoopaGenerator::from_path(opath)?;
+pub fn generate_ir(input: &str, output: &str) -> Result<()> {
+    let program = generate_mem_ir(input)?;
+    let mut gen = KoopaGenerator::from_path(output)?;
     gen.generate_on(&program)?;
 
     Ok(())

@@ -15,15 +15,14 @@ lalrpop_mod!(sysy);
 
 fn main() -> Result<()> {
     let mut args = args();
-    args.next();
-    let mode = args.next().unwrap();
-    let ipath = args.next().unwrap();
-    args.next();
-    let opath = args.next().unwrap();
+    let mode = args.nth(2).unwrap();
+    let input = args.next().unwrap();
+    let output = args.nth(1).unwrap();
 
     match mode.as_str() {
-        "-koopa" => generate_ir(&ipath, &opath)?,
-        "-riscv" => generate_code(&ipath, &opath)?,
+        "-koopa" => generate_ir(&input, &output)?,
+        "-riscv" => generate_code(&input, &output)?,
+        "-perf" => generate_code(&input, &output)?,
         _ => bail!("invalid mode: {}", mode.as_str()),
     };
 
