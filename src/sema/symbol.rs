@@ -135,12 +135,15 @@ pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
         .collect();
 
     fn fill_array(init: &[InitVal], dims: &[usize], pos: usize, elems: &mut Vec<i32>) -> usize {
-        let mut pos = pos;
-        let stride = dims
+        let (idx, stride) = dims
             .iter()
             .rev()
-            .find(|&&d| pos % d == 0)
+            .enumerate()
+            .find(|&(_, d)| pos % d == 0)
             .expect("invalid initializer");
+        let mut pos = pos;
+        let next_pos = pos + stride;
+        let base_dim = dims.len() - idx - 1;
 
         for e in init {
             match e {
@@ -152,12 +155,12 @@ pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
                     pos += 1;
                 }
                 InitVal::List(list) => {
-                    pos = fill_array(list, &dims[..dims.len() - 1], pos, elems);
+                    pos = fill_array(list, &dims[0..base_dim], pos, elems);
                 }
             };
         }
 
-        (pos + stride - 1) / stride * stride
+        next_pos
     }
 
     if let InitVal::List(list) = init {
