@@ -50,13 +50,18 @@ impl SymbolTable {
 }
 
 impl Symbol {
-    pub fn from_const_decl(value: &ConstDecl, symbols: &SymbolTable) -> Self {
-        let ty = Type::infer_from_dims(symbols, &value.lval.dims);
-        assert!(ty.is_compatible(&value.ty));
+    pub fn from_const_decl(value: &ConstDecl) -> Self {
+        let dims: Vec<_> = value
+            .lval
+            .dims
+            .iter()
+            .map(|d| d.get_i32() as usize)
+            .collect();
+        let ty = Type::infer_from_dims(&dims);
 
         match value.ty {
             AstType::Int => match &value.init {
-                InitVal::Exp(e) => Self::ConstVar(e.const_eval(symbols).unwrap()),
+                InitVal::Exp(e) => Self::ConstVar(e.get_i32()),
                 InitVal::List(_) => panic!("incompatible initializer type"),
             },
             AstType::Array => {
@@ -67,9 +72,14 @@ impl Symbol {
         }
     }
 
-    pub fn from_var_decl(value: &VarDecl, symbols: &SymbolTable) -> Self {
-        let ty = Type::infer_from_dims(symbols, &value.lval.dims);
-        assert!(ty.is_compatible(&value.ty));
+    pub fn from_var_decl(value: &VarDecl) -> Self {
+        let dims: Vec<_> = value
+            .lval
+            .dims
+            .iter()
+            .map(|d| d.get_i32() as usize)
+            .collect();
+        let ty = Type::infer_from_dims(&dims);
 
         match value.ty {
             AstType::Int => match &value.init {

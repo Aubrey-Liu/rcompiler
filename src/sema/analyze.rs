@@ -82,9 +82,10 @@ impl Analyzer for FuncParam {
     fn analyze(&mut self, symbols: &mut SymbolTable) -> Result<Self::Out> {
         self.dims.iter_mut().try_for_each(|d| d.analyze(symbols))?;
 
+        let dims: Vec<_> = self.dims.iter().map(|d| d.get_i32() as usize).collect();
         let ty = match &self.ty {
             AstType::Int => Type::Int,
-            AstType::Array => Type::Pointer(Box::new(Type::infer_from_dims(symbols, &self.dims))),
+            AstType::Array => Type::Pointer(Box::new(Type::infer_from_dims(&dims))),
             _ => unreachable!(),
         };
 
@@ -137,13 +138,15 @@ impl Analyzer for ConstDecl {
     fn analyze(&mut self, symbols: &mut SymbolTable) -> Result<Self::Out> {
         self.init.analyze(symbols)?;
 
-        let symbol = Symbol::from_const_decl(self, symbols);
-        symbols.insert(&self.lval.ident, symbol);
-
         self.lval
             .dims
             .iter_mut()
-            .try_for_each(|d| d.analyze(symbols))
+            .try_for_each(|d| d.analyze(symbols))?;
+
+        let symbol = Symbol::from_const_decl(self);
+        symbols.insert(&self.lval.ident, symbol);
+
+        Ok(())
     }
 }
 
@@ -155,13 +158,15 @@ impl Analyzer for VarDecl {
             e.analyze(symbols)?;
         }
 
-        let symbol = Symbol::from_var_decl(self, symbols);
-        symbols.insert(&self.lval.ident, symbol);
-
         self.lval
             .dims
             .iter_mut()
-            .try_for_each(|d| d.analyze(symbols))
+            .try_for_each(|d| d.analyze(symbols))?;
+
+        let symbol = Symbol::from_var_decl(self);
+        symbols.insert(&self.lval.ident, symbol);
+
+        Ok(())
     }
 }
 
