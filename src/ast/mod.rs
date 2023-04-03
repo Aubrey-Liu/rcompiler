@@ -17,7 +17,7 @@ pub enum GlobalItem {
 
 #[derive(Debug)]
 pub struct FuncDef {
-    pub ret_kind: ExpKind,
+    pub ret_kind: ExprKind,
     pub ident: String,
     pub params: Vec<FuncParam>,
     pub block: Block,
@@ -25,9 +25,9 @@ pub struct FuncDef {
 
 #[derive(Debug)]
 pub struct FuncParam {
-    pub kind: ExpKind,
+    pub kind: ExprKind,
     pub ident: String,
-    pub dims: Vec<Exp>,
+    pub dims: Vec<Expr>,
 }
 
 #[derive(Debug)]
@@ -54,14 +54,14 @@ pub enum Stmt {
     Branch(Branch),
     Break(Break),
     Continue(Continue),
-    Exp(Option<Exp>),
+    Expr(Option<Expr>),
     While(While),
     Return(Return),
 }
 
 #[derive(Debug)]
 pub struct Return {
-    pub ret_val: Option<Exp>,
+    pub ret_val: Option<Expr>,
 }
 
 #[derive(Debug)]
@@ -72,13 +72,13 @@ pub struct Break;
 
 #[derive(Debug)]
 pub struct While {
-    pub cond: Exp,
+    pub cond: Expr,
     pub stmt: Box<Stmt>,
 }
 
 #[derive(Debug)]
 pub struct Branch {
-    pub cond: Exp,
+    pub cond: Expr,
     pub if_stmt: Box<Stmt>,
     pub el_stmt: Option<Box<Stmt>>,
 }
@@ -87,25 +87,25 @@ pub struct Branch {
 pub struct Assign {
     /// Assignment
     pub lval: LVal,
-    pub val: Exp,
+    pub val: Expr,
 }
 
 #[derive(Debug)]
 pub struct ConstDecl {
     pub lval: LVal,
     pub init: InitVal,
-    pub kind: ExpKind,
+    pub kind: ExprKind,
 }
 
 #[derive(Debug)]
 pub struct VarDecl {
     pub lval: LVal,
     pub init: Option<InitVal>,
-    pub kind: ExpKind,
+    pub kind: ExprKind,
 }
 
 #[derive(Debug, Clone)]
-pub enum ExpKind {
+pub enum ExprKind {
     Array,
     Int,
     Void,
@@ -120,9 +120,9 @@ impl Block {
 impl VarDecl {
     pub fn new(lval: LVal, init: Option<InitVal>) -> Self {
         let kind = if !lval.dims.is_empty() {
-            ExpKind::Array
+            ExprKind::Array
         } else {
-            ExpKind::Int
+            ExprKind::Int
         };
         Self { lval, init, kind }
     }
@@ -131,9 +131,9 @@ impl VarDecl {
 impl ConstDecl {
     pub fn new(lval: LVal, init: InitVal) -> Self {
         let kind = if matches!(init, InitVal::List(_)) {
-            ExpKind::Array
+            ExprKind::Array
         } else {
-            ExpKind::Int
+            ExprKind::Int
         };
         Self { lval, init, kind }
     }

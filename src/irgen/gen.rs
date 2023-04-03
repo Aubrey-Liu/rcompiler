@@ -61,7 +61,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
         });
 
         // allocate the return value
-        if !matches!(self.ret_kind, ExpKind::Void) {
+        if !matches!(self.ret_kind, ExprKind::Void) {
             let ret_val = local_alloc(recorder, ret_ty, Some("%ret".to_owned()));
             recorder.func_mut().set_ret_val(ret_val);
         }
@@ -85,7 +85,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
         recorder.push_bb(end_bb);
 
         // load the return value and return
-        if matches!(self.ret_kind, ExpKind::Void) {
+        if matches!(self.ret_kind, ExprKind::Void) {
             let ret = recorder.new_value().ret(None);
             recorder.push_inst(ret);
         } else {
@@ -135,7 +135,7 @@ impl<'i> GenerateIR<'i> for VarDecl {
         if recorder.is_global() {
             let init_val = match &symbol {
                 Symbol::Var(_) => match &self.init {
-                    Some(InitVal::Exp(e)) => recorder.new_global_value().integer(e.get_i32()),
+                    Some(InitVal::Expr(e)) => recorder.new_global_value().integer(e.get_i32()),
                     None => recorder.new_global_value().zero_init(IrType::get_i32()),
                     _ => unreachable!(),
                 },
@@ -153,7 +153,7 @@ impl<'i> GenerateIR<'i> for VarDecl {
 
             match &symbol {
                 Symbol::Var(_) => match &self.init {
-                    Some(InitVal::Exp(e)) => {
+                    Some(InitVal::Expr(e)) => {
                         let init_val = e.generate_ir(recorder)?;
                         let store = recorder.new_value().store(init_val, val);
                         recorder.push_inst(store);
@@ -175,7 +175,7 @@ impl<'i> GenerateIR<'i> for ConstDecl {
     type Out = ();
 
     fn generate_ir(&'i self, recorder: &mut ProgramRecorder<'i>) -> Result<Self::Out> {
-        if matches!(self.kind, ExpKind::Int) {
+        if matches!(self.kind, ExprKind::Int) {
             return Ok(());
         }
 
@@ -212,7 +212,7 @@ impl<'i> GenerateIR<'i> for Stmt {
         match self {
             Self::Assign(s) => s.generate_ir(recorder),
             Self::Block(s) => s.generate_ir(recorder),
-            Self::Exp(s) => s
+            Self::Expr(s) => s
                 .as_ref()
                 .map_or(Ok(()), |exp| exp.generate_ir(recorder).map(|_| ())),
             Self::Return(s) => s.generate_ir(recorder),
@@ -371,21 +371,21 @@ impl<'i> GenerateIR<'i> for Return {
     }
 }
 
-impl<'i> GenerateIR<'i> for Exp {
+impl<'i> GenerateIR<'i> for Expr {
     type Out = Value;
 
     fn generate_ir(&'i self, recorder: &mut ProgramRecorder<'i>) -> Result<Self::Out> {
         Ok(match self {
-            Exp::Integer(i) => recorder.new_value().integer(*i),
-            Exp::Uxp(uxp) => uxp.generate_ir(recorder)?,
-            Exp::Bxp(bxp) => bxp.generate_ir(recorder)?,
-            Exp::LVal(lval) => load_lval(recorder, lval),
-            Exp::Error => panic!("expected an expression"),
+            Expr::Integer(i) => recorder.new_value().integer(*i),
+            Expr::UnaryExpr(uxp) => uxp.generate_ir(recorder)?,
+            Expr::BinaryExpr(bxp) => bxp.generate_ir(recorder)?,
+            Expr::LVal(lval) => load_lval(recorder, lval),
+            Expr::Error => panic!("expected an expression"),
         })
     }
 }
 
-impl<'i> GenerateIR<'i> for BinaryExp {
+impl<'i> GenerateIR<'i> for BinaryExpr {
     type Out = Value;
 
     fn generate_ir(&'i self, recorder: &mut ProgramRecorder<'i>) -> Result<Self::Out> {
@@ -409,7 +409,7 @@ impl<'i> GenerateIR<'i> for BinaryExp {
     }
 }
 
-impl<'i> GenerateIR<'i> for UnaryExp {
+impl<'i> GenerateIR<'i> for UnaryExpr {
     type Out = Value;
 
     fn generate_ir(&'i self, recorder: &mut ProgramRecorder<'i>) -> Result<Self::Out> {
@@ -439,8 +439,9 @@ impl<'i> GenerateIR<'i> for Call {
             .iter()
             .zip(&param_tys)
             .map(|(arg, ty)| match (ty.kind(), arg) {
-                (TypeKind::Pointer(_), Exp::LVal(lval)) => {
+                (TypeKind::Pointer(_), Expr::LVal(lval)) => {
                     let mut val = get_lval_ptr(recorder, lval);
+                    // convert an array to the pointer of its first element
                     if matches!(
                         recorder.get_symbol(&lval.ident),
                         Symbol::Array(_, _) | Symbol::ConstArray(_, _)
@@ -463,7 +464,7 @@ impl<'i> GenerateIR<'i> for Call {
 
 fn short_circuit<'i>(
     recorder: &mut ProgramRecorder<'i>,
-    cond: &'i BinaryExp,
+    cond: &'i BinaryExpr,
     end_bb: BasicBlock,
 ) -> Result<Value> {
     let result = local_alloc(recorder, IrType::get_i32(), None);

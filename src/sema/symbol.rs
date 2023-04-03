@@ -60,11 +60,11 @@ impl Symbol {
         let ty = Type::infer_from_dims(&dims);
 
         match value.kind {
-            ExpKind::Int => match &value.init {
-                InitVal::Exp(e) => Self::ConstVar(e.get_i32()),
+            ExprKind::Int => match &value.init {
+                InitVal::Expr(e) => Self::ConstVar(e.get_i32()),
                 InitVal::List(_) => panic!("incompatible initializer type"),
             },
-            ExpKind::Array => {
+            ExprKind::Array => {
                 let elems = eval_array(&value.init, &ty);
                 Self::ConstArray(ty, elems)
             }
@@ -82,12 +82,12 @@ impl Symbol {
         let ty = Type::infer_from_dims(&dims);
 
         match value.kind {
-            ExpKind::Int => match &value.init {
-                Some(InitVal::Exp(_)) => Self::Var(true),
+            ExprKind::Int => match &value.init {
+                Some(InitVal::Expr(_)) => Self::Var(true),
                 Some(InitVal::List(_)) => panic!("incompatible initializer type"),
                 None => Self::Var(false),
             },
-            ExpKind::Array => match &value.init {
+            ExprKind::Array => match &value.init {
                 Some(InitVal::List(_)) => {
                     let elems = eval_array(value.init.as_ref().unwrap(), &ty);
                     Self::Array(ty, Some(elems))
@@ -158,7 +158,7 @@ pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
 
         for e in init {
             match e {
-                InitVal::Exp(e) => {
+                InitVal::Expr(e) => {
                     if pos > elems.len() {
                         elems.resize_with(pos, Default::default);
                     }
@@ -214,8 +214,8 @@ impl<'ast> MutVisitor<'ast> for SymbolTable {
         walk_func_def(self, f);
 
         let ret_ty = match &f.ret_kind {
-            ExpKind::Int => Type::Int,
-            ExpKind::Void => Type::Void,
+            ExprKind::Int => Type::Int,
+            ExprKind::Void => Type::Void,
             _ => unreachable!(),
         };
 
@@ -232,8 +232,8 @@ impl<'ast> MutVisitor<'ast> for SymbolTable {
 
         let dims: Vec<_> = f.dims.iter().map(|d| d.get_i32() as usize).collect();
         let ty = match &f.kind {
-            ExpKind::Int => Type::Int,
-            ExpKind::Array => Type::Pointer(Box::new(Type::infer_from_dims(&dims))),
+            ExprKind::Int => Type::Int,
+            ExprKind::Array => Type::Pointer(Box::new(Type::infer_from_dims(&dims))),
             _ => unreachable!(),
         };
         let symbol = match &ty {
@@ -263,19 +263,19 @@ impl<'ast> MutVisitor<'ast> for SymbolTable {
         self.assign(&a.lval.ident);
     }
 
-    fn visit_exp(&mut self, e: &'ast mut Exp) {
+    fn visit_exp(&mut self, e: &'ast mut Expr) {
         if let Some(i) = e.const_eval(self) {
-            *e = Exp::Integer(i);
+            *e = Expr::Integer(i);
         }
 
         match e {
-            Exp::Bxp(bxp) => self.visit_binary_exp(bxp),
-            Exp::Uxp(uxp) => self.visit_unary_exp(uxp),
-            Exp::LVal(lval) => match self.get(&lval.ident) {
-                Symbol::ConstVar(i) => *e = Exp::Integer(*i),
+            Expr::BinaryExpr(bxp) => self.visit_binary_exp(bxp),
+            Expr::UnaryExpr(uxp) => self.visit_unary_exp(uxp),
+            Expr::LVal(lval) => match self.get(&lval.ident) {
+                Symbol::ConstVar(i) => *e = Expr::Integer(*i),
                 _ => self.visit_lval(lval),
             },
-            Exp::Integer(_) => {}
+            Expr::Integer(_) => {}
             _ => unreachable!(),
         }
     }

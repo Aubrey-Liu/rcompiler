@@ -1,42 +1,42 @@
 use core::panic;
 
 #[derive(Debug)]
-pub enum Exp {
+pub enum Expr {
+    UnaryExpr(UnaryExpr),
+    BinaryExpr(BinaryExpr),
     Integer(i32),
     LVal(LVal),
-    Uxp(UnaryExp),
-    Bxp(BinaryExp),
     Error,
 }
 
 #[derive(Debug)]
-pub struct BinaryExp {
+pub struct BinaryExpr {
     pub op: BinaryOp,
-    pub lhs: Box<Exp>,
-    pub rhs: Box<Exp>,
+    pub lhs: Box<Expr>,
+    pub rhs: Box<Expr>,
 }
 
 #[derive(Debug)]
-pub enum UnaryExp {
-    Unary(UnaryOp, Box<Exp>),
+pub enum UnaryExpr {
+    Unary(UnaryOp, Box<Expr>),
     Call(Call),
 }
 
 #[derive(Debug)]
 pub struct Call {
     pub func_id: String,
-    pub args: Vec<Exp>,
+    pub args: Vec<Expr>,
 }
 
 #[derive(Debug)]
 pub struct LVal {
     pub ident: String,
-    pub dims: Vec<Exp>,
+    pub dims: Vec<Expr>,
 }
 
 #[derive(Debug)]
 pub enum InitVal {
-    Exp(Exp),
+    Expr(Expr),
     List(Vec<InitVal>),
 }
 

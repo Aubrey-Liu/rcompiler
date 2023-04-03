@@ -61,16 +61,16 @@ pub trait MutVisitor<'ast>: Sized {
         walk_return(self, r);
     }
 
-    fn visit_exp(&mut self, e: &'ast mut Exp) {
-        walk_exp(self, e);
+    fn visit_exp(&mut self, e: &'ast mut Expr) {
+        walk_expr(self, e);
     }
 
-    fn visit_binary_exp(&mut self, b: &'ast mut BinaryExp) {
-        walk_binary_exp(self, b);
+    fn visit_binary_exp(&mut self, b: &'ast mut BinaryExpr) {
+        walk_binary_expr(self, b);
     }
 
-    fn visit_unary_exp(&mut self, u: &'ast mut UnaryExp) {
-        walk_unary_exp(self, u);
+    fn visit_unary_exp(&mut self, u: &'ast mut UnaryExpr) {
+        walk_unary_expr(self, u);
     }
 
     fn visit_call(&mut self, c: &'ast mut Call) {
@@ -152,7 +152,7 @@ pub fn walk_stmt<'a, V: MutVisitor<'a>>(visitor: &mut V, stmt: &'a mut Stmt) {
         Stmt::Assign(assign) => visitor.visit_assign(assign),
         Stmt::Block(block) => visitor.visit_block(block),
         Stmt::Branch(br) => visitor.visit_branch(br),
-        Stmt::Exp(e) => {
+        Stmt::Expr(e) => {
             if let Some(e) = e {
                 visitor.visit_exp(e);
             }
@@ -188,25 +188,25 @@ pub fn walk_return<'a, V: MutVisitor<'a>>(visitor: &mut V, ret: &'a mut Return) 
     }
 }
 
-pub fn walk_exp<'a, V: MutVisitor<'a>>(visitor: &mut V, exp: &'a mut Exp) {
+pub fn walk_expr<'a, V: MutVisitor<'a>>(visitor: &mut V, exp: &'a mut Expr) {
     match exp {
-        Exp::Bxp(bxp) => visitor.visit_binary_exp(bxp),
-        Exp::Uxp(uxp) => visitor.visit_unary_exp(uxp),
-        Exp::LVal(lval) => visitor.visit_lval(lval),
-        Exp::Integer(_) => {}
-        Exp::Error => panic!("expected an expression"),
+        Expr::BinaryExpr(bxp) => visitor.visit_binary_exp(bxp),
+        Expr::UnaryExpr(uxp) => visitor.visit_unary_exp(uxp),
+        Expr::LVal(lval) => visitor.visit_lval(lval),
+        Expr::Integer(_) => {}
+        Expr::Error => panic!("expected an expression"),
     }
 }
 
-pub fn walk_binary_exp<'a, V: MutVisitor<'a>>(visitor: &mut V, bxp: &'a mut BinaryExp) {
+pub fn walk_binary_expr<'a, V: MutVisitor<'a>>(visitor: &mut V, bxp: &'a mut BinaryExpr) {
     visitor.visit_exp(&mut bxp.lhs);
     visitor.visit_exp(&mut bxp.rhs);
 }
 
-pub fn walk_unary_exp<'a, V: MutVisitor<'a>>(visitor: &mut V, uxp: &'a mut UnaryExp) {
+pub fn walk_unary_expr<'a, V: MutVisitor<'a>>(visitor: &mut V, uxp: &'a mut UnaryExpr) {
     match uxp {
-        UnaryExp::Unary(_, exp) => visitor.visit_exp(exp),
-        UnaryExp::Call(call) => visitor.visit_call(call),
+        UnaryExpr::Unary(_, exp) => visitor.visit_exp(exp),
+        UnaryExpr::Call(call) => visitor.visit_call(call),
     }
 }
 
@@ -220,7 +220,7 @@ pub fn walk_lval<'a, V: MutVisitor<'a>>(visitor: &mut V, lval: &'a mut LVal) {
 
 pub fn walk_initval<'a, V: MutVisitor<'a>>(visitor: &mut V, initval: &'a mut InitVal) {
     match initval {
-        InitVal::Exp(exp) => visitor.visit_exp(exp),
+        InitVal::Expr(exp) => visitor.visit_exp(exp),
         InitVal::List(init_list) => walk_list!(visitor, visit_initval, init_list),
     }
 }

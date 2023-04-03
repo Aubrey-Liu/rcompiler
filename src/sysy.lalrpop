@@ -21,10 +21,10 @@ GlobalItem: GlobalItem = {
 };
 
 FuncDef: FuncDef = {
-  <ret_kind: ExpKind> <ident: Ident> "(" ")" <block: Block> => {
+  <ret_kind: ExprKind> <ident: Ident> "(" ")" <block: Block> => {
     FuncDef { ret_kind, ident, params: vec![], block }
   },
-  <ret_kind: ExpKind> <ident: Ident> "(" <params: FuncParams> ")" <block: Block> => {
+  <ret_kind: ExprKind> <ident: Ident> "(" <params: FuncParams> ")" <block: Block> => {
     FuncDef { <> }
   }
 };
@@ -32,8 +32,8 @@ FuncDef: FuncDef = {
 FuncParams: Vec<FuncParam> = <Comma<FuncParam>> => <>;
 
 FuncParam: FuncParam = {
-  "int" <ident: Ident> => FuncParam { kind: ExpKind::Int, ident, dims: Vec::new() },
-  "int" <ident: Ident> "[" "]" <dims: Dim*> => FuncParam { kind: ExpKind::Array, ident, dims },
+  "int" <ident: Ident> => FuncParam { kind: ExprKind::Int, ident, dims: Vec::new() },
+  "int" <ident: Ident> "[" "]" <dims: Dim*> => FuncParam { kind: ExprKind::Array, ident, dims },
 }
 
 Block: Block = "{" <BlockItem*> "}" => Block::new_with_vec(<>);
@@ -50,8 +50,8 @@ Decl: Decl = {
 }
 
 VarDecl: Vec<VarDecl> = {
-  <kind: ExpKind> <defs: Comma<VarDef>> ";" => {
-    if !matches!(kind, ExpKind::Int) {
+  <kind: ExprKind> <defs: Comma<VarDef>> ";" => {
+    if !matches!(kind, ExprKind::Int) {
       panic!("incomplete type is not allowed");
     }
     defs
@@ -59,8 +59,8 @@ VarDecl: Vec<VarDecl> = {
 };
 
 ConstDecl: Vec<ConstDecl> = {
-  "const" <kind: ExpKind> <defs: Comma<ConstDef>> ";" => {
-    if !matches!(kind, ExpKind::Int) {
+  "const" <kind: ExprKind> <defs: Comma<ConstDef>> ";" => {
+    if !matches!(kind, ExprKind::Int) {
       panic!("incomplete type is not allowed");
     }
     defs
@@ -72,7 +72,7 @@ VarDef: VarDecl = <lval: LVal> <init: ("=" <InitVal>)?> => VarDecl::new(lval, in
 ConstDef: ConstDecl = <lval: LVal> "=" <init: InitVal> => ConstDecl::new(lval, init);
 
 InitVal: InitVal = {
-  Exp => InitVal::Exp(<>),
+  Expr => InitVal::Expr(<>),
   "{" "}" => InitVal::List(vec![]),
   "{" <Comma<InitVal>> "}" => InitVal::List(<>),
 };
@@ -84,10 +84,10 @@ Stmt: Stmt = {
 };
 
 NonIfStatement: Stmt = {
-  <lval: LVal> "=" <val: Exp> ";" => Stmt::Assign(Assign { lval, val }),
+  <lval: LVal> "=" <val: Expr> ";" => Stmt::Assign(Assign { lval, val }),
   Block => Stmt::Block(<>),
-  <Exp?> ";" => Stmt::Exp(<>),
-  "return" <Exp?> ";" => Stmt::Return(Return { ret_val: <> }),
+  <Expr?> ";" => Stmt::Expr(<>),
+  "return" <Expr?> ";" => Stmt::Return(Return { ret_val: <> }),
   "continue" ";" => Stmt::Continue(Continue),
   "break" ";" => Stmt::Break(Break),
 };
@@ -130,40 +130,40 @@ ClosedStatement: Stmt = {
 
 LVal: LVal = <ident: Ident> <dims: Dim*> => LVal {<>};
 
-Dim: Exp = "[" <Exp> "]" => <>;
+Dim: Expr = "[" <Expr> "]" => <>;
 
 // Expressions
-Exp: Exp = {
+Expr: Expr = {
   LOrExp => <>,
 };
 
-PrimaryExp: Exp = {
-  "(" <Exp> ")" => <>,
-  IntConst => Exp::Integer(<>),
-  LVal => Exp::LVal(<>),
-  ! => { errors.push(<>); Exp::Error },
+PrimaryExp: Expr = {
+  "(" <Expr> ")" => <>,
+  IntConst => Expr::Integer(<>),
+  LVal => Expr::LVal(<>),
+  ! => { errors.push(<>); Expr::Error },
 };
 
-UnaryExp: Exp = {
+UnaryExpr: Expr = {
   PrimaryExp => <>,
-  Call => Exp::Uxp(UnaryExp::Call(<>)),
-  <op: UnaryOp> <uxp: UnaryExp> => Exp::Uxp(UnaryExp::Unary(op, Box::new(uxp))),
+  Call => Expr::UnaryExpr(UnaryExpr::Call(<>)),
+  <op: UnaryOp> <uxp: UnaryExpr> => Expr::UnaryExpr(UnaryExpr::Unary(op, Box::new(uxp))),
 };
 
 Call: Call = {
   <func_id: Ident> "(" ")" => Call { func_id, args: vec![] },
-  <func_id: Ident> "(" <args: Comma<Exp>> ")" => Call { func_id, args },
+  <func_id: Ident> "(" <args: Comma<Expr>> ")" => Call { func_id, args },
 };
 
 // macro for all the binary expressions
-Tier<Op, NextTier>: Exp = {
+Tier<Op, NextTier>: Expr = {
   <l: Tier<Op, NextTier>> <op: Op> <r: NextTier> => {
-    Exp::Bxp(BinaryExp { op: op, lhs: Box::new(l), rhs: Box::new(r) })
+    Expr::BinaryExpr(BinaryExpr { op: op, lhs: Box::new(l), rhs: Box::new(r) })
   },
   NextTier
 };
 
-MulExp = Tier<MulOp, UnaryExp>;
+MulExp = Tier<MulOp, UnaryExpr>;
 AddExp = Tier<AddOp, MulExp>;
 RelExp = Tier<RelOp, AddExp>;
 EqExp = Tier<EqOp, RelExp>;
@@ -218,7 +218,7 @@ IntConst: i32 = {
 Ident: String = r"[_a-zA-Z][_a-zA-Z0-9]*" => <>.to_string();
 
 #[inline]
-Condition: Exp = "(" <Exp> ")" => <>;
+Condition: Expr = "(" <Expr> ")" => <>;
 
 #[inline]
 Comma<T>: Vec<T> = {
@@ -229,7 +229,7 @@ Comma<T>: Vec<T> = {
 };
 
 #[inline]
-ExpKind: ExpKind = {
-  "int" => ExpKind::Int,
-  "void" => ExpKind::Void,
+ExprKind: ExprKind = {
+  "int" => ExprKind::Int,
+  "void" => ExprKind::Void,
 };

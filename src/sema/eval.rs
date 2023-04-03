@@ -5,7 +5,7 @@ pub trait ConstEval {
     fn const_eval(&self, symbols: &SymbolTable) -> Option<i32>;
 }
 
-impl ConstEval for UnaryExp {
+impl ConstEval for UnaryExpr {
     fn const_eval(&self, symbols: &SymbolTable) -> Option<i32> {
         match self {
             Self::Unary(op, exp) => exp.const_eval(symbols).map(|opr| eval_unary(*op, opr)),
@@ -14,7 +14,7 @@ impl ConstEval for UnaryExp {
     }
 }
 
-impl ConstEval for BinaryExp {
+impl ConstEval for BinaryExpr {
     fn const_eval(&self, symbols: &SymbolTable) -> Option<i32> {
         let lhs = self.lhs.const_eval(symbols);
         let rhs = self.rhs.const_eval(symbols);
@@ -26,12 +26,12 @@ impl ConstEval for BinaryExp {
     }
 }
 
-impl ConstEval for Exp {
+impl ConstEval for Expr {
     fn const_eval(&self, symbols: &SymbolTable) -> Option<i32> {
         match self {
             Self::Integer(i) => Some(*i),
-            Self::Uxp(uxp) => uxp.const_eval(symbols),
-            Self::Bxp(bxp) => bxp.const_eval(symbols),
+            Self::UnaryExpr(uxp) => uxp.const_eval(symbols),
+            Self::BinaryExpr(bxp) => bxp.const_eval(symbols),
             Self::LVal(lval) => match symbols.get(&lval.ident) {
                 Symbol::ConstVar(i) => Some(*i),
                 _ => None,
@@ -41,7 +41,7 @@ impl ConstEval for Exp {
     }
 }
 
-impl Exp {
+impl Expr {
     pub fn get_i32(&self) -> i32 {
         if let Self::Integer(i) = self {
             *i
