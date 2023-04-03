@@ -1,4 +1,9 @@
-use std::{cell::Cell, collections::HashMap};
+use std::{
+    cell::{Cell, Ref},
+    collections::HashMap,
+};
+
+use koopa::ir::entities::ValueData;
 
 use super::*;
 
@@ -11,7 +16,7 @@ pub struct Context<'i> {
 
 pub struct FunctionInfo {
     id: Function,
-    local_values: HashMap<Value, i32>,
+    local_values: HashMap<Value, (i32, bool)>,
     params: HashMap<Value, i32>,
     blocks: HashMap<BasicBlock, String>,
     ss: i32, // stack size
@@ -32,24 +37,28 @@ impl<'i> Context<'i> {
         }
     }
 
-    pub fn value_kind(&self, val: Value) -> &ValueKind {
-        self.cur_func_data().dfg().value(val).kind()
-    }
-
-    pub fn global_alloc(&mut self, gen: &mut AsmGenerator, alloc: Value) {
-        if let ValueKind::GlobalAlloc(g) = self.program.borrow_value(alloc).kind() {
-            g.generate(gen, self, alloc).unwrap();
+    pub fn value_kind(&self, val: Value) -> ValueKind {
+        if self.is_global(val) {
+            self.program.borrow_value(val).kind().clone()
         } else {
-            unreachable!()
+            self.value_data(val).kind().clone()
         }
     }
 
-    pub fn global_init(&self, init: Value) -> i32 {
-        match self.program.borrow_value(init).kind() {
-            ValueKind::ZeroInit(_) => 0,
-            ValueKind::Integer(i) => i.value(),
-            _ => unreachable!(),
+    pub fn value_ty(&self, val: Value) -> Type {
+        if self.is_global(val) {
+            self.global_value_data(val).ty().clone()
+        } else {
+            self.value_data(val).ty().clone()
         }
+    }
+
+    pub fn value_data(&self, val: Value) -> &ValueData {
+        self.cur_func_data().dfg().value(val)
+    }
+
+    pub fn global_value_data(&self, val: Value) -> Ref<ValueData> {
+        self.program.borrow_value(val)
     }
 
     pub fn get_func_name(&'i self, id: Function) -> &'i str {
@@ -104,8 +113,16 @@ impl<'i> Context<'i> {
         !self.cur_func_data().dfg().value(val).used_by().is_empty()
     }
 
-    pub fn is_global(&self, val: &Value) -> bool {
-        self.global_values.contains_key(val)
+    pub fn is_global(&self, val: Value) -> bool {
+        self.cur_func.is_none() || self.global_values.contains_key(&val)
+    }
+
+    pub fn is_pointer(&self, val: Value) -> bool {
+        self.cur_func()
+            .local_values
+            .get(&val)
+            .unwrap_or(&(0, false))
+            .1
     }
 }
 
@@ -149,7 +166,7 @@ impl FunctionInfo {
     }
 
     pub fn get_offset(&self, val: &Value) -> i32 {
-        *self.local_values.get(val).unwrap()
+        self.local_values.get(val).unwrap().0
     }
 
     pub fn get_bb_name(&self, bb: &BasicBlock) -> &String {
@@ -160,8 +177,8 @@ impl FunctionInfo {
         self.ss = ss;
     }
 
-    pub fn register_var(&mut self, inst: Value, off: i32) {
-        self.local_values.insert(inst, off);
+    pub fn register_var(&mut self, inst: Value, off: i32, is_ptr: bool) {
+        self.local_values.insert(inst, (off, is_ptr));
     }
 
     /// Record the name of a basic block

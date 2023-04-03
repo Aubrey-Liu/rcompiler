@@ -29,16 +29,13 @@ pub fn init_array(recorder: &mut ProgramRecorder, dst: Value, ty: &Type, init: &
     let mut dims = Vec::new();
     ty.get_dims(&mut dims);
 
-    let zero_init = recorder.new_value().zero_init(ty.get_ir_ty());
-    let store = recorder.new_value().store(zero_init, dst);
-    recorder.push_inst(store);
+    // let zero_init = recorder.new_value().zero_init(ty.get_ir_ty());
+    // let store = recorder.new_value().store(zero_init, dst);
+    // recorder.push_inst(store);
 
     fn inner(recorder: &mut ProgramRecorder, dst: Value, init: &[i32], dims: &[usize], pos: usize) {
         if dims.is_empty() {
-            if let Some(&0) = init.get(pos) {
-                return;
-            }
-            let value = recorder.new_value().integer(*init.get(pos).unwrap());
+            let value = recorder.new_value().integer(*init.get(pos).unwrap_or(&0));
             let store = recorder.new_value().store(value, dst);
             recorder.push_inst(store);
         } else {
@@ -46,9 +43,6 @@ pub fn init_array(recorder: &mut ProgramRecorder, dst: Value, ty: &Type, init: &
             let this_dim = *dims.first().unwrap();
             for i in 0..this_dim {
                 let next_pos = pos + i * stride;
-                if next_pos >= init.len() {
-                    break;
-                }
                 let index = recorder.new_value().integer(i as i32);
                 let dst = get_elem_ptr(recorder, dst, &[index]);
                 inner(recorder, dst, init, &dims[1..], next_pos);

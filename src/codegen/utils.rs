@@ -9,12 +9,20 @@ pub struct AsmGenerator<'a> {
 }
 
 impl<'a> AsmGenerator<'a> {
+    pub fn blank_line(&mut self) -> Result<()> {
+        writeln!(self.f)
+    }
+
+    pub fn data_seg(&mut self) -> Result<()> {
+        writeln!(self.f, "  .data")
+    }
+
     pub fn addi(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
         if (-2048..=2047).contains(&imm) {
             writeln!(self.f, "  addi {}, {}, {}", dst, opr, imm)
         } else {
             self.li(self.tmpr, imm)?;
-            writeln!(self.f, "  add, {}, {}, {}", dst, opr, self.tmpr)
+            writeln!(self.f, "  add {}, {}, {}", dst, opr, self.tmpr)
         }
     }
 
@@ -60,51 +68,29 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f, "  call {}", callee)
     }
 
-    pub fn binary(&mut self, op: BinaryOp, lhs: &str, rhs: &str, dst: &str) -> Result<()> {
-        match op {
-            BinaryOp::Add => writeln!(self.f, "  add {}, {}, {}", dst, lhs, rhs),
-            BinaryOp::Sub => writeln!(self.f, "  sub {}, {}, {}", dst, lhs, rhs),
-            BinaryOp::Mul => writeln!(self.f, "  mul {}, {}, {}", dst, lhs, rhs),
-            BinaryOp::Div => writeln!(self.f, "  div {}, {}, {}", dst, lhs, rhs),
-            BinaryOp::Mod => writeln!(self.f, "  rem {}, {}, {}", dst, lhs, rhs),
-            BinaryOp::And => writeln!(self.f, "  and {}, {}, {}", dst, lhs, rhs),
-            BinaryOp::Or => writeln!(self.f, "  or {}, {}, {}", dst, lhs, rhs),
-            BinaryOp::Lt => writeln!(self.f, "  slt {}, {}, {}", dst, lhs, rhs),
-            BinaryOp::Gt => writeln!(self.f, "  sgt {}, {}, {}", dst, lhs, rhs),
-            BinaryOp::Eq => {
-                writeln!(self.f, "  xor {}, {}, {}", lhs, lhs, rhs)?;
-                writeln!(self.f, "  seqz {}, {}", dst, lhs)
-            }
-            BinaryOp::NotEq => {
-                writeln!(self.f, "  xor {}, {}, {}", lhs, lhs, rhs)?;
-                writeln!(self.f, "  snez {}, {}", dst, lhs)
-            }
-            BinaryOp::Le => {
-                writeln!(self.f, "  sgt {}, {}, {}", lhs, lhs, rhs)?;
-                writeln!(self.f, "  seqz {}, {}", dst, lhs)
-            }
-            BinaryOp::Ge => {
-                writeln!(self.f, "  slt {}, {}, {}", lhs, lhs, rhs)?;
-                writeln!(self.f, "  seqz {}, {}", dst, lhs)
-            }
-            _ => unreachable!(),
-        }
+    pub fn binary(&mut self, op: &str, lhs: &str, rhs: &str, dst: &str) -> Result<()> {
+        writeln!(self.f, "  {} {}, {}, {}", op, dst, lhs, rhs)
+    }
+
+    pub fn unary(&mut self, op: &str, opr: &str, dst: &str) -> Result<()> {
+        writeln!(self.f, "  {} {}, {}", op, dst, opr)
     }
 
     pub fn ret(&mut self) -> Result<()> {
         writeln!(self.f, "  ret")
     }
 
-    pub fn global_alloc(&mut self, init: i32, id: &usize) -> Result<()> {
-        writeln!(self.f, "  .data")?;
+    pub fn global_alloc(&mut self, id: usize) -> Result<()> {
         writeln!(self.f, "  .globl var{}", id)?;
-        writeln!(self.f, "var{}:", id)?;
-        if init == 0 {
-            writeln!(self.f, "  .zero 4")?;
-        } else {
-            writeln!(self.f, "  .word {}", init)?;
-        }
-        writeln!(self.f)
+        writeln!(self.f, "var{}:", id)
+    }
+
+    pub fn global_zero_init(&mut self, size: usize) -> Result<()> {
+        writeln!(self.f, "  .zero {}", size)
+    }
+
+    pub fn global_word(&mut self, val: i32) -> Result<()> {
+        writeln!(self.f, "  .word {}", val)
     }
 
     pub fn enter_bb(&mut self, name: &str) -> Result<()> {
@@ -140,8 +126,8 @@ impl<'a> AsmGenerator<'a> {
     }
 }
 
-pub fn write_to(gen: &mut AsmGenerator, ctx: &Context, src: &str, val: Value) -> Result<()> {
-    if ctx.is_global(&val) {
+pub fn write_back(gen: &mut AsmGenerator, ctx: &Context, src: &str, val: Value) -> Result<()> {
+    if ctx.is_global(val) {
         let id = ctx.get_global_var(&val);
         let name = format!("var{}", id);
         gen.la("t0", &name)?;
@@ -152,7 +138,7 @@ pub fn write_to(gen: &mut AsmGenerator, ctx: &Context, src: &str, val: Value) ->
 }
 
 pub fn read_to(gen: &mut AsmGenerator, ctx: &Context, dst: &str, val: Value) -> Result<()> {
-    if ctx.is_global(&val) {
+    if ctx.is_global(val) {
         let id = ctx.get_global_var(&val);
         let name = format!("var{}", id);
         gen.la("t0", &name)?;
@@ -175,6 +161,16 @@ pub fn read_to(gen: &mut AsmGenerator, ctx: &Context, dst: &str, val: Value) -> 
                 gen.lw(dst, "sp", ctx.cur_func().get_offset(&val))
             }
         }
+    }
+}
+
+pub fn read_addr_to(gen: &mut AsmGenerator, ctx: &Context, dst: &str, val: Value) -> Result<()> {
+    if ctx.is_global(val) {
+        let id = ctx.get_global_var(&val);
+        let name = format!("var{}", id);
+        gen.la(dst, &name)
+    } else {
+        gen.addi(dst, "sp", ctx.cur_func().get_offset(&val))
     }
 }
 
