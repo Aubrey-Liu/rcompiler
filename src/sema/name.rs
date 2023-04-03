@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::visit::MutVisitor;
-use crate::{ast::*, walk_list};
+use crate::ast::*;
 
 #[derive(Debug)]
 pub struct NameManager {
@@ -82,24 +81,18 @@ impl<'ast> MutVisitor<'ast> for NameManager {
     fn visit_comp_unit(&mut self, c: &'ast mut CompUnit) {
         self.enter_scope();
         self.install_lib();
-
-        // preserved name
+        // preserved names
         self.insert_name("entry");
         self.insert_name("end");
-
-        walk_list!(self, visit_global_item, &mut c.items);
+        walk_comp_unit(self, c);
         self.exit_scope();
     }
 
     fn visit_func_def(&mut self, f: &'ast mut FuncDef) {
         self.insert_name(&f.ident);
         self.rename(&mut f.ident);
-
         self.enter_scope();
-
-        walk_list!(self, visit_func_param, &mut f.params);
-        self.visit_block(&mut f.block);
-
+        walk_func_def(self, f);
         self.exit_scope();
     }
 
@@ -110,11 +103,12 @@ impl<'ast> MutVisitor<'ast> for NameManager {
 
     fn visit_block(&mut self, b: &'ast mut Block) {
         self.enter_scope();
-        walk_list!(self, visit_block_item, &mut b.items);
+        walk_block(self, b);
         self.exit_scope()
     }
 
     fn visit_const_decl(&mut self, c: &'ast mut ConstDecl) {
+        // the order cannot be changed
         self.visit_initval(&mut c.init);
         self.insert_name(&c.lval.ident);
         self.visit_lval(&mut c.lval);
@@ -124,18 +118,17 @@ impl<'ast> MutVisitor<'ast> for NameManager {
         if let Some(init) = &mut v.init {
             self.visit_initval(init);
         }
-
         self.insert_name(&v.lval.ident);
         self.visit_lval(&mut v.lval);
     }
 
     fn visit_lval(&mut self, l: &'ast mut LVal) {
         self.rename(&mut l.ident);
-        walk_list!(self, visit_exp, &mut l.dims);
+        walk_lval(self, l);
     }
 
     fn visit_call(&mut self, c: &'ast mut Call) {
         self.rename(&mut c.func_id);
-        walk_list!(self, visit_exp, &mut c.args);
+        walk_call(self, c);
     }
 }

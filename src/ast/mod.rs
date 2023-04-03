@@ -2,6 +2,7 @@ pub(crate) mod exp;
 pub(crate) mod visit;
 
 pub(crate) use exp::*;
+pub(crate) use visit::*;
 
 #[derive(Debug)]
 pub struct CompUnit {

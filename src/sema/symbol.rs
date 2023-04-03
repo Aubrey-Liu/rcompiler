@@ -3,7 +3,6 @@ use std::collections::HashMap;
 
 use crate::ast::visit::MutVisitor;
 use crate::ast::*;
-use crate::walk_list;
 
 use super::*;
 
@@ -146,8 +145,8 @@ pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
         })
         .collect();
 
-    fn fill_array(init: &[InitVal], dims: &[usize], pos: usize, elems: &mut Vec<i32>) -> usize {
-        let (idx, stride) = dims
+    fn fill_array(init: &[InitVal], bds: &[usize], pos: usize, elems: &mut Vec<i32>) -> usize {
+        let (idx, stride) = bds
             .iter()
             .rev()
             .enumerate()
@@ -155,7 +154,7 @@ pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
             .expect("invalid initializer");
         let mut pos = pos;
         let next_pos = pos + stride;
-        let base_dim = dims.len() - idx - 1;
+        let next_bd = bds.len() - idx - 1;
 
         for e in init {
             match e {
@@ -167,7 +166,7 @@ pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
                     pos += 1;
                 }
                 InitVal::List(list) => {
-                    pos = fill_array(list, &dims[0..base_dim], pos, elems);
+                    pos = fill_array(list, &bds[0..next_bd], pos, elems);
                 }
             };
         }
@@ -204,7 +203,7 @@ impl<'ast> MutVisitor<'ast> for SymbolTable {
         self.insert("starttime", Symbol::Func(Type::Void, vec![]));
         self.insert("stoptime", Symbol::Func(Type::Void, vec![]));
 
-        walk_list!(self, visit_global_item, &mut c.items);
+        walk_comp_unit(self, c);
 
         if !self.contains("main") {
             panic!("main function is not defined")
@@ -212,8 +211,7 @@ impl<'ast> MutVisitor<'ast> for SymbolTable {
     }
 
     fn visit_func_def(&mut self, f: &'ast mut FuncDef) {
-        walk_list!(self, visit_func_param, &mut f.params);
-        self.visit_block(&mut f.block);
+        walk_func_def(self, f);
 
         let ret_ty = match &f.ret_kind {
             ExpKind::Int => Type::Int,
@@ -230,7 +228,7 @@ impl<'ast> MutVisitor<'ast> for SymbolTable {
     }
 
     fn visit_func_param(&mut self, f: &'ast mut FuncParam) {
-        walk_list!(self, visit_exp, &mut f.dims);
+        walk_func_param(self, f);
 
         let dims: Vec<_> = f.dims.iter().map(|d| d.get_i32() as usize).collect();
         let ty = match &f.kind {
@@ -247,26 +245,21 @@ impl<'ast> MutVisitor<'ast> for SymbolTable {
     }
 
     fn visit_const_decl(&mut self, c: &'ast mut ConstDecl) {
-        self.visit_initval(&mut c.init);
-        self.visit_lval(&mut c.lval);
+        walk_const_decl(self, c);
 
         let symbol = Symbol::from_const_decl(c);
         self.insert(&c.lval.ident, symbol);
     }
 
     fn visit_var_decl(&mut self, v: &'ast mut VarDecl) {
-        if let Some(init) = &mut v.init {
-            self.visit_initval(init);
-        }
-        self.visit_lval(&mut v.lval);
+        walk_var_decl(self, v);
 
         let symbol = Symbol::from_var_decl(v);
         self.insert(&v.lval.ident, symbol);
     }
 
     fn visit_assign(&mut self, a: &'ast mut Assign) {
-        self.visit_exp(&mut a.val);
-        self.visit_lval(&mut a.lval);
+        walk_assign(self, a);
         self.assign(&a.lval.ident);
     }
 
