@@ -13,6 +13,7 @@ use koopa::ir::BinaryOp as IrBinaryOp;
 use koopa::ir::Type as IrType;
 use koopa::ir::{BasicBlock, Function, FunctionData, Program, Value};
 
+use crate::ast::visit::MutVisitor;
 use crate::sema::*;
 use crate::sysy;
 use gen::*;
@@ -26,16 +27,15 @@ pub fn generate_mem_ir(input: &str) -> Result<Program> {
         .unwrap();
 
     let mut manager = NameManager::new();
-    ast.rename(&mut manager);
+    manager.visit_comp_unit(&mut ast);
 
     let mut symbols = SymbolTable::new();
-    ast.analyze(&mut symbols)?;
+    symbols.visit_comp_unit(&mut ast);
 
-    let mut program = Program::new();
     let mut recorder = ProgramRecorder::new(&symbols);
-    ast.generate_ir(&mut program, &mut recorder)?;
+    ast.generate_ir(&mut recorder)?;
 
-    Ok(program)
+    Ok(recorder.program)
 }
 
 pub fn generate_ir(input: &str, output: &str) -> Result<()> {

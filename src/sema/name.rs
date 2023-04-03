@@ -1,196 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::*;
-
-pub trait Renamer {
-    fn rename(&mut self, manager: &mut NameManager);
-}
-
-impl Renamer for CompUnit {
-    fn rename(&mut self, manager: &mut NameManager) {
-        manager.enter_scope();
-        manager.install_lib();
-
-        // preserved name
-        manager.insert_name("entry");
-        manager.insert_name("end");
-
-        self.items.iter_mut().for_each(|item| item.rename(manager));
-        manager.exit_scope();
-    }
-}
-
-impl Renamer for GlobalItem {
-    fn rename(&mut self, manager: &mut NameManager) {
-        match self {
-            Self::Decl(i) => i.rename(manager),
-            Self::Func(i) => i.rename(manager),
-        }
-    }
-}
-
-impl Renamer for FuncDef {
-    fn rename(&mut self, manager: &mut NameManager) {
-        manager.insert_name(&self.ident);
-        manager.rename(&mut self.ident);
-
-        manager.enter_scope();
-        self.params
-            .iter_mut()
-            .for_each(|param| param.rename(manager));
-        self.block.rename(manager);
-        manager.exit_scope();
-    }
-}
-
-impl Renamer for FuncParam {
-    fn rename(&mut self, manager: &mut NameManager) {
-        manager.insert_name(&self.ident);
-        manager.rename(&mut self.ident);
-    }
-}
-
-impl Renamer for Block {
-    fn rename(&mut self, manager: &mut NameManager) {
-        manager.enter_scope();
-        self.items.iter_mut().for_each(|item| item.rename(manager));
-        manager.exit_scope();
-    }
-}
-
-impl Renamer for BlockItem {
-    fn rename(&mut self, manager: &mut NameManager) {
-        match self {
-            Self::Decl(i) => i.rename(manager),
-            Self::Stmt(i) => i.rename(manager),
-        }
-    }
-}
-
-impl Renamer for Decl {
-    fn rename(&mut self, manager: &mut NameManager) {
-        match self {
-            Self::ConstDecl(d) => d.iter_mut().for_each(|d| d.rename(manager)),
-            Self::VarDecl(d) => d.iter_mut().for_each(|d| d.rename(manager)),
-        }
-    }
-}
-
-impl Renamer for Stmt {
-    fn rename(&mut self, manager: &mut NameManager) {
-        match self {
-            Self::Assign(s) => s.rename(manager),
-            Self::Block(s) => s.rename(manager),
-            Self::Branch(s) => s.rename(manager),
-            Self::Exp(s) => s.as_mut().map_or((), |s| s.rename(manager)),
-            Self::Return(s) => s.rename(manager),
-            Self::While(s) => s.rename(manager),
-            _ => {}
-        }
-    }
-}
-
-impl Renamer for Return {
-    fn rename(&mut self, manager: &mut NameManager) {
-        if let Some(exp) = &mut self.ret_val {
-            exp.rename(manager)
-        }
-    }
-}
-
-impl Renamer for While {
-    fn rename(&mut self, manager: &mut NameManager) {
-        self.cond.rename(manager);
-        self.stmt.rename(manager);
-    }
-}
-
-impl Renamer for Branch {
-    fn rename(&mut self, manager: &mut NameManager) {
-        self.cond.rename(manager);
-        self.if_stmt.rename(manager);
-        if let Some(s) = &mut self.el_stmt {
-            s.rename(manager);
-        }
-    }
-}
-
-impl Renamer for Assign {
-    fn rename(&mut self, manager: &mut NameManager) {
-        self.val.rename(manager);
-        self.lval.rename(manager);
-    }
-}
-
-impl Renamer for ConstDecl {
-    fn rename(&mut self, manager: &mut NameManager) {
-        self.init.rename(manager);
-        manager.insert_name(&self.lval.ident);
-        self.lval.rename(manager);
-    }
-}
-
-impl Renamer for VarDecl {
-    fn rename(&mut self, manager: &mut NameManager) {
-        if let Some(init) = &mut self.init {
-            init.rename(manager);
-        }
-
-        manager.insert_name(&self.lval.ident);
-        self.lval.rename(manager);
-    }
-}
-
-impl Renamer for InitVal {
-    fn rename(&mut self, manager: &mut NameManager) {
-        match self {
-            Self::Exp(e) => e.rename(manager),
-            Self::List(e) => e.iter_mut().for_each(|e| e.rename(manager)),
-        }
-    }
-}
-
-impl Renamer for LVal {
-    fn rename(&mut self, manager: &mut NameManager) {
-        manager.rename(&mut self.ident);
-        self.dims.iter_mut().for_each(|d| d.rename(manager));
-    }
-}
-
-impl Renamer for Exp {
-    fn rename(&mut self, manager: &mut NameManager) {
-        match self {
-            Self::Bxp(e) => e.rename(manager),
-            Self::Uxp(e) => e.rename(manager),
-            Self::LVal(e) => e.rename(manager),
-            Self::Error => panic!("expected an expression"),
-            _ => {}
-        }
-    }
-}
-
-impl Renamer for BinaryExp {
-    fn rename(&mut self, manager: &mut NameManager) {
-        self.lhs.rename(manager);
-        self.rhs.rename(manager);
-    }
-}
-
-impl Renamer for UnaryExp {
-    fn rename(&mut self, manager: &mut NameManager) {
-        match self {
-            Self::Unary(_, e) => e.rename(manager),
-            Self::Call(e) => e.rename(manager),
-        }
-    }
-}
-
-impl Renamer for Call {
-    fn rename(&mut self, manager: &mut NameManager) {
-        self.args.iter_mut().for_each(|arg| arg.rename(manager));
-        manager.rename(&mut self.func_id);
-    }
-}
+use crate::ast::visit::MutVisitor;
+use crate::{ast::*, walk_list};
 
 #[derive(Debug)]
 pub struct NameManager {
@@ -264,5 +75,67 @@ impl NameManager {
             .rev()
             .find_map(|scope| scope.get(name))
             .unwrap_or(&0)
+    }
+}
+
+impl<'ast> MutVisitor<'ast> for NameManager {
+    fn visit_comp_unit(&mut self, c: &'ast mut CompUnit) {
+        self.enter_scope();
+        self.install_lib();
+
+        // preserved name
+        self.insert_name("entry");
+        self.insert_name("end");
+
+        walk_list!(self, visit_global_item, &mut c.items);
+        self.exit_scope();
+    }
+
+    fn visit_func_def(&mut self, f: &'ast mut FuncDef) {
+        self.insert_name(&f.ident);
+        self.rename(&mut f.ident);
+
+        self.enter_scope();
+
+        walk_list!(self, visit_func_param, &mut f.params);
+        self.visit_block(&mut f.block);
+
+        self.exit_scope();
+    }
+
+    fn visit_func_param(&mut self, f: &'ast mut FuncParam) {
+        self.insert_name(&f.ident);
+        self.rename(&mut f.ident);
+    }
+
+    fn visit_block(&mut self, b: &'ast mut Block) {
+        self.enter_scope();
+        walk_list!(self, visit_block_item, &mut b.items);
+        self.exit_scope()
+    }
+
+    fn visit_const_decl(&mut self, c: &'ast mut ConstDecl) {
+        self.visit_initval(&mut c.init);
+        self.insert_name(&c.lval.ident);
+        self.visit_lval(&mut c.lval);
+    }
+
+    fn visit_var_decl(&mut self, v: &'ast mut VarDecl) {
+        if let Some(init) = &mut v.init {
+            self.visit_initval(init);
+        }
+
+        self.insert_name(&v.lval.ident);
+        self.visit_lval(&mut v.lval);
+    }
+
+    fn visit_lval(&mut self, l: &'ast mut LVal) {
+        self.rename(&mut l.ident);
+        walk_list!(self, visit_exp, &mut l.dims);
+    }
+
+    fn visit_call(&mut self, c: &'ast mut Call) {
+        self.rename(&mut c.func_id);
+        walk_list!(self, visit_exp, &mut c.args);
     }
 }

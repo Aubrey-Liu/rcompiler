@@ -21,10 +21,10 @@ GlobalItem: GlobalItem = {
 };
 
 FuncDef: FuncDef = {
-  <ret_ty: Type> <ident: Ident> "(" ")" <block: Block> => {
-    FuncDef { ret_ty, ident, params: vec![], block }
+  <ret_kind: ExpKind> <ident: Ident> "(" ")" <block: Block> => {
+    FuncDef { ret_kind, ident, params: vec![], block }
   },
-  <ret_ty: Type> <ident: Ident> "(" <params: FuncParams> ")" <block: Block> => {
+  <ret_kind: ExpKind> <ident: Ident> "(" <params: FuncParams> ")" <block: Block> => {
     FuncDef { <> }
   }
 };
@@ -32,8 +32,8 @@ FuncDef: FuncDef = {
 FuncParams: Vec<FuncParam> = <Comma<FuncParam>> => <>;
 
 FuncParam: FuncParam = {
-  "int" <ident: Ident> => FuncParam { ty: AstType::Int, ident, dims: Vec::new() },
-  "int" <ident: Ident> "[" "]" <dims: Dim*> => FuncParam { ty: AstType::Array, ident, dims },
+  "int" <ident: Ident> => FuncParam { kind: ExpKind::Int, ident, dims: Vec::new() },
+  "int" <ident: Ident> "[" "]" <dims: Dim*> => FuncParam { kind: ExpKind::Array, ident, dims },
 }
 
 Block: Block = "{" <BlockItem*> "}" => Block::new_with_vec(<>);
@@ -50,8 +50,8 @@ Decl: Decl = {
 }
 
 VarDecl: Vec<VarDecl> = {
-  <ty: Type> <defs: Comma<VarDef>> ";" => {
-    if !matches!(ty, AstType::Int) {
+  <kind: ExpKind> <defs: Comma<VarDef>> ";" => {
+    if !matches!(kind, ExpKind::Int) {
       panic!("incomplete type is not allowed");
     }
     defs
@@ -59,8 +59,8 @@ VarDecl: Vec<VarDecl> = {
 };
 
 ConstDecl: Vec<ConstDecl> = {
-  "const" <ty: Type> <defs: Comma<ConstDef>> ";" => {
-    if !matches!(ty, AstType::Int) {
+  "const" <kind: ExpKind> <defs: Comma<ConstDef>> ";" => {
+    if !matches!(kind, ExpKind::Int) {
       panic!("incomplete type is not allowed");
     }
     defs
@@ -229,7 +229,7 @@ Comma<T>: Vec<T> = {
 };
 
 #[inline]
-Type: AstType = {
-  "int" => AstType::Int,
-  "void" => AstType::Void,
+ExpKind: ExpKind = {
+  "int" => ExpKind::Int,
+  "void" => ExpKind::Void,
 };

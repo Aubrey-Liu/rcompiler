@@ -1,7 +1,9 @@
 use koopa::ir::Type as IrType;
 use std::collections::HashMap;
 
-use crate::ast::{AstType, ConstDecl, InitVal, VarDecl};
+use crate::ast::visit::MutVisitor;
+use crate::ast::*;
+use crate::walk_list;
 
 use super::*;
 
@@ -58,12 +60,12 @@ impl Symbol {
             .collect();
         let ty = Type::infer_from_dims(&dims);
 
-        match value.ty {
-            AstType::Int => match &value.init {
+        match value.kind {
+            ExpKind::Int => match &value.init {
                 InitVal::Exp(e) => Self::ConstVar(e.get_i32()),
                 InitVal::List(_) => panic!("incompatible initializer type"),
             },
-            AstType::Array => {
+            ExpKind::Array => {
                 let elems = eval_array(&value.init, &ty);
                 Self::ConstArray(ty, elems)
             }
@@ -80,13 +82,13 @@ impl Symbol {
             .collect();
         let ty = Type::infer_from_dims(&dims);
 
-        match value.ty {
-            AstType::Int => match &value.init {
+        match value.kind {
+            ExpKind::Int => match &value.init {
                 Some(InitVal::Exp(_)) => Self::Var(true),
                 Some(InitVal::List(_)) => panic!("incompatible initializer type"),
                 None => Self::Var(false),
             },
-            AstType::Array => match &value.init {
+            ExpKind::Array => match &value.init {
                 Some(InitVal::List(_)) => {
                     let elems = eval_array(value.init.as_ref().unwrap(), &ty);
                     Self::Array(ty, Some(elems))
@@ -94,6 +96,16 @@ impl Symbol {
                 None => Self::Array(ty, None),
                 _ => unreachable!(),
             },
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn get_var_ty(&self) -> Type {
+        match self {
+            Self::Array(ty, _) => ty.clone(),
+            Self::ConstArray(ty, _) => ty.clone(),
+            Self::ConstVar(_) | Self::Var(_) => Type::Int,
+            Self::Pointer(ty) => ty.clone(),
             _ => unreachable!(),
         }
     }
@@ -170,4 +182,108 @@ pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
     }
 
     elems
+}
+
+impl<'ast> MutVisitor<'ast> for SymbolTable {
+    fn visit_comp_unit(&mut self, c: &'ast mut CompUnit) {
+        self.insert("getint", Symbol::Func(Type::Int, vec![]));
+        self.insert("getch", Symbol::Func(Type::Int, vec![]));
+        self.insert(
+            "getarray",
+            Symbol::Func(Type::Int, vec![Type::Pointer(Box::new(Type::Int))]),
+        );
+        self.insert("putint", Symbol::Func(Type::Void, vec![Type::Int]));
+        self.insert("putch", Symbol::Func(Type::Void, vec![Type::Int]));
+        self.insert(
+            "putarray",
+            Symbol::Func(
+                Type::Void,
+                vec![Type::Int, Type::Pointer(Box::new(Type::Int))],
+            ),
+        );
+        self.insert("starttime", Symbol::Func(Type::Void, vec![]));
+        self.insert("stoptime", Symbol::Func(Type::Void, vec![]));
+
+        walk_list!(self, visit_global_item, &mut c.items);
+
+        if !self.contains("main") {
+            panic!("main function is not defined")
+        }
+    }
+
+    fn visit_func_def(&mut self, f: &'ast mut FuncDef) {
+        walk_list!(self, visit_func_param, &mut f.params);
+        self.visit_block(&mut f.block);
+
+        let ret_ty = match &f.ret_kind {
+            ExpKind::Int => Type::Int,
+            ExpKind::Void => Type::Void,
+            _ => unreachable!(),
+        };
+
+        let param_tys: Vec<_> = f
+            .params
+            .iter()
+            .map(|p| self.get(&p.ident).get_var_ty())
+            .collect();
+        self.insert(&f.ident, Symbol::Func(ret_ty, param_tys));
+    }
+
+    fn visit_func_param(&mut self, f: &'ast mut FuncParam) {
+        walk_list!(self, visit_exp, &mut f.dims);
+
+        let dims: Vec<_> = f.dims.iter().map(|d| d.get_i32() as usize).collect();
+        let ty = match &f.kind {
+            ExpKind::Int => Type::Int,
+            ExpKind::Array => Type::Pointer(Box::new(Type::infer_from_dims(&dims))),
+            _ => unreachable!(),
+        };
+        let symbol = match &ty {
+            Type::Int => Symbol::Var(true),
+            Type::Pointer(_) => Symbol::Pointer(ty.clone()),
+            _ => unreachable!(),
+        };
+        self.insert(&f.ident, symbol);
+    }
+
+    fn visit_const_decl(&mut self, c: &'ast mut ConstDecl) {
+        self.visit_initval(&mut c.init);
+        self.visit_lval(&mut c.lval);
+
+        let symbol = Symbol::from_const_decl(c);
+        self.insert(&c.lval.ident, symbol);
+    }
+
+    fn visit_var_decl(&mut self, v: &'ast mut VarDecl) {
+        if let Some(init) = &mut v.init {
+            self.visit_initval(init);
+        }
+        self.visit_lval(&mut v.lval);
+
+        let symbol = Symbol::from_var_decl(v);
+        self.insert(&v.lval.ident, symbol);
+    }
+
+    fn visit_assign(&mut self, a: &'ast mut Assign) {
+        self.visit_exp(&mut a.val);
+        self.visit_lval(&mut a.lval);
+        self.assign(&a.lval.ident);
+    }
+
+    fn visit_exp(&mut self, e: &'ast mut Exp) {
+        if let Some(i) = e.const_eval(self) {
+            *e = Exp::Integer(i);
+        }
+
+        match e {
+            Exp::Bxp(bxp) => self.visit_binary_exp(bxp),
+            Exp::Uxp(uxp) => self.visit_unary_exp(uxp),
+            Exp::LVal(lval) => match self.get(&lval.ident) {
+                Symbol::ConstVar(i) => *e = Exp::Integer(*i),
+                _ => self.visit_lval(lval),
+            },
+            Exp::Integer(_) => {}
+            _ => unreachable!(),
+        }
+    }
 }

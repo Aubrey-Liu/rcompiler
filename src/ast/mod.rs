@@ -1,4 +1,5 @@
 pub(crate) mod exp;
+pub(crate) mod visit;
 
 pub(crate) use exp::*;
 
@@ -15,7 +16,7 @@ pub enum GlobalItem {
 
 #[derive(Debug)]
 pub struct FuncDef {
-    pub ret_ty: AstType,
+    pub ret_kind: ExpKind,
     pub ident: String,
     pub params: Vec<FuncParam>,
     pub block: Block,
@@ -23,7 +24,7 @@ pub struct FuncDef {
 
 #[derive(Debug)]
 pub struct FuncParam {
-    pub ty: AstType,
+    pub kind: ExpKind,
     pub ident: String,
     pub dims: Vec<Exp>,
 }
@@ -92,18 +93,18 @@ pub struct Assign {
 pub struct ConstDecl {
     pub lval: LVal,
     pub init: InitVal,
-    pub ty: AstType,
+    pub kind: ExpKind,
 }
 
 #[derive(Debug)]
 pub struct VarDecl {
     pub lval: LVal,
     pub init: Option<InitVal>,
-    pub ty: AstType,
+    pub kind: ExpKind,
 }
 
 #[derive(Debug, Clone)]
-pub enum AstType {
+pub enum ExpKind {
     Array,
     Int,
     Void,
@@ -117,22 +118,22 @@ impl Block {
 
 impl VarDecl {
     pub fn new(lval: LVal, init: Option<InitVal>) -> Self {
-        let ty = if !lval.dims.is_empty() {
-            AstType::Array
+        let kind = if !lval.dims.is_empty() {
+            ExpKind::Array
         } else {
-            AstType::Int
+            ExpKind::Int
         };
-        Self { lval, init, ty }
+        Self { lval, init, kind }
     }
 }
 
 impl ConstDecl {
     pub fn new(lval: LVal, init: InitVal) -> Self {
-        let ty = if matches!(init, InitVal::List(_)) {
-            AstType::Array
+        let kind = if matches!(init, InitVal::List(_)) {
+            ExpKind::Array
         } else {
-            AstType::Int
+            ExpKind::Int
         };
-        Self { lval, init, ty }
+        Self { lval, init, kind }
     }
 }

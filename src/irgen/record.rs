@@ -1,14 +1,14 @@
 use std::{collections::HashMap, vec};
 
-use koopa::ir::builder::LocalBuilder;
+use koopa::ir::builder::{GlobalBuilder, LocalBuilder};
 use koopa::ir::builder_traits::*;
 
 use super::*;
 use crate::ast::FuncDef;
 use crate::sema::symbol::{Symbol, SymbolTable};
 
-#[derive(Debug)]
 pub struct ProgramRecorder<'i> {
+    pub program: Program,
     symbols: &'i SymbolTable,
     values: HashMap<&'i str, Value>,
     funcs: HashMap<&'i str, Function>,
@@ -34,6 +34,7 @@ pub struct LoopInfo {
 impl<'i> ProgramRecorder<'i> {
     pub fn new(symbols: &'i SymbolTable) -> Self {
         Self {
+            program: Program::new(),
             symbols,
             values: HashMap::new(),
             funcs: HashMap::new(),
@@ -42,30 +43,11 @@ impl<'i> ProgramRecorder<'i> {
         }
     }
 
-    pub fn new_value<'p>(&self, program: &'p mut Program) -> LocalBuilder<'p> {
-        program.func_mut(self.func().id()).dfg_mut().new_value()
-    }
-
-    pub fn get_symbol(&self, name: &str) -> &Symbol {
-        self.symbols.get(name)
-    }
-
     pub fn insert_value(&mut self, name: &'i str, val: Value) {
         self.values.insert(name, val);
     }
 
-    pub fn get_value(&self, name: &str) -> Value {
-        match self.values.get(name) {
-            Some(value) => *value,
-            None => panic!("`{}` doesn't have a value", name),
-        }
-    }
-
-    pub fn is_global(&self) -> bool {
-        self.cur_func.is_none()
-    }
-
-    pub fn enter_func(&mut self, program: &mut Program, func_def: &'i FuncDef) {
+    pub fn enter_func(&mut self, func_def: &'i FuncDef) {
         let (ret_ty, param_ty) = self.get_symbol(&func_def.ident).get_func_ir_ty();
         let params: Vec<_> = func_def
             .params
@@ -73,12 +55,12 @@ impl<'i> ProgramRecorder<'i> {
             .map(|p| Some(format!("@{}", &p.ident)))
             .zip(param_ty.into_iter())
             .collect();
-        let id = program.new_func(FunctionData::with_param_names(
+        let id = self.program.new_func(FunctionData::with_param_names(
             format!("@{}", &func_def.ident),
             params,
             ret_ty,
         ));
-        let builder = program.func_mut(id).dfg_mut();
+        let builder = self.program.func_mut(id).dfg_mut();
         let entry_bb = builder.new_bb().basic_block(Some("%entry".to_owned()));
         let end_bb = builder.new_bb().basic_block(Some("%end".to_owned()));
         self.cur_func = Some(FunctionInfo {
@@ -95,14 +77,8 @@ impl<'i> ProgramRecorder<'i> {
         self.cur_func = None;
     }
 
-    fn declare_func(
-        &mut self,
-        program: &mut Program,
-        name: &'i str,
-        params_ty: Vec<IrType>,
-        ret_ty: IrType,
-    ) {
-        let func_id = program.new_func(FunctionData::new_decl(
+    fn declare_func(&mut self, name: &'i str, params_ty: Vec<IrType>, ret_ty: IrType) {
+        let func_id = self.program.new_func(FunctionData::new_decl(
             format!("@{}", name),
             params_ty,
             ret_ty,
@@ -123,9 +99,22 @@ impl ProgramRecorder<'_> {
     pub fn get_func_id(&self, name: &str) -> Function {
         *self.funcs.get(name).unwrap()
     }
-}
 
-impl ProgramRecorder<'_> {
+    pub fn get_func_data(&self) -> &FunctionData {
+        self.program.func(self.func().id)
+    }
+
+    pub fn get_symbol(&self, name: &str) -> &Symbol {
+        self.symbols.get(name)
+    }
+
+    pub fn get_value(&self, name: &str) -> Value {
+        match self.values.get(name) {
+            Some(value) => *value,
+            None => panic!("`{}` doesn't have a value", name),
+        }
+    }
+
     pub fn enter_loop(&mut self, entry: BasicBlock, exit: BasicBlock) {
         self.loops.push(LoopInfo { entry, exit });
     }
@@ -145,83 +134,50 @@ impl ProgramRecorder<'_> {
     pub fn loop_exit(&self) -> BasicBlock {
         self.loops.last().unwrap().exit
     }
-}
 
-impl ProgramRecorder<'_> {
-    pub fn install_lib(&mut self, program: &mut Program) {
-        self.declare_func(program, "getint", vec![], IrType::get_i32());
-        self.declare_func(program, "getch", vec![], IrType::get_i32());
-        self.declare_func(
-            program,
-            "getarray",
-            vec![IrType::get_pointer(IrType::get_i32())],
-            IrType::get_i32(),
-        );
-        self.declare_func(
-            program,
-            "putint",
-            vec![IrType::get_i32()],
-            IrType::get_unit(),
-        );
-        self.declare_func(
-            program,
-            "putch",
-            vec![IrType::get_i32()],
-            IrType::get_unit(),
-        );
-        self.declare_func(
-            program,
-            "putarray",
-            vec![IrType::get_i32(), IrType::get_pointer(IrType::get_i32())],
-            IrType::get_unit(),
-        );
-        self.declare_func(program, "starttime", vec![], IrType::get_unit());
-        self.declare_func(program, "stoptime", vec![], IrType::get_unit());
-    }
-}
-
-impl FunctionInfo {
-    #[allow(unused)]
-    pub fn new_bb(&self, program: &mut Program, name: &str) -> BasicBlock {
-        program
-            .func_mut(self.id)
-            .dfg_mut()
-            .new_bb()
-            .basic_block(Some(name.to_owned()))
+    pub fn new_value(&mut self) -> LocalBuilder<'_> {
+        self.program.func_mut(self.func().id).dfg_mut().new_value()
     }
 
-    pub fn new_anonymous_bb(&self, program: &mut Program) -> BasicBlock {
-        program
-            .func_mut(self.id)
+    pub fn new_global_value(&mut self) -> GlobalBuilder<'_> {
+        self.program.new_value()
+    }
+
+    pub fn new_anonymous_bb(&mut self) -> BasicBlock {
+        let func_id = self.func().id;
+        self.program
+            .func_mut(func_id)
             .dfg_mut()
             .new_bb()
             .basic_block(None)
     }
 
-    pub fn push_bb(&mut self, program: &mut Program, bb: BasicBlock) {
-        program
-            .func_mut(self.id)
-            .layout_mut()
-            .bbs_mut()
-            .push_key_back(bb)
-            .unwrap();
-
-        self.cur_bb = bb;
+    pub fn set_value_name(&mut self, name: String, val: Value) {
+        self.program
+            .func_mut(self.func().id)
+            .dfg_mut()
+            .set_value_name(val, Some(name));
     }
 
-    pub fn push_inst(&self, program: &mut Program, inst: Value) {
-        program
-            .func_mut(self.id)
+    pub fn set_global_value_name(&mut self, name: String, val: Value) {
+        self.program.set_value_name(val, Some(name));
+    }
+
+    pub fn push_inst(&mut self, inst: Value) {
+        let func_id = self.func().id;
+        let cur_bb = self.func().cur_bb;
+        self.program
+            .func_mut(func_id)
             .layout_mut()
-            .bb_mut(self.cur_bb)
+            .bb_mut(cur_bb)
             .insts_mut()
             .push_key_back(inst)
             .unwrap();
     }
 
-    pub fn push_inst_to(&self, program: &mut Program, bb: BasicBlock, inst: Value) {
-        program
-            .func_mut(self.id)
+    pub fn push_inst_to(&mut self, bb: BasicBlock, inst: Value) {
+        self.program
+            .func_mut(self.func().id)
             .layout_mut()
             .bb_mut(bb)
             .insts_mut()
@@ -229,30 +185,60 @@ impl FunctionInfo {
             .unwrap()
     }
 
-    pub fn set_value_name(&self, program: &mut Program, name: String, val: Value) {
-        program
-            .func_mut(self.id)
-            .dfg_mut()
-            .set_value_name(val, Some(name))
+    pub fn push_bb(&mut self, bb: BasicBlock) {
+        let func_id = self.func().id;
+        self.program
+            .func_mut(func_id)
+            .layout_mut()
+            .bbs_mut()
+            .push_key_back(bb)
+            .unwrap();
+
+        self.func_mut().set_cur_bb(bb);
+    }
+
+    pub fn is_global(&self) -> bool {
+        self.cur_func.is_none()
+    }
+
+    pub fn install_lib(&mut self) {
+        self.declare_func("getint", vec![], IrType::get_i32());
+        self.declare_func("getch", vec![], IrType::get_i32());
+        self.declare_func(
+            "getarray",
+            vec![IrType::get_pointer(IrType::get_i32())],
+            IrType::get_i32(),
+        );
+        self.declare_func("putint", vec![IrType::get_i32()], IrType::get_unit());
+        self.declare_func("putch", vec![IrType::get_i32()], IrType::get_unit());
+        self.declare_func(
+            "putarray",
+            vec![IrType::get_i32(), IrType::get_pointer(IrType::get_i32())],
+            IrType::get_unit(),
+        );
+        self.declare_func("starttime", vec![], IrType::get_unit());
+        self.declare_func("stoptime", vec![], IrType::get_unit());
+    }
+}
+
+impl FunctionInfo {
+    pub fn get_ret_val(&self) -> Option<Value> {
+        self.ret_val
+    }
+
+    pub fn get_entry_bb(&self) -> BasicBlock {
+        self.entry_bb
+    }
+
+    pub fn get_end_bb(&self) -> BasicBlock {
+        self.end_bb
+    }
+
+    pub fn set_cur_bb(&mut self, cur_bb: BasicBlock) {
+        self.cur_bb = cur_bb;
     }
 
     pub fn set_ret_val(&mut self, ret_val: Value) {
         self.ret_val = Some(ret_val);
-    }
-
-    pub fn ret_val(&self) -> Option<Value> {
-        self.ret_val
-    }
-
-    pub fn entry_bb(&self) -> BasicBlock {
-        self.entry_bb
-    }
-
-    pub fn end_bb(&self) -> BasicBlock {
-        self.end_bb
-    }
-
-    pub fn id(&self) -> Function {
-        self.id
     }
 }
