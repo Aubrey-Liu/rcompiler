@@ -1,9 +1,10 @@
+use std::io::BufWriter;
 use std::io::{Result, Write};
 
 use super::*;
 
 pub struct AsmGenerator<'a> {
-    f: File,
+    f: BufWriter<File>,
     // temporary registor name
     tmpr: &'a str,
 }
@@ -120,7 +121,7 @@ impl<'a> AsmGenerator<'a> {
 
     pub fn from_path(path: &str, tmpr: &'a str) -> Self {
         Self {
-            f: File::create(path).unwrap(),
+            f: BufWriter::new(File::create(path).unwrap()),
             tmpr,
         }
     }
