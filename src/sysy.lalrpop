@@ -151,8 +151,8 @@ UnaryExpr: Expr = {
 };
 
 Call: Call = {
-  <func_id: Ident> "(" ")" => Call { func_id, args: vec![] },
-  <func_id: Ident> "(" <args: Comma<Expr>> ")" => Call { func_id, args },
+  <ident: Ident> "(" ")" => Call { ident, args: vec![] },
+  <ident: Ident> "(" <args: Comma<Expr>> ")" => Call { ident, args },
 };
 
 // macro for all the binary expressions

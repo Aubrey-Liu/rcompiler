@@ -24,7 +24,7 @@ pub enum UnaryExpr {
 
 #[derive(Debug)]
 pub struct Call {
-    pub func_id: String,
+    pub ident: String,
     pub args: Vec<Expr>,
 }
 

@@ -128,7 +128,7 @@ impl<'ast> MutVisitor<'ast> for NameManager {
     }
 
     fn visit_call(&mut self, c: &'ast mut Call) {
-        self.rename(&mut c.func_id);
+        self.rename(&mut c.ident);
         walk_call(self, c);
     }
 }

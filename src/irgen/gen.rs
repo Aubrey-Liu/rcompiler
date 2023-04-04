@@ -432,8 +432,8 @@ impl<'i> GenerateIR<'i> for Call {
     type Out = Value;
 
     fn generate_ir(&'i self, recorder: &mut ProgramRecorder<'i>) -> Result<Self::Out> {
-        let func_id = recorder.get_func_id(&self.func_id);
-        let (_, param_tys) = recorder.get_symbol(&self.func_id).get_func_ir_ty();
+        let func = recorder.get_func_id(&self.ident);
+        let (_, param_tys) = recorder.get_symbol(&self.ident).get_func_ir_ty();
         let arg_values: Vec<_> = self
             .args
             .iter()
@@ -455,7 +455,7 @@ impl<'i> GenerateIR<'i> for Call {
                 _ => arg.generate_ir(recorder).unwrap(),
             })
             .collect();
-        let call = recorder.new_value().call(func_id, arg_values);
+        let call = recorder.new_value().call(func, arg_values);
         recorder.push_inst(call);
 
         Ok(call)
