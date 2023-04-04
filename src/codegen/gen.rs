@@ -25,7 +25,9 @@ impl GenerateAsm for Program {
                 ctx.new_func(f);
                 ctx.set_func(f);
                 data.generate(gen, ctx)
-            })
+            })?;
+
+        gen.flush()
     }
 }
 

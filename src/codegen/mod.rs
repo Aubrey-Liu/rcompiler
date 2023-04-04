@@ -1,6 +1,6 @@
 mod context;
 mod gen;
-mod utils;
+mod write;
 
 use std::fs::File;
 
@@ -9,7 +9,7 @@ use koopa::ir::{values::*, *};
 
 use context::*;
 use gen::*;
-use utils::*;
+use write::*;
 
 pub fn generate_code(input: &str, output: &str) -> Result<()> {
     use crate::irgen::generate_mem_ir;

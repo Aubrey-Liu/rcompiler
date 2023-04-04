@@ -10,6 +10,10 @@ pub struct AsmGenerator<'a> {
 }
 
 impl<'a> AsmGenerator<'a> {
+    pub fn flush(&mut self) -> Result<()> {
+        self.f.flush()
+    }
+
     pub fn blank_line(&mut self) -> Result<()> {
         writeln!(self.f)
     }
