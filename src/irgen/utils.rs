@@ -1,7 +1,7 @@
 use koopa::ir::builder_traits::{LocalInstBuilder, ValueBuilder};
 
 use super::*;
-use crate::ast::LVal;
+use crate::ast::{InitVal, LVal};
 use crate::sema::ty::Type;
 
 pub fn local_alloc(recorder: &mut ProgramRecorder, ty: IrType, name: Option<String>) -> Value {
@@ -23,6 +23,59 @@ pub fn get_elem_ptr(recorder: &mut ProgramRecorder, src: Value, dims: &[Value]) 
         dst_ptr = ptr;
     });
     dst_ptr
+}
+
+pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
+    let mut elems = Vec::new();
+    let mut dims: Vec<usize> = Vec::new();
+    ty.get_dims(&mut dims);
+
+    let mut acc = 1;
+    let boundaries: Vec<_> = dims
+        .iter()
+        .rev()
+        .map(|d| {
+            acc *= d;
+            acc
+        })
+        .collect();
+
+    fn fill_array(init: &[InitVal], bds: &[usize], pos: usize, elems: &mut Vec<i32>) -> usize {
+        let (idx, stride) = bds
+            .iter()
+            .rev()
+            .enumerate()
+            .find(|&(_, d)| pos % d == 0)
+            .expect("invalid initializer");
+        let mut pos = pos;
+        let next_pos = pos + stride;
+        let next_bd = bds.len() - idx - 1;
+
+        for e in init {
+            match e {
+                InitVal::Expr(e) => {
+                    if pos > elems.len() {
+                        elems.resize_with(pos, Default::default);
+                    }
+                    elems.push(e.get_i32());
+                    pos += 1;
+                }
+                InitVal::List(list) => {
+                    pos = fill_array(list, &bds[0..next_bd], pos, elems);
+                }
+            };
+        }
+
+        next_pos
+    }
+
+    if let InitVal::List(list) = init {
+        fill_array(list, &boundaries, 0, &mut elems);
+    } else {
+        panic!("incompatible initializer type")
+    }
+
+    elems
 }
 
 pub fn init_array(recorder: &mut ProgramRecorder, dst: Value, ty: &Type, init: &[i32]) {

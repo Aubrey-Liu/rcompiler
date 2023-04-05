@@ -134,13 +134,18 @@ impl<'i> GenerateIR<'i> for VarDecl {
 
         if recorder.is_global() {
             let init_val = match &symbol {
-                Symbol::Var(_) => match &self.init {
+                Symbol::Var => match &self.init {
                     Some(InitVal::Expr(e)) => recorder.new_global_value().integer(e.get_i32()),
                     None => recorder.new_global_value().zero_init(IrType::get_i32()),
                     _ => unreachable!(),
                 },
-                Symbol::Array(ty, Some(init)) => init_global_array(recorder, ty, init),
-                Symbol::Array(ty, None) => recorder.new_global_value().zero_init(ty.get_ir_ty()),
+                Symbol::Array(ty) => match &self.init {
+                    Some(init) => {
+                        let elems = eval_array(init, ty);
+                        init_global_array(recorder, ty, &elems)
+                    }
+                    None => recorder.new_global_value().zero_init(ty.get_ir_ty()),
+                },
                 _ => unreachable!(),
             };
             let alloc = recorder.new_global_value().global_alloc(init_val);
@@ -152,7 +157,7 @@ impl<'i> GenerateIR<'i> for VarDecl {
             recorder.insert_value(id, val);
 
             match &symbol {
-                Symbol::Var(_) => match &self.init {
+                Symbol::Var => match &self.init {
                     Some(InitVal::Expr(e)) => {
                         let init_val = e.generate_ir(recorder)?;
                         let store = recorder.new_value().store(init_val, val);
@@ -161,8 +166,13 @@ impl<'i> GenerateIR<'i> for VarDecl {
                     None => {}
                     _ => unreachable!(),
                 },
-                Symbol::Array(ty, Some(init)) => init_array(recorder, val, ty, init),
-                Symbol::Array(_, None) => {}
+                Symbol::Array(ty) => match &self.init {
+                    Some(init) => {
+                        let elems = eval_array(init, ty);
+                        init_array(recorder, val, ty, &elems);
+                    }
+                    None => {}
+                },
                 _ => unreachable!(),
             }
         }
@@ -184,7 +194,10 @@ impl<'i> GenerateIR<'i> for ConstDecl {
 
         if recorder.is_global() {
             let init_val = match &symbol {
-                Symbol::ConstArray(ty, init) => init_global_array(recorder, ty, init),
+                Symbol::ConstArray(ty) => {
+                    let elems = eval_array(&self.init, ty);
+                    init_global_array(recorder, ty, &elems)
+                }
                 _ => unreachable!(),
             };
             let alloc = recorder.new_global_value().global_alloc(init_val);
@@ -196,7 +209,10 @@ impl<'i> GenerateIR<'i> for ConstDecl {
             recorder.insert_value(id, val);
 
             match &symbol {
-                Symbol::ConstArray(ty, init) => init_array(recorder, val, ty, init),
+                Symbol::ConstArray(ty) => {
+                    let elems = eval_array(&self.init, ty);
+                    init_array(recorder, val, ty, &elems);
+                }
                 _ => unreachable!(),
             }
         }
@@ -444,7 +460,7 @@ impl<'i> GenerateIR<'i> for Call {
                     // convert an array to the pointer of its first element
                     if matches!(
                         recorder.get_symbol(&lval.ident),
-                        Symbol::Array(_, _) | Symbol::ConstArray(_, _)
+                        Symbol::Array(_) | Symbol::ConstArray(_)
                     ) || !lval.dims.is_empty()
                     {
                         val = into_ptr(recorder, val);

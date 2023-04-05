@@ -6,6 +6,8 @@ mod utils;
 pub(crate) use record::*;
 
 use std::fs::read_to_string;
+use std::fs::File;
+use std::io::BufWriter;
 
 use anyhow::*;
 use koopa::back::KoopaGenerator;
@@ -40,7 +42,8 @@ pub fn generate_mem_ir(input: &str) -> Result<Program> {
 
 pub fn generate_ir(input: &str, output: &str) -> Result<()> {
     let program = generate_mem_ir(input)?;
-    let mut gen = KoopaGenerator::from_path(output)?;
+    let output = File::create(output).unwrap();
+    let mut gen = KoopaGenerator::new(BufWriter::new(output));
     gen.generate_on(&program)?;
 
     Ok(())

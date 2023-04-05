@@ -9,9 +9,9 @@ use super::*;
 #[derive(Debug, Clone)]
 pub enum Symbol {
     ConstVar(i32),
-    Var(bool), // whether it's initialized or not
-    ConstArray(Type, Vec<i32>),
-    Array(Type, Option<Vec<i32>>),
+    Var, // whether it's initialized or not
+    ConstArray(Type),
+    Array(Type),
     Pointer(Type),
     Func(Type, Vec<Type>), // return type and parameter's type
 }
@@ -31,12 +31,6 @@ impl SymbolTable {
     pub fn insert(&mut self, name: &str, symbol: Symbol) {
         // unique name for each symbol is guaranteed after the renaming process
         self.data.insert(name.to_owned(), symbol);
-    }
-
-    pub fn assign(&mut self, name: &str) {
-        if let Some(Symbol::Var(init)) = self.data.get_mut(name) {
-            *init = true;
-        }
     }
 
     pub fn get(&self, name: &str) -> &Symbol {
@@ -64,10 +58,7 @@ impl Symbol {
                 InitVal::Expr(e) => Self::ConstVar(e.get_i32()),
                 InitVal::List(_) => panic!("incompatible initializer type"),
             },
-            ExprKind::Array => {
-                let elems = eval_array(&value.init, &ty);
-                Self::ConstArray(ty, elems)
-            }
+            ExprKind::Array => Self::ConstArray(ty),
             _ => unreachable!(),
         }
     }
@@ -83,27 +74,19 @@ impl Symbol {
 
         match value.kind {
             ExprKind::Int => match &value.init {
-                Some(InitVal::Expr(_)) => Self::Var(true),
+                Some(InitVal::Expr(_)) | None => Self::Var,
                 Some(InitVal::List(_)) => panic!("incompatible initializer type"),
-                None => Self::Var(false),
             },
-            ExprKind::Array => match &value.init {
-                Some(InitVal::List(_)) => {
-                    let elems = eval_array(value.init.as_ref().unwrap(), &ty);
-                    Self::Array(ty, Some(elems))
-                }
-                None => Self::Array(ty, None),
-                _ => unreachable!(),
-            },
+            ExprKind::Array => Self::Array(ty),
             _ => unreachable!(),
         }
     }
 
     pub fn get_var_ty(&self) -> Type {
         match self {
-            Self::Array(ty, _) => ty.clone(),
-            Self::ConstArray(ty, _) => ty.clone(),
-            Self::ConstVar(_) | Self::Var(_) => Type::Int,
+            Self::Array(ty) => ty.clone(),
+            Self::ConstArray(ty) => ty.clone(),
+            Self::ConstVar(_) | Self::Var => Type::Int,
             Self::Pointer(ty) => ty.clone(),
             _ => unreachable!(),
         }
@@ -111,9 +94,9 @@ impl Symbol {
 
     pub fn get_var_ir_ty(&self) -> IrType {
         match self {
-            Self::Array(ty, _) => ty.get_ir_ty(),
-            Self::ConstArray(ty, _) => ty.get_ir_ty(),
-            Self::ConstVar(_) | Self::Var(_) => IrType::get_i32(),
+            Self::Array(ty) => ty.get_ir_ty(),
+            Self::ConstArray(ty) => ty.get_ir_ty(),
+            Self::ConstVar(_) | Self::Var => IrType::get_i32(),
             _ => unreachable!(),
         }
     }
@@ -128,59 +111,6 @@ impl Symbol {
             panic!("incompatible symbol type")
         }
     }
-}
-
-pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
-    let mut elems = Vec::new();
-    let mut dims: Vec<usize> = Vec::new();
-    ty.get_dims(&mut dims);
-
-    let mut acc = 1;
-    let boundaries: Vec<_> = dims
-        .iter()
-        .rev()
-        .map(|d| {
-            acc *= d;
-            acc
-        })
-        .collect();
-
-    fn fill_array(init: &[InitVal], bds: &[usize], pos: usize, elems: &mut Vec<i32>) -> usize {
-        let (idx, stride) = bds
-            .iter()
-            .rev()
-            .enumerate()
-            .find(|&(_, d)| pos % d == 0)
-            .expect("invalid initializer");
-        let mut pos = pos;
-        let next_pos = pos + stride;
-        let next_bd = bds.len() - idx - 1;
-
-        for e in init {
-            match e {
-                InitVal::Expr(e) => {
-                    if pos > elems.len() {
-                        elems.resize_with(pos, Default::default);
-                    }
-                    elems.push(e.get_i32());
-                    pos += 1;
-                }
-                InitVal::List(list) => {
-                    pos = fill_array(list, &bds[0..next_bd], pos, elems);
-                }
-            };
-        }
-
-        next_pos
-    }
-
-    if let InitVal::List(list) = init {
-        fill_array(list, &boundaries, 0, &mut elems);
-    } else {
-        panic!("incompatible initializer type")
-    }
-
-    elems
 }
 
 impl<'ast> MutVisitor<'ast> for SymbolTable {
@@ -237,7 +167,7 @@ impl<'ast> MutVisitor<'ast> for SymbolTable {
             _ => unreachable!(),
         };
         let symbol = match &ty {
-            Type::Int => Symbol::Var(true),
+            Type::Int => Symbol::Var,
             Type::Pointer(_) => Symbol::Pointer(ty.clone()),
             _ => unreachable!(),
         };
@@ -256,11 +186,6 @@ impl<'ast> MutVisitor<'ast> for SymbolTable {
 
         let symbol = Symbol::from_var_decl(v);
         self.insert(&v.lval.ident, symbol);
-    }
-
-    fn visit_assign(&mut self, a: &'ast mut Assign) {
-        walk_assign(self, a);
-        self.assign(&a.lval.ident);
     }
 
     fn visit_exp(&mut self, e: &'ast mut Expr) {
