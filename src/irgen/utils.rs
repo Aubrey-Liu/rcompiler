@@ -4,27 +4,6 @@ use super::*;
 use crate::ast::{InitVal, LVal};
 use crate::sema::ty::{Type, TypeKind};
 
-pub fn local_alloc(recorder: &mut ProgramRecorder, ty: IrType, name: Option<String>) -> Value {
-    let entry = recorder.func().get_entry_bb();
-    let alloc = recorder.new_value().alloc(ty);
-    if let Some(name) = name {
-        recorder.set_value_name(name, alloc);
-    }
-    recorder.push_inst_to(entry, alloc);
-
-    alloc
-}
-
-pub fn get_elem_ptr(recorder: &mut ProgramRecorder, src: Value, dims: &[Value]) -> Value {
-    let mut dst_ptr = src;
-    dims.iter().for_each(|idx| {
-        let ptr = recorder.new_value().get_elem_ptr(dst_ptr, *idx);
-        recorder.push_inst(ptr);
-        dst_ptr = ptr;
-    });
-    dst_ptr
-}
-
 pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
     let mut elems = Vec::new();
     let mut dims: Vec<usize> = Vec::new();
@@ -137,6 +116,24 @@ pub fn init_global_array(recorder: &mut ProgramRecorder, ty: &Type, init: &[i32]
     inner(recorder, &dims, init, 0)
 }
 
+pub fn into_ptr(recorder: &mut ProgramRecorder, val: Value) -> Value {
+    let index = recorder.new_value().integer(0);
+    let ptr = recorder.new_value().get_elem_ptr(val, index);
+    recorder.push_inst(ptr);
+
+    ptr
+}
+
+pub fn get_elem_ptr(recorder: &mut ProgramRecorder, src: Value, dims: &[Value]) -> Value {
+    let mut dst_ptr = src;
+    dims.iter().for_each(|idx| {
+        let ptr = recorder.new_value().get_elem_ptr(dst_ptr, *idx);
+        recorder.push_inst(ptr);
+        dst_ptr = ptr;
+    });
+    dst_ptr
+}
+
 pub fn get_lval_ptr<'i>(recorder: &mut ProgramRecorder<'i>, lval: &'i LVal) -> Value {
     let src = recorder.get_value(&lval.ident);
     let dims: Vec<_> = lval
@@ -145,6 +142,8 @@ pub fn get_lval_ptr<'i>(recorder: &mut ProgramRecorder<'i>, lval: &'i LVal) -> V
         .map(|e| e.generate_ir(recorder).unwrap())
         .collect();
     match recorder.get_ty(&lval.ident).kind() {
+        TypeKind::Integer => src,
+        TypeKind::Array(_, _) => get_elem_ptr(recorder, src, &dims),
         TypeKind::Pointer(_) => {
             let mut ptr = recorder.new_value().load(src);
             recorder.push_inst(ptr);
@@ -155,16 +154,8 @@ pub fn get_lval_ptr<'i>(recorder: &mut ProgramRecorder<'i>, lval: &'i LVal) -> V
             }
             ptr
         }
-        _ => get_elem_ptr(recorder, src, &dims),
+        _ => unreachable!(),
     }
-}
-
-pub fn into_ptr(recorder: &mut ProgramRecorder, val: Value) -> Value {
-    let index = recorder.new_value().integer(0);
-    let ptr = recorder.new_value().get_elem_ptr(val, index);
-    recorder.push_inst(ptr);
-
-    ptr
 }
 
 pub fn load_lval<'i>(recorder: &mut ProgramRecorder<'i>, lval: &'i LVal) -> Value {
@@ -173,6 +164,17 @@ pub fn load_lval<'i>(recorder: &mut ProgramRecorder<'i>, lval: &'i LVal) -> Valu
     recorder.push_inst(dst);
 
     dst
+}
+
+pub fn local_alloc(recorder: &mut ProgramRecorder, ty: IrType, name: Option<String>) -> Value {
+    let entry = recorder.func().get_entry_bb();
+    let alloc = recorder.new_value().alloc(ty);
+    if let Some(name) = name {
+        recorder.set_value_name(name, alloc);
+    }
+    recorder.push_inst_to(entry, alloc);
+
+    alloc
 }
 
 pub fn binary(recorder: &mut ProgramRecorder, op: IrBinaryOp, lhs: Value, rhs: Value) -> Value {

@@ -36,8 +36,8 @@ impl GenerateAsm for FunctionData {
         let max_arg_num = self
             .dfg()
             .values()
-            .iter()
-            .filter_map(|(_, data)| {
+            .values()
+            .filter_map(|data| {
                 if let ValueKind::Call(c) = data.kind() {
                     Some(c.args().len())
                 } else {
