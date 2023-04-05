@@ -1,9 +1,5 @@
-use crate::ast::*;
-use crate::sema::symbol::Symbol;
-use koopa::ir::{
-    builder_traits::{GlobalInstBuilder, LocalInstBuilder, ValueBuilder},
-    TypeKind,
-};
+use crate::{ast::*, sema::ty::TypeKind};
+use koopa::ir::builder_traits::{GlobalInstBuilder, LocalInstBuilder, ValueBuilder};
 
 use super::*;
 
@@ -48,11 +44,16 @@ impl<'i> GenerateIR<'i> for FuncDef {
         recorder.push_bb(entry_bb);
 
         let param_values: Vec<Value> = recorder.get_func_data().params().to_vec();
-        let (ret_ty, param_tys) = recorder.get_symbol(&self.ident).get_func_ir_ty();
+        let ty = recorder.get_ty(&self.ident).clone();
+        let (ret_ty, param_tys) = if let TypeKind::Func(ret_ty, param_tys) = ty.kind() {
+            (ret_ty, param_tys)
+        } else {
+            unreachable!()
+        };
 
         (0..param_values.len()).for_each(|i| {
             let ident = &self.params[i].ident;
-            let ty = param_tys[i].clone();
+            let ty = param_tys[i].get_ir_ty();
             let value = param_values[i];
             let alloc = local_alloc(recorder, ty, Some(format!("%{}", ident)));
             let store = recorder.new_value().store(value, alloc);
@@ -62,7 +63,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
 
         // allocate the return value
         if !matches!(self.ret_kind, ExprKind::Void) {
-            let ret_val = local_alloc(recorder, ret_ty, Some("%ret".to_owned()));
+            let ret_val = local_alloc(recorder, ret_ty.get_ir_ty(), Some("%ret".to_owned()));
             recorder.func_mut().set_ret_val(ret_val);
         }
 
@@ -130,19 +131,19 @@ impl<'i> GenerateIR<'i> for VarDecl {
 
     fn generate_ir(&'i self, recorder: &mut ProgramRecorder<'i>) -> Result<Self::Out> {
         let id = &self.lval.ident;
-        let symbol = recorder.get_symbol(id).clone();
+        let ty = recorder.get_ty(id).clone();
 
         if recorder.is_global() {
-            let init_val = match &symbol {
-                Symbol::Var => match &self.init {
+            let init_val = match &ty.kind() {
+                TypeKind::Integer => match &self.init {
                     Some(InitVal::Expr(e)) => recorder.new_global_value().integer(e.get_i32()),
                     None => recorder.new_global_value().zero_init(IrType::get_i32()),
                     _ => unreachable!(),
                 },
-                Symbol::Array(ty) => match &self.init {
+                TypeKind::Array(_, _) => match &self.init {
                     Some(init) => {
-                        let elems = eval_array(init, ty);
-                        init_global_array(recorder, ty, &elems)
+                        let elems = eval_array(init, &ty);
+                        init_global_array(recorder, &ty, &elems)
                     }
                     None => recorder.new_global_value().zero_init(ty.get_ir_ty()),
                 },
@@ -152,12 +153,11 @@ impl<'i> GenerateIR<'i> for VarDecl {
             recorder.set_global_value_name(format!("@{}", &id), alloc);
             recorder.insert_value(id, alloc);
         } else {
-            let ty = symbol.get_var_ir_ty();
-            let val = local_alloc(recorder, ty, Some(format!("@{}", &id)));
+            let val = local_alloc(recorder, ty.get_ir_ty(), Some(format!("@{}", &id)));
             recorder.insert_value(id, val);
 
-            match &symbol {
-                Symbol::Var => match &self.init {
+            match &ty.kind() {
+                TypeKind::Integer => match &self.init {
                     Some(InitVal::Expr(e)) => {
                         let init_val = e.generate_ir(recorder)?;
                         let store = recorder.new_value().store(init_val, val);
@@ -166,10 +166,10 @@ impl<'i> GenerateIR<'i> for VarDecl {
                     None => {}
                     _ => unreachable!(),
                 },
-                Symbol::Array(ty) => match &self.init {
+                TypeKind::Array(_, _) => match &self.init {
                     Some(init) => {
-                        let elems = eval_array(init, ty);
-                        init_array(recorder, val, ty, &elems);
+                        let elems = eval_array(init, &ty);
+                        init_array(recorder, val, &ty, &elems);
                     }
                     None => {}
                 },
@@ -190,30 +190,28 @@ impl<'i> GenerateIR<'i> for ConstDecl {
         }
 
         let id = &self.lval.ident;
-        let symbol = recorder.get_symbol(id).clone();
+        let ty = recorder.get_ty(id).clone();
 
         if recorder.is_global() {
-            let init_val = match &symbol {
-                Symbol::ConstArray(ty) => {
-                    let elems = eval_array(&self.init, ty);
-                    init_global_array(recorder, ty, &elems)
-                }
-                _ => unreachable!(),
+            let init_val = if matches!(ty.kind(), TypeKind::Array(_, _)) {
+                let elems = eval_array(&self.init, &ty);
+                init_global_array(recorder, &ty, &elems)
+            } else {
+                unreachable!()
             };
+
             let alloc = recorder.new_global_value().global_alloc(init_val);
             recorder.set_global_value_name(format!("@{}", &id), alloc);
             recorder.insert_value(id, alloc);
         } else {
-            let ty = symbol.get_var_ir_ty();
-            let val = local_alloc(recorder, ty, Some(format!("@{}", &id)));
+            let val = local_alloc(recorder, ty.get_ir_ty(), Some(format!("@{}", &id)));
             recorder.insert_value(id, val);
 
-            match &symbol {
-                Symbol::ConstArray(ty) => {
-                    let elems = eval_array(&self.init, ty);
-                    init_array(recorder, val, ty, &elems);
-                }
-                _ => unreachable!(),
+            if matches!(ty.kind(), TypeKind::Array(_, _)) {
+                let elems = eval_array(&self.init, &ty);
+                init_array(recorder, val, &ty, &elems);
+            } else {
+                unreachable!()
             }
         }
 
@@ -449,23 +447,26 @@ impl<'i> GenerateIR<'i> for Call {
 
     fn generate_ir(&'i self, recorder: &mut ProgramRecorder<'i>) -> Result<Self::Out> {
         let func = recorder.get_func_id(&self.ident);
-        let (_, param_tys) = recorder.get_symbol(&self.ident).get_func_ir_ty();
+        let ty = recorder.get_ty(&self.ident).clone();
+        let param_tys = if let TypeKind::Func(_, param_tys) = ty.kind() {
+            param_tys
+        } else {
+            unreachable!()
+        };
+
         let arg_values: Vec<_> = self
             .args
             .iter()
-            .zip(&param_tys)
+            .zip(param_tys.iter())
             .map(|(arg, ty)| match (ty.kind(), arg) {
                 (TypeKind::Pointer(_), Expr::LVal(lval)) => {
                     let mut val = get_lval_ptr(recorder, lval);
-                    // convert an array to the pointer of its first element
-                    if matches!(
-                        recorder.get_symbol(&lval.ident),
-                        Symbol::Array(_) | Symbol::ConstArray(_)
-                    ) || !lval.dims.is_empty()
+                    if matches!(recorder.get_ty(&lval.ident).kind(), TypeKind::Array(_, _))
+                        || !lval.dims.is_empty()
                     {
+                        // convert an array to the pointer of its first elements
                         val = into_ptr(recorder, val);
                     }
-
                     val
                 }
                 _ => arg.generate_ir(recorder).unwrap(),

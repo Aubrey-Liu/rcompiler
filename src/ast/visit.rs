@@ -61,15 +61,15 @@ pub trait MutVisitor<'ast>: Sized {
         walk_return(self, r);
     }
 
-    fn visit_exp(&mut self, e: &'ast mut Expr) {
+    fn visit_expr(&mut self, e: &'ast mut Expr) {
         walk_expr(self, e);
     }
 
-    fn visit_binary_exp(&mut self, b: &'ast mut BinaryExpr) {
+    fn visit_binary_expr(&mut self, b: &'ast mut BinaryExpr) {
         walk_binary_expr(self, b);
     }
 
-    fn visit_unary_exp(&mut self, u: &'ast mut UnaryExpr) {
+    fn visit_unary_expr(&mut self, u: &'ast mut UnaryExpr) {
         walk_unary_expr(self, u);
     }
 
@@ -133,7 +133,7 @@ pub fn walk_func_def<'a, V: MutVisitor<'a>>(visitor: &mut V, func_def: &'a mut F
 }
 
 pub fn walk_func_param<'a, V: MutVisitor<'a>>(visitor: &mut V, func_param: &'a mut FuncParam) {
-    walk_list!(visitor, visit_exp, &mut func_param.dims);
+    walk_list!(visitor, visit_expr, &mut func_param.dims);
 }
 
 pub fn walk_block<'a, V: MutVisitor<'a>>(visitor: &mut V, block: &'a mut Block) {
@@ -154,7 +154,7 @@ pub fn walk_stmt<'a, V: MutVisitor<'a>>(visitor: &mut V, stmt: &'a mut Stmt) {
         Stmt::Branch(br) => visitor.visit_branch(br),
         Stmt::Expr(e) => {
             if let Some(e) = e {
-                visitor.visit_exp(e);
+                visitor.visit_expr(e);
             }
         }
         Stmt::Return(ret) => visitor.visit_return(ret),
@@ -165,12 +165,12 @@ pub fn walk_stmt<'a, V: MutVisitor<'a>>(visitor: &mut V, stmt: &'a mut Stmt) {
 }
 
 pub fn walk_assign<'a, V: MutVisitor<'a>>(visitor: &mut V, assign: &'a mut Assign) {
-    visitor.visit_exp(&mut assign.val);
+    visitor.visit_expr(&mut assign.val);
     visitor.visit_lval(&mut assign.lval);
 }
 
 pub fn walk_branch<'a, V: MutVisitor<'a>>(visitor: &mut V, branch: &'a mut Branch) {
-    visitor.visit_exp(&mut branch.cond);
+    visitor.visit_expr(&mut branch.cond);
     visitor.visit_stmt(&mut branch.if_stmt);
     if let Some(el_stmt) = &mut branch.el_stmt {
         visitor.visit_stmt(el_stmt);
@@ -178,20 +178,20 @@ pub fn walk_branch<'a, V: MutVisitor<'a>>(visitor: &mut V, branch: &'a mut Branc
 }
 
 pub fn walk_while<'a, V: MutVisitor<'a>>(visitor: &mut V, w: &'a mut While) {
-    visitor.visit_exp(&mut w.cond);
+    visitor.visit_expr(&mut w.cond);
     visitor.visit_stmt(&mut w.stmt);
 }
 
 pub fn walk_return<'a, V: MutVisitor<'a>>(visitor: &mut V, ret: &'a mut Return) {
     if let Some(e) = &mut ret.ret_val {
-        visitor.visit_exp(e);
+        visitor.visit_expr(e);
     }
 }
 
 pub fn walk_expr<'a, V: MutVisitor<'a>>(visitor: &mut V, exp: &'a mut Expr) {
     match exp {
-        Expr::BinaryExpr(bxp) => visitor.visit_binary_exp(bxp),
-        Expr::UnaryExpr(uxp) => visitor.visit_unary_exp(uxp),
+        Expr::BinaryExpr(bxp) => visitor.visit_binary_expr(bxp),
+        Expr::UnaryExpr(uxp) => visitor.visit_unary_expr(uxp),
         Expr::LVal(lval) => visitor.visit_lval(lval),
         Expr::Integer(_) => {}
         Expr::Error => panic!("expected an expression"),
@@ -199,28 +199,28 @@ pub fn walk_expr<'a, V: MutVisitor<'a>>(visitor: &mut V, exp: &'a mut Expr) {
 }
 
 pub fn walk_binary_expr<'a, V: MutVisitor<'a>>(visitor: &mut V, bxp: &'a mut BinaryExpr) {
-    visitor.visit_exp(&mut bxp.lhs);
-    visitor.visit_exp(&mut bxp.rhs);
+    visitor.visit_expr(&mut bxp.lhs);
+    visitor.visit_expr(&mut bxp.rhs);
 }
 
 pub fn walk_unary_expr<'a, V: MutVisitor<'a>>(visitor: &mut V, uxp: &'a mut UnaryExpr) {
     match uxp {
-        UnaryExpr::Unary(_, exp) => visitor.visit_exp(exp),
+        UnaryExpr::Unary(_, exp) => visitor.visit_expr(exp),
         UnaryExpr::Call(call) => visitor.visit_call(call),
     }
 }
 
 pub fn walk_call<'a, V: MutVisitor<'a>>(visitor: &mut V, call: &'a mut Call) {
-    walk_list!(visitor, visit_exp, &mut call.args);
+    walk_list!(visitor, visit_expr, &mut call.args);
 }
 
 pub fn walk_lval<'a, V: MutVisitor<'a>>(visitor: &mut V, lval: &'a mut LVal) {
-    walk_list!(visitor, visit_exp, &mut lval.dims);
+    walk_list!(visitor, visit_expr, &mut lval.dims);
 }
 
 pub fn walk_initval<'a, V: MutVisitor<'a>>(visitor: &mut V, initval: &'a mut InitVal) {
     match initval {
-        InitVal::Expr(exp) => visitor.visit_exp(exp),
+        InitVal::Expr(exp) => visitor.visit_expr(exp),
         InitVal::List(init_list) => walk_list!(visitor, visit_initval, init_list),
     }
 }

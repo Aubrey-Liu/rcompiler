@@ -31,6 +31,9 @@ pub fn generate_mem_ir(input: &str) -> Result<Program> {
     let mut manager = NameManager::new();
     manager.visit_comp_unit(&mut ast);
 
+    let mut evaluator = Evaluator::new();
+    evaluator.visit_comp_unit(&mut ast);
+
     let mut symbols = SymbolTable::new();
     symbols.visit_comp_unit(&mut ast);
 

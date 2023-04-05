@@ -2,7 +2,7 @@ use koopa::ir::builder_traits::{LocalInstBuilder, ValueBuilder};
 
 use super::*;
 use crate::ast::{InitVal, LVal};
-use crate::sema::ty::Type;
+use crate::sema::ty::{Type, TypeKind};
 
 pub fn local_alloc(recorder: &mut ProgramRecorder, ty: IrType, name: Option<String>) -> Value {
     let entry = recorder.func().get_entry_bb();
@@ -144,8 +144,8 @@ pub fn get_lval_ptr<'i>(recorder: &mut ProgramRecorder<'i>, lval: &'i LVal) -> V
         .iter()
         .map(|e| e.generate_ir(recorder).unwrap())
         .collect();
-    match recorder.get_symbol(&lval.ident) {
-        Symbol::Pointer(_) => {
+    match recorder.get_ty(&lval.ident).kind() {
+        TypeKind::Pointer(_) => {
             let mut ptr = recorder.new_value().load(src);
             recorder.push_inst(ptr);
             if !dims.is_empty() {

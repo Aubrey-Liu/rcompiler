@@ -2,10 +2,12 @@ use std::{collections::HashMap, vec};
 
 use koopa::ir::builder::{GlobalBuilder, LocalBuilder};
 use koopa::ir::builder_traits::*;
+use koopa::ir::Type as IrType;
 
 use super::*;
 use crate::ast::FuncDef;
-use crate::sema::symbol::{Symbol, SymbolTable};
+use crate::sema::symbol::SymbolTable;
+use crate::sema::ty::{Type, TypeKind};
 
 pub struct ProgramRecorder<'i> {
     pub program: Program,
@@ -18,7 +20,7 @@ pub struct ProgramRecorder<'i> {
 
 #[derive(Debug)]
 pub struct FunctionInfo {
-    id: Function,
+    func: Function,
     entry_bb: BasicBlock,
     end_bb: BasicBlock,
     cur_bb: BasicBlock,
@@ -48,29 +50,35 @@ impl<'i> ProgramRecorder<'i> {
     }
 
     pub fn enter_func(&mut self, func_def: &'i FuncDef) {
-        let (ret_ty, param_ty) = self.get_symbol(&func_def.ident).get_func_ir_ty();
+        let (ret_ty, param_tys) =
+            if let TypeKind::Func(ret_ty, param_tys) = self.get_ty(&func_def.ident).kind() {
+                (ret_ty, param_tys)
+            } else {
+                unreachable!()
+            };
+        let param_ir_tys: Vec<_> = param_tys.iter().map(|t| t.get_ir_ty()).collect();
         let params: Vec<_> = func_def
             .params
             .iter()
             .map(|p| Some(format!("@{}", &p.ident)))
-            .zip(param_ty.into_iter())
+            .zip(param_ir_tys.into_iter())
             .collect();
-        let id = self.program.new_func(FunctionData::with_param_names(
+        let func = self.program.new_func(FunctionData::with_param_names(
             format!("@{}", &func_def.ident),
             params,
-            ret_ty,
+            ret_ty.get_ir_ty(),
         ));
-        let builder = self.program.func_mut(id).dfg_mut();
+        let builder = self.program.func_mut(func).dfg_mut();
         let entry_bb = builder.new_bb().basic_block(Some("%entry".to_owned()));
         let end_bb = builder.new_bb().basic_block(Some("%end".to_owned()));
         self.cur_func = Some(FunctionInfo {
-            id,
+            func,
             entry_bb,
             end_bb,
             cur_bb: entry_bb,
             ret_val: None,
         });
-        self.funcs.insert(&func_def.ident, id);
+        self.funcs.insert(&func_def.ident, func);
     }
 
     pub fn exit_func(&mut self) {
@@ -88,6 +96,10 @@ impl<'i> ProgramRecorder<'i> {
 }
 
 impl ProgramRecorder<'_> {
+    pub fn cur_func_id(&self) -> Function {
+        self.func().func
+    }
+
     pub fn func(&self) -> &FunctionInfo {
         self.cur_func.as_ref().unwrap()
     }
@@ -101,10 +113,10 @@ impl ProgramRecorder<'_> {
     }
 
     pub fn get_func_data(&self) -> &FunctionData {
-        self.program.func(self.func().id)
+        self.program.func(self.cur_func_id())
     }
 
-    pub fn get_symbol(&self, name: &str) -> &Symbol {
+    pub fn get_ty(&self, name: &str) -> &Type {
         self.symbols.get(name)
     }
 
@@ -136,7 +148,10 @@ impl ProgramRecorder<'_> {
     }
 
     pub fn new_value(&mut self) -> LocalBuilder<'_> {
-        self.program.func_mut(self.func().id).dfg_mut().new_value()
+        self.program
+            .func_mut(self.cur_func_id())
+            .dfg_mut()
+            .new_value()
     }
 
     pub fn new_global_value(&mut self) -> GlobalBuilder<'_> {
@@ -144,7 +159,7 @@ impl ProgramRecorder<'_> {
     }
 
     pub fn new_anonymous_bb(&mut self) -> BasicBlock {
-        let func_id = self.func().id;
+        let func_id = self.cur_func_id();
         self.program
             .func_mut(func_id)
             .dfg_mut()
@@ -154,7 +169,7 @@ impl ProgramRecorder<'_> {
 
     pub fn set_value_name(&mut self, name: String, val: Value) {
         self.program
-            .func_mut(self.func().id)
+            .func_mut(self.cur_func_id())
             .dfg_mut()
             .set_value_name(val, Some(name));
     }
@@ -164,7 +179,7 @@ impl ProgramRecorder<'_> {
     }
 
     pub fn push_inst(&mut self, inst: Value) {
-        let func_id = self.func().id;
+        let func_id = self.cur_func_id();
         let cur_bb = self.func().cur_bb;
         self.program
             .func_mut(func_id)
@@ -177,7 +192,7 @@ impl ProgramRecorder<'_> {
 
     pub fn push_inst_to(&mut self, bb: BasicBlock, inst: Value) {
         self.program
-            .func_mut(self.func().id)
+            .func_mut(self.cur_func_id())
             .layout_mut()
             .bb_mut(bb)
             .insts_mut()
@@ -186,7 +201,7 @@ impl ProgramRecorder<'_> {
     }
 
     pub fn push_bb(&mut self, bb: BasicBlock) {
-        let func_id = self.func().id;
+        let func_id = self.cur_func_id();
         self.program
             .func_mut(func_id)
             .layout_mut()
