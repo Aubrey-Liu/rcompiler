@@ -20,7 +20,23 @@ impl ConstEval for BinaryExpr {
         let lhs = self.lhs.const_eval(eval);
         let rhs = self.rhs.const_eval(eval);
         if let (Some(lhs), Some(rhs)) = (lhs, rhs) {
-            Some(eval_binary(self.op, lhs, rhs))
+            return Some(eval_binary(self.op, lhs, rhs));
+        }
+        if matches!(self.op, BinaryOp::And) && (matches!(lhs, Some(0)) || matches!(rhs, Some(0))) {
+            return Some(0);
+        }
+        if matches!(self.op, BinaryOp::Or)
+            && (matches!(lhs, Some(i) if i != 0) || matches!(rhs, Some(i) if i !=0))
+        {
+            return Some(1);
+        }
+        if matches!((self.lhs.as_ref(), self.rhs.as_ref()), (Expr::LVal(l), Expr::LVal(r)) if l.ident == r.ident)
+        {
+            match self.op {
+                BinaryOp::Eq | BinaryOp::Le | BinaryOp::Ge => Some(1),
+                BinaryOp::Neq | BinaryOp::Lt | BinaryOp::Gt | BinaryOp::Sub => Some(0),
+                _ => None,
+            }
         } else {
             None
         }

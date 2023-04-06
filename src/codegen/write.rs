@@ -73,11 +73,32 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f, "  call {}", callee)
     }
 
-    pub fn binary(&mut self, op: &str, lhs: &str, rhs: &str, dst: &str) -> Result<()> {
+    pub fn binary(&mut self, op: &str, dst: &str, lhs: &str, rhs: &str) -> Result<()> {
         writeln!(self.f, "  {} {}, {}, {}", op, dst, lhs, rhs)
     }
 
-    pub fn unary(&mut self, op: &str, opr: &str, dst: &str) -> Result<()> {
+    pub fn muli(&mut self, dst: &str, lhs: &str, imm: i32) -> Result<()> {
+        if imm == 0 {
+            self.mv(dst, "x0")
+        } else if imm > 0 && (imm & (imm - 1)) == 0 {
+            let mut shift = 0;
+            let mut imm = imm >> 1;
+            while imm != 0 {
+                shift += 1;
+                imm >>= 1;
+            }
+            self.slli(dst, lhs, shift)
+        } else {
+            self.li(self.tmpr, imm)?;
+            self.binary("mul", dst, lhs, self.tmpr)
+        }
+    }
+
+    pub fn slli(&mut self, dst: &str, lhs: &str, imm: i32) -> Result<()> {
+        writeln!(self.f, "  slli {}, {}, {}", dst, lhs, imm)
+    }
+
+    pub fn unary(&mut self, op: &str, dst: &str, opr: &str) -> Result<()> {
         writeln!(self.f, "  {} {}, {}", op, dst, opr)
     }
 

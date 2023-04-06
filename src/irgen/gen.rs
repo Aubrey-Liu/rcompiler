@@ -1,5 +1,8 @@
 use crate::{ast::*, sema::ty::TypeKind};
-use koopa::ir::builder_traits::{GlobalInstBuilder, LocalInstBuilder, ValueBuilder};
+use koopa::ir::{
+    builder_traits::{GlobalInstBuilder, LocalInstBuilder, ValueBuilder},
+    ValueKind,
+};
 
 use super::*;
 
@@ -255,12 +258,25 @@ impl<'i> GenerateIR<'i> for Branch {
     type Out = ();
 
     fn generate_ir(&'i self, recorder: &mut ProgramRecorder<'i>) -> Result<Self::Out> {
+        let cond = self.cond.generate_ir(recorder)?;
+
+        if let ValueKind::Integer(i) = recorder.get_value_data(cond).kind() {
+            let i = i.value();
+            if i == 0 {
+                if let Some(el_stmt) = &self.el_stmt {
+                    el_stmt.generate_ir(recorder)?;
+                }
+            } else {
+                self.if_stmt.generate_ir(recorder)?;
+            }
+            return Ok(());
+        }
+
         let true_bb = recorder.new_anonymous_bb();
         let false_bb = recorder.new_anonymous_bb();
         let end_bb = recorder.new_anonymous_bb();
 
-        let result = self.cond.generate_ir(recorder)?;
-        let br = recorder.new_value().branch(result, true_bb, false_bb);
+        let br = recorder.new_value().branch(cond, true_bb, false_bb);
         recorder.push_inst(br);
 
         // enter the "true" block
@@ -304,9 +320,20 @@ impl<'i> GenerateIR<'i> for While {
 
         // check the loop condition
         recorder.push_bb(loop_entry);
-        let result = self.cond.generate_ir(recorder)?;
-        let br = recorder.new_value().branch(result, loop_body, loop_exit);
-        recorder.push_inst(br);
+        let cond = self.cond.generate_ir(recorder)?;
+
+        if let ValueKind::Integer(i) = recorder.get_value_data(cond).kind() {
+            if i.value() == 0 {
+                recorder.exit_loop();
+                return Ok(());
+            } else {
+                let jump = recorder.new_value().jump(loop_body);
+                recorder.push_inst(jump);
+            }
+        } else {
+            let br = recorder.new_value().branch(cond, loop_body, loop_exit);
+            recorder.push_inst(br);
+        }
 
         // enter the loop body block
         recorder.push_bb(loop_body);

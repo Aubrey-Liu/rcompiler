@@ -160,13 +160,6 @@ impl GenerateAsm for Aggregate {
     }
 }
 
-impl NonUnitGenerateAsm for ZeroInit {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context, val: Value) -> Result<()> {
-        let size = ctx.global_value_data(val).ty().size();
-        gen.global_zero_init(size)
-    }
-}
-
 pub trait NonUnitGenerateAsm {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context, val: Value) -> Result<()>;
 }
@@ -189,38 +182,36 @@ impl NonUnitGenerateAsm for Binary {
         if !ctx.is_used(val) {
             return Ok(());
         }
-
         read_to(gen, ctx, "t1", self.lhs())?;
         read_to(gen, ctx, "t2", self.rhs())?;
         match self.op() {
-            BinaryOp::Add => gen.binary("add", "t1", "t2", "t1")?,
-            BinaryOp::Sub => gen.binary("sub", "t1", "t2", "t1")?,
-            BinaryOp::Mul => gen.binary("mul", "t1", "t2", "t1")?,
-            BinaryOp::Div => gen.binary("div", "t1", "t2", "t1")?,
-            BinaryOp::Mod => gen.binary("rem", "t1", "t2", "t1")?,
-            BinaryOp::And => gen.binary("and", "t1", "t2", "t1")?,
-            BinaryOp::Or => gen.binary("or", "t1", "t2", "t1")?,
-            BinaryOp::Lt => gen.binary("slt", "t1", "t2", "t1")?,
-            BinaryOp::Gt => gen.binary("sgt", "t1", "t2", "t1")?,
+            BinaryOp::Add => gen.binary("add", "t1", "t1", "t2")?,
+            BinaryOp::Sub => gen.binary("sub", "t1", "t1", "t2")?,
+            BinaryOp::Mul => gen.binary("mul", "t1", "t1", "t2")?,
+            BinaryOp::Div => gen.binary("div", "t1", "t1", "t2")?,
+            BinaryOp::Mod => gen.binary("rem", "t1", "t1", "t2")?,
+            BinaryOp::And => gen.binary("and", "t1", "t1", "t2")?,
+            BinaryOp::Or => gen.binary("or", "t1", "t1", "t2")?,
+            BinaryOp::Lt => gen.binary("slt", "t1", "t1", "t2")?,
+            BinaryOp::Gt => gen.binary("sgt", "t1", "t1", "t2")?,
             BinaryOp::Eq => {
-                gen.binary("xor", "t1", "t2", "t1")?;
+                gen.binary("xor", "t1", "t1", "t2")?;
                 gen.unary("seqz", "t1", "t1")?;
             }
             BinaryOp::NotEq => {
-                gen.binary("xor", "t1", "t2", "t1")?;
+                gen.binary("xor", "t1", "t1", "t2")?;
                 gen.unary("snez", "t1", "t1")?;
             }
             BinaryOp::Le => {
-                gen.binary("sgt", "t1", "t2", "t1")?;
+                gen.binary("sgt", "t1", "t1", "t2")?;
                 gen.unary("seqz", "t1", "t1")?;
             }
             BinaryOp::Ge => {
-                gen.binary("slt", "t1", "t2", "t1")?;
+                gen.binary("slt", "t1", "t1", "t2")?;
                 gen.unary("seqz", "t1", "t1")?;
             }
             _ => unreachable!(),
         }
-        // gen.binary(self.op(), "t1", "t2", "t1")?;
         write_back(gen, ctx, "t1", val)
     }
 }
@@ -230,6 +221,13 @@ impl NonUnitGenerateAsm for GlobalAlloc {
         let id = ctx.get_global_var(&val);
         gen.global_alloc(id)?;
         self.init().generate(gen, ctx)
+    }
+}
+
+impl NonUnitGenerateAsm for ZeroInit {
+    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context, val: Value) -> Result<()> {
+        let size = ctx.global_value_data(val).ty().size();
+        gen.global_zero_init(size)
     }
 }
 
@@ -258,8 +256,6 @@ impl NonUnitGenerateAsm for Call {
 
 impl NonUnitGenerateAsm for GetElemPtr {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context, val: Value) -> Result<()> {
-        read_to(gen, ctx, "t1", self.index())?;
-
         let ty = ctx.value_ty(val);
         let stride = if let TypeKind::Pointer(base_ty) = ty.kind() {
             base_ty.size() as i32
@@ -267,15 +263,20 @@ impl NonUnitGenerateAsm for GetElemPtr {
             unreachable!()
         };
 
-        gen.li("t2", stride)?;
-        gen.binary("mul", "t1", "t2", "t1")?;
-
         if ctx.is_pointer(self.src()) {
             read_to(gen, ctx, "t2", self.src())?;
         } else {
             read_addr_to(gen, ctx, "t2", self.src())?;
         }
-        gen.binary("add", "t1", "t2", "t1")?;
+
+        if let ValueKind::Integer(i) = ctx.value_kind(self.index()) {
+            let offset = i.value() * stride;
+            gen.addi("t1", "t2", offset)?;
+        } else {
+            read_to(gen, ctx, "t1", self.index())?;
+            gen.muli("t1", "t1", stride)?;
+            gen.binary("add", "t1", "t1", "t2")?;
+        }
 
         write_back(gen, ctx, "t1", val)
     }
@@ -283,8 +284,6 @@ impl NonUnitGenerateAsm for GetElemPtr {
 
 impl NonUnitGenerateAsm for GetPtr {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context, val: Value) -> Result<()> {
-        read_to(gen, ctx, "t1", self.index())?;
-
         let ty = ctx.value_ty(val);
         let stride = if let TypeKind::Pointer(base_ty) = ty.kind() {
             base_ty.size() as i32
@@ -292,15 +291,20 @@ impl NonUnitGenerateAsm for GetPtr {
             unreachable!()
         };
 
-        gen.li("t2", stride)?;
-        gen.binary("mul", "t1", "t2", "t1")?;
-
         if ctx.is_pointer(self.src()) {
             read_to(gen, ctx, "t2", self.src())?;
         } else {
             read_addr_to(gen, ctx, "t2", self.src())?;
         }
-        gen.binary("add", "t1", "t2", "t1")?;
+
+        if let ValueKind::Integer(i) = ctx.value_kind(self.index()) {
+            let offset = i.value() * stride;
+            gen.addi("t1", "t2", offset)?;
+        } else {
+            read_to(gen, ctx, "t1", self.index())?;
+            gen.muli("t1", "t1", stride)?;
+            gen.binary("add", "t1", "t1", "t2")?;
+        }
 
         write_back(gen, ctx, "t1", val)
     }

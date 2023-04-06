@@ -2,6 +2,7 @@ use std::{collections::HashMap, vec};
 
 use koopa::ir::builder::{GlobalBuilder, LocalBuilder};
 use koopa::ir::builder_traits::*;
+use koopa::ir::entities::ValueData;
 use koopa::ir::Type as IrType;
 
 use super::*;
@@ -123,6 +124,10 @@ impl ProgramRecorder<'_> {
             Some(value) => *value,
             None => panic!("`{}` doesn't have a value", name),
         }
+    }
+
+    pub fn get_value_data(&self, val: Value) -> &ValueData {
+        self.program.func(self.cur_func_id()).dfg().value(val)
     }
 
     pub fn enter_loop(&mut self, entry: BasicBlock, exit: BasicBlock) {
