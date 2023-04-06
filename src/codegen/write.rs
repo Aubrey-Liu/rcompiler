@@ -5,8 +5,7 @@ use super::*;
 
 pub struct AsmGenerator<'a> {
     f: BufWriter<File>,
-    // temporary registor name
-    tmpr: &'a str,
+    temp_reg: &'a str,
 }
 
 impl<'a> AsmGenerator<'a> {
@@ -26,8 +25,8 @@ impl<'a> AsmGenerator<'a> {
         if (-2048..=2047).contains(&imm) {
             writeln!(self.f, "  addi {}, {}, {}", dst, opr, imm)
         } else {
-            self.li(self.tmpr, imm)?;
-            writeln!(self.f, "  add {}, {}, {}", dst, opr, self.tmpr)
+            self.li(self.temp_reg, imm)?;
+            writeln!(self.f, "  add {}, {}, {}", dst, opr, self.temp_reg)
         }
     }
 
@@ -39,8 +38,8 @@ impl<'a> AsmGenerator<'a> {
         if (-2048..=2047).contains(&off) {
             writeln!(self.f, "  lw {}, {}({})", dst, off, src)
         } else {
-            self.addi(self.tmpr, src, off)?;
-            writeln!(self.f, "  lw {}, 0({})", dst, self.tmpr)
+            self.addi(self.temp_reg, src, off)?;
+            writeln!(self.f, "  lw {}, 0({})", dst, self.temp_reg)
         }
     }
 
@@ -56,8 +55,8 @@ impl<'a> AsmGenerator<'a> {
         if (-2048..=2047).contains(&off) {
             writeln!(self.f, "  sw {}, {}({})", src, off, dst)
         } else {
-            self.addi(self.tmpr, dst, off)?;
-            writeln!(self.f, "  sw {}, 0({})", src, self.tmpr)
+            self.addi(self.temp_reg, dst, off)?;
+            writeln!(self.f, "  sw {}, 0({})", src, self.temp_reg)
         }
     }
 
@@ -89,8 +88,8 @@ impl<'a> AsmGenerator<'a> {
             }
             self.slli(dst, lhs, shift)
         } else {
-            self.li(self.tmpr, imm)?;
-            self.binary("mul", dst, lhs, self.tmpr)
+            self.li(self.temp_reg, imm)?;
+            self.binary("mul", dst, lhs, self.temp_reg)
         }
     }
 
@@ -144,10 +143,10 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f)
     }
 
-    pub fn from_path(path: &str, tmpr: &'a str) -> Self {
+    pub fn from_path(path: &str, temp_reg: &'a str) -> Self {
         Self {
             f: BufWriter::new(File::create(path).unwrap()),
-            tmpr,
+            temp_reg,
         }
     }
 }
