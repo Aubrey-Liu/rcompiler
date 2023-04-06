@@ -57,11 +57,9 @@ impl<'i> ProgramRecorder<'i> {
                 unreachable!()
             };
         let param_ir_tys: Vec<_> = param_tys.iter().map(|t| t.get_ir_ty()).collect();
-        let params: Vec<_> = func_def
-            .params
-            .iter()
-            .map(|p| Some(format!("@{}", &p.ident)))
-            .zip(param_ir_tys.into_iter())
+        let params: Vec<_> = vec![None; param_ir_tys.len()]
+            .into_iter()
+            .zip(param_ir_tys)
             .collect();
         let func = self.program.new_func(FunctionData::with_param_names(
             format!("@{}", &func_def.ident),

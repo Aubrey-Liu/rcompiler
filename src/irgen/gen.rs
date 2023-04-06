@@ -55,7 +55,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
             let ident = &self.params[i].ident;
             let ty = param_tys[i].get_ir_ty();
             let value = param_values[i];
-            let alloc = local_alloc(recorder, ty, Some(format!("%{}", ident)));
+            let alloc = local_alloc(recorder, ty, Some(format!("@{}", ident)));
             let store = recorder.new_value().store(value, alloc);
             recorder.push_inst(store);
             recorder.insert_value(ident, alloc);

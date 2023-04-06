@@ -56,6 +56,14 @@ impl Type {
         &self.0
     }
 
+    pub fn size(&self) -> usize {
+        match self.kind() {
+            TypeKind::Integer => 1,
+            TypeKind::Array(base_ty, len) => len * base_ty.size(),
+            _ => unreachable!(),
+        }
+    }
+
     pub fn get_ir_ty(&self) -> IrType {
         match self.kind() {
             TypeKind::Integer => IrType::get_i32(),

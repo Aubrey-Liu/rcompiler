@@ -58,62 +58,78 @@ pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
 }
 
 pub fn init_array(recorder: &mut ProgramRecorder, dst: Value, ty: &Type, init: &[i32]) {
-    let mut dims = Vec::new();
-    ty.get_dims(&mut dims);
-
-    // let zero_init = recorder.new_value().zero_init(ty.get_ir_ty());
-    // let store = recorder.new_value().store(zero_init, dst);
-    // recorder.push_inst(store);
-
-    fn inner(recorder: &mut ProgramRecorder, dst: Value, init: &[i32], dims: &[usize], pos: usize) {
-        if dims.is_empty() {
-            let value = recorder.new_value().integer(*init.get(pos).unwrap_or(&0));
-            let store = recorder.new_value().store(value, dst);
-            recorder.push_inst(store);
-        } else {
-            let stride: usize = dims.iter().skip(1).product();
-            let this_dim = *dims.first().unwrap();
-            for i in 0..this_dim {
-                let next_pos = pos + i * stride;
-                let index = recorder.new_value().integer(i as i32);
-                let dst = get_elem_ptr(recorder, dst, &[index]);
-                inner(recorder, dst, init, &dims[1..], next_pos);
+    fn init_array_recur(
+        recorder: &mut ProgramRecorder,
+        dst: Value,
+        ty: &Type,
+        init: &[i32],
+        pos: usize,
+    ) {
+        match ty.kind() {
+            TypeKind::Integer => {
+                let value = recorder.new_value().integer(*init.get(pos).unwrap_or(&0));
+                let store = recorder.new_value().store(value, dst);
+                recorder.push_inst(store);
             }
+            TypeKind::Array(base_ty, len) => {
+                let stride: usize = base_ty.size();
+                for i in 0..*len {
+                    let next_pos = pos + i * stride;
+                    let index = recorder.new_value().integer(i as i32);
+                    let dst = get_elem_ptr(recorder, dst, &[index]);
+                    init_array_recur(recorder, dst, base_ty, init, next_pos);
+                }
+            }
+            _ => unreachable!(),
         }
     }
 
-    inner(recorder, dst, init, &dims, 0);
+    init_array_recur(recorder, dst, ty, init, 0);
 }
 
 pub fn init_global_array(recorder: &mut ProgramRecorder, ty: &Type, init: &[i32]) -> Value {
-    let mut dims = Vec::new();
-    ty.get_dims(&mut dims);
-
-    fn inner(recorder: &mut ProgramRecorder, dims: &[usize], init: &[i32], pos: usize) -> Value {
+    fn init_global_array_recur(
+        recorder: &mut ProgramRecorder,
+        ty: &Type,
+        init: &[i32],
+        pos: usize,
+    ) -> Value {
         if pos >= init.len() {
-            let ty = Type::infer_from_dims(dims).get_ir_ty();
-            return recorder.new_global_value().zero_init(ty);
+            return recorder.new_global_value().zero_init(ty.get_ir_ty());
         }
-        if dims.len() == 1 {
-            let elems: Vec<_> = (0..dims[0])
-                .map(|i| {
-                    recorder
-                        .new_global_value()
-                        .integer(*init.get(pos + i).unwrap_or(&0))
-                })
-                .collect();
-            recorder.new_global_value().aggregate(elems)
+        if let TypeKind::Array(base_ty, len) = ty.kind() {
+            match base_ty.kind() {
+                TypeKind::Integer => {
+                    let elems: Vec<_> = (0..*len)
+                        .map(|i| {
+                            recorder
+                                .new_global_value()
+                                .integer(*init.get(pos + i).unwrap_or(&0))
+                        })
+                        .collect();
+                    recorder.new_global_value().aggregate(elems)
+                }
+                TypeKind::Array(_, _) => {
+                    let elems: Vec<_> = (0..*len)
+                        .map(|i| {
+                            init_global_array_recur(
+                                recorder,
+                                base_ty,
+                                init,
+                                pos + i * base_ty.size(),
+                            )
+                        })
+                        .collect();
+                    recorder.new_global_value().aggregate(elems)
+                }
+                _ => unreachable!(),
+            }
         } else {
-            let len = dims[0];
-            let stride: usize = dims.iter().skip(1).product();
-            let elems: Vec<_> = (0..len)
-                .map(|i| inner(recorder, &dims[1..], init, pos + i * stride))
-                .collect();
-            recorder.new_global_value().aggregate(elems)
+            unreachable!()
         }
     }
 
-    inner(recorder, &dims, init, 0)
+    init_global_array_recur(recorder, ty, init, 0)
 }
 
 pub fn into_ptr(recorder: &mut ProgramRecorder, val: Value) -> Value {
