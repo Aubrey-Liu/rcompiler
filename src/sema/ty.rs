@@ -1,4 +1,5 @@
 use koopa::ir::{Type as IrType, TypeKind as IrTypeKind};
+use smallvec::SmallVec;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -6,13 +7,16 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Type(Rc<TypeKind>);
 
+pub type DimTy = SmallVec<[usize; 4]>;
+pub type ParamTy = SmallVec<[Type; 6]>;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeKind {
     Void,
     Integer,
     Array(Type, usize),
     Pointer(Type),
-    Func(Type, Vec<Type>),
+    Func(Type, ParamTy),
 }
 
 impl Type {
@@ -48,7 +52,7 @@ impl Type {
         Self::get(TypeKind::Pointer(base_ty))
     }
 
-    pub fn get_func(ret_ty: Type, param_tys: Vec<Type>) -> Type {
+    pub fn get_func(ret_ty: Type, param_tys: ParamTy) -> Type {
         Self::get(TypeKind::Func(ret_ty, param_tys))
     }
 
@@ -86,7 +90,7 @@ impl Type {
         Self::get_array(base_ty, len)
     }
 
-    pub fn get_dims(&self, dims: &mut Vec<usize>) {
+    pub fn get_dims(&self, dims: &mut DimTy) {
         match self.kind() {
             TypeKind::Array(base_ty, len) => {
                 dims.push(*len);

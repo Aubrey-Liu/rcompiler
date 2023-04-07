@@ -1,16 +1,17 @@
 use koopa::ir::builder_traits::{LocalInstBuilder, ValueBuilder};
+use smallvec::SmallVec;
 
 use super::*;
 use crate::ast::{InitVal, LVal};
-use crate::sema::ty::{Type, TypeKind};
+use crate::sema::ty::{DimTy, Type, TypeKind};
 
 pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
     let mut elems = Vec::new();
-    let mut dims: Vec<usize> = Vec::new();
+    let mut dims: DimTy = SmallVec::new();
     ty.get_dims(&mut dims);
 
     let mut acc = 1;
-    let boundaries: Vec<_> = dims
+    let boundaries: DimTy = dims
         .iter()
         .rev()
         .map(|d| {
@@ -152,7 +153,7 @@ pub fn get_elem_ptr(recorder: &mut ProgramRecorder, src: Value, dims: &[Value]) 
 
 pub fn get_lval_ptr<'i>(recorder: &mut ProgramRecorder<'i>, lval: &'i LVal) -> Value {
     let src = recorder.get_value(&lval.ident);
-    let dims: Vec<_> = lval
+    let dims: SmallVec<[Value; 4]> = lval
         .dims
         .iter()
         .map(|e| e.generate_ir(recorder).unwrap())

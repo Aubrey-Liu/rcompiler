@@ -1,3 +1,4 @@
+use smallvec::{smallvec, SmallVec};
 use std::collections::HashMap;
 
 use crate::ast::visit::MutVisitor;
@@ -34,7 +35,7 @@ impl SymbolTable {
 
 impl Type {
     pub fn from_const_decl(value: &ConstDecl) -> Self {
-        let dims: Vec<_> = value
+        let dims: SmallVec<[_; 4]> = value
             .lval
             .dims
             .iter()
@@ -44,7 +45,7 @@ impl Type {
     }
 
     pub fn from_var_decl(value: &VarDecl) -> Self {
-        let dims: Vec<_> = value
+        let dims: SmallVec<[_; 4]> = value
             .lval
             .dims
             .iter()
@@ -56,29 +57,32 @@ impl Type {
 
 impl<'ast> MutVisitor<'ast> for SymbolTable {
     fn visit_comp_unit(&mut self, c: &'ast mut CompUnit) {
-        self.insert("getint", Type::get_func(Type::get_int(), vec![]));
-        self.insert("getch", Type::get_func(Type::get_int(), vec![]));
+        self.insert("getint", Type::get_func(Type::get_int(), smallvec![]));
+        self.insert("getch", Type::get_func(Type::get_int(), smallvec![]));
         self.insert(
             "getarray",
-            Type::get_func(Type::get_int(), vec![Type::get_pointer(Type::get_int())]),
+            Type::get_func(
+                Type::get_int(),
+                smallvec![Type::get_pointer(Type::get_int())],
+            ),
         );
         self.insert(
             "putint",
-            Type::get_func(Type::get_void(), vec![Type::get_int()]),
+            Type::get_func(Type::get_void(), smallvec![Type::get_int()]),
         );
         self.insert(
             "putch",
-            Type::get_func(Type::get_void(), vec![Type::get_int()]),
+            Type::get_func(Type::get_void(), smallvec![Type::get_int()]),
         );
         self.insert(
             "putarray",
             Type::get_func(
                 Type::get_void(),
-                vec![Type::get_int(), Type::get_pointer(Type::get_int())],
+                smallvec![Type::get_int(), Type::get_pointer(Type::get_int())],
             ),
         );
-        self.insert("starttime", Type::get_func(Type::get_void(), vec![]));
-        self.insert("stoptime", Type::get_func(Type::get_void(), vec![]));
+        self.insert("starttime", Type::get_func(Type::get_void(), smallvec![]));
+        self.insert("stoptime", Type::get_func(Type::get_void(), smallvec![]));
 
         walk_comp_unit(self, c);
 
@@ -96,7 +100,7 @@ impl<'ast> MutVisitor<'ast> for SymbolTable {
             _ => unreachable!(),
         };
 
-        let param_tys: Vec<_> = f
+        let param_tys: SmallVec<[_; 6]> = f
             .params
             .iter()
             .map(|p| self.get(&p.ident).clone())
@@ -107,7 +111,7 @@ impl<'ast> MutVisitor<'ast> for SymbolTable {
     fn visit_func_param(&mut self, f: &'ast mut FuncParam) {
         walk_func_param(self, f);
 
-        let dims: Vec<_> = f.dims.iter().map(|d| d.get_i32() as usize).collect();
+        let dims: SmallVec<[_; 4]> = f.dims.iter().map(|d| d.get_i32() as usize).collect();
         let ty = match &f.kind {
             ExprKind::Int => Type::get_int(),
             ExprKind::Array => Type::get_pointer(Type::infer_from_dims(&dims)),

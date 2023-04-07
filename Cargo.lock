@@ -420,6 +420,7 @@ dependencies = [
  "lalrpop",
  "lalrpop-util",
  "regex",
+ "smallvec",
 ]
 
 [[package]]

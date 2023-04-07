@@ -3,6 +3,7 @@ use koopa::ir::{
     builder_traits::{GlobalInstBuilder, LocalInstBuilder, ValueBuilder},
     ValueKind,
 };
+use smallvec::SmallVec;
 
 use super::*;
 
@@ -46,7 +47,7 @@ impl<'i> GenerateIR<'i> for FuncDef {
         let entry_bb = recorder.func().get_entry_bb();
         recorder.push_bb(entry_bb);
 
-        let param_values: Vec<Value> = recorder.get_func_data().params().to_vec();
+        let param_values: SmallVec<[_; 6]> = recorder.get_func_data().params().into();
         let ty = recorder.get_ty(&self.ident).clone();
         let (ret_ty, param_tys) = if let TypeKind::Func(ret_ty, param_tys) = ty.kind() {
             (ret_ty, param_tys)

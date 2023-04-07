@@ -4,6 +4,7 @@ use koopa::ir::builder::{GlobalBuilder, LocalBuilder};
 use koopa::ir::builder_traits::*;
 use koopa::ir::entities::ValueData;
 use koopa::ir::Type as IrType;
+use smallvec::SmallVec;
 
 use super::*;
 use crate::ast::FuncDef;
@@ -16,7 +17,7 @@ pub struct ProgramRecorder<'i> {
     values: HashMap<&'i str, Value>,
     funcs: HashMap<&'i str, Function>,
     cur_func: Option<FunctionInfo>,
-    loops: Vec<LoopInfo>,
+    loops: SmallVec<[LoopInfo; 6]>,
 }
 
 #[derive(Debug)]
@@ -42,7 +43,7 @@ impl<'i> ProgramRecorder<'i> {
             values: HashMap::new(),
             funcs: HashMap::new(),
             cur_func: None,
-            loops: vec![],
+            loops: SmallVec::new(),
         }
     }
 

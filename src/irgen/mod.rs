@@ -40,10 +40,6 @@ pub fn generate_mem_ir(input: &str) -> Result<Program> {
     let mut recorder = ProgramRecorder::new(&symbols);
     ast.generate_ir(&mut recorder)?;
 
-    // use crate::opt::{pass::Pass, ssa::SsaBuilder};
-    // let mut ssa = SsaBuilder;
-    // ssa.run_on(&mut recorder.program);
-
     Ok(recorder.program)
 }
 
