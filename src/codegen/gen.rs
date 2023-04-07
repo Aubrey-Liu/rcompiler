@@ -184,26 +184,14 @@ impl NonUnitGenerateAsm for Binary {
         }
         // lhs and rhs can't both be integer
         if let ValueKind::Integer(i) = ctx.value_kind(self.rhs()) {
-            if matches!(
-                self.op(),
-                BinaryOp::Add
-                    | BinaryOp::Sub
-                    | BinaryOp::Mul
-                    | BinaryOp::Div
-                    | BinaryOp::Mod
-                    | BinaryOp::And
-                    | BinaryOp::Or
-                    | BinaryOp::Eq
-                    | BinaryOp::NotEq
-            ) {
-                read_to(gen, ctx, "t1", self.lhs())?;
-                binary_with_imm(gen, self.op(), "t1", "t1", i.value())?;
-                return write_back(gen, ctx, "t1", val);
-            }
+            read_to(gen, ctx, "t1", self.lhs())?;
+            binary_with_imm(gen, self.op(), "t1", "t1", i.value())?;
+        } else {
+            read_to(gen, ctx, "t1", self.lhs())?;
+            read_to(gen, ctx, "t2", self.rhs())?;
+            binary(gen, self.op(), "t1", "t1", "t2")?;
         }
-        read_to(gen, ctx, "t1", self.lhs())?;
-        read_to(gen, ctx, "t2", self.rhs())?;
-        binary(gen, self.op(), "t1", "t1", "t2")?;
+
         write_back(gen, ctx, "t1", val)
     }
 }
@@ -255,18 +243,23 @@ impl NonUnitGenerateAsm for GetElemPtr {
             unreachable!()
         };
 
-        if ctx.is_pointer(self.src()) {
-            read_to(gen, ctx, "t2", self.src())?;
-        } else {
-            read_addr_to(gen, ctx, "t2", self.src())?;
-        }
-
+        let src = self.src();
         if let ValueKind::Integer(i) = ctx.value_kind(self.index()) {
             let offset = i.value() * stride;
-            gen.addi("t1", "t2", offset)?;
+            if ctx.is_pointer(src) {
+                read_to(gen, ctx, "t1", src)?;
+                gen.addi("t1", "t1", offset)?;
+            } else {
+                read_addr_with_offset(gen, ctx, "t1", src, offset)?;
+            }
         } else {
-            read_to(gen, ctx, "t1", self.index())?;
-            gen.muli("t1", "t1", stride)?;
+            if ctx.is_pointer(src) {
+                read_to(gen, ctx, "t1", src)?;
+            } else {
+                read_addr_to(gen, ctx, "t1", src)?;
+            }
+            read_to(gen, ctx, "t2", self.index())?;
+            gen.muli("t2", "t2", stride)?;
             gen.binary("add", "t1", "t1", "t2")?;
         }
 
@@ -283,18 +276,23 @@ impl NonUnitGenerateAsm for GetPtr {
             unreachable!()
         };
 
-        if ctx.is_pointer(self.src()) {
-            read_to(gen, ctx, "t2", self.src())?;
-        } else {
-            read_addr_to(gen, ctx, "t2", self.src())?;
-        }
-
+        let src = self.src();
         if let ValueKind::Integer(i) = ctx.value_kind(self.index()) {
             let offset = i.value() * stride;
-            gen.addi("t1", "t2", offset)?;
+            if ctx.is_pointer(src) {
+                read_to(gen, ctx, "t1", src)?;
+                gen.addi("t1", "t1", offset)?;
+            } else {
+                read_addr_with_offset(gen, ctx, "t1", src, offset)?;
+            }
         } else {
-            read_to(gen, ctx, "t1", self.index())?;
-            gen.muli("t1", "t1", stride)?;
+            if ctx.is_pointer(src) {
+                read_to(gen, ctx, "t1", src)?;
+            } else {
+                read_addr_to(gen, ctx, "t1", src)?;
+            }
+            read_to(gen, ctx, "t2", self.index())?;
+            gen.muli("t2", "t2", stride)?;
             gen.binary("add", "t1", "t1", "t2")?;
         }
 

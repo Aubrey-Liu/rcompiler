@@ -117,6 +117,7 @@ impl<'i> Context<'i> {
         self.cur_func.is_none() || self.global_values.contains_key(&val)
     }
 
+    /// If a value is not an alloc and its type is pointer, then return true
     pub fn is_pointer(&self, val: Value) -> bool {
         self.cur_func()
             .local_values

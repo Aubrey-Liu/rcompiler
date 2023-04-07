@@ -21,42 +21,6 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f, "  .data")
     }
 
-    pub fn addi(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
-        if (-2048..=2047).contains(&imm) {
-            writeln!(self.f, "  addi {}, {}, {}", dst, opr, imm)
-        } else {
-            self.li(self.temp_reg, imm)?;
-            writeln!(self.f, "  add {}, {}, {}", dst, opr, self.temp_reg)
-        }
-    }
-
-    pub fn andi(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
-        if (-2048..=2047).contains(&imm) {
-            writeln!(self.f, "  andi {}, {}, {}", dst, opr, imm)
-        } else {
-            self.li(self.temp_reg, imm)?;
-            writeln!(self.f, "  and {}, {}, {}", dst, opr, self.temp_reg)
-        }
-    }
-
-    pub fn ori(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
-        if (-2048..=2047).contains(&imm) {
-            writeln!(self.f, "  ori {}, {}, {}", dst, opr, imm)
-        } else {
-            self.li(self.temp_reg, imm)?;
-            writeln!(self.f, "  or {}, {}, {}", dst, opr, self.temp_reg)
-        }
-    }
-
-    pub fn xori(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
-        if (-2048..=2047).contains(&imm) {
-            writeln!(self.f, "  xori {}, {}, {}", dst, opr, imm)
-        } else {
-            self.li(self.temp_reg, imm)?;
-            writeln!(self.f, "  xor {}, {}, {}", dst, opr, self.temp_reg)
-        }
-    }
-
     pub fn li(&mut self, dst: &str, imm: i32) -> Result<()> {
         writeln!(self.f, "  li {}, {}", dst, imm)
     }
@@ -99,8 +63,68 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f, "  call {}", callee)
     }
 
+    pub fn unary(&mut self, op: &str, dst: &str, opr: &str) -> Result<()> {
+        writeln!(self.f, "  {} {}, {}", op, dst, opr)
+    }
+
     pub fn binary(&mut self, op: &str, dst: &str, lhs: &str, rhs: &str) -> Result<()> {
         writeln!(self.f, "  {} {}, {}, {}", op, dst, lhs, rhs)
+    }
+
+    pub fn binary_with_imm(&mut self, op: &str, dst: &str, opr: &str, imm: i32) -> Result<()> {
+        if (-2048..=2047).contains(&imm) {
+            writeln!(self.f, "  {}i {}, {}, {}", op, dst, opr, imm)
+        } else {
+            self.li(self.temp_reg, imm)?;
+            writeln!(self.f, "  {} {}, {}, {}", op, dst, opr, self.temp_reg)
+        }
+    }
+
+    pub fn addi(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
+        if imm == 0 {
+            if dst != opr {
+                self.mv(dst, opr)
+            } else {
+                Ok(())
+            }
+        } else {
+            self.binary_with_imm("add", dst, opr, imm)
+        }
+    }
+
+    pub fn eqi(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
+        if imm == 0 {
+            self.unary("seqz", dst, opr)
+        } else {
+            self.binary_with_imm("xor", dst, opr, imm)?;
+            self.unary("seqz", dst, dst)
+        }
+    }
+
+    pub fn neqi(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
+        if imm == 0 {
+            self.unary("snez", dst, opr)
+        } else {
+            self.binary_with_imm("xor", dst, opr, imm)?;
+            self.unary("snez", dst, dst)
+        }
+    }
+
+    pub fn slti(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
+        if imm == 0 {
+            self.unary("sltz", dst, opr)
+        } else {
+            self.binary_with_imm("slt", dst, opr, imm)
+        }
+    }
+
+    pub fn sgti(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
+        if imm == 0 {
+            self.unary("sgtz", dst, opr)
+        } else {
+            self.li(self.temp_reg, imm)?;
+            self.binary("slt", dst, self.temp_reg, opr)
+        }
     }
 
     pub fn muli(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
@@ -159,7 +183,7 @@ impl<'a> AsmGenerator<'a> {
                 mask = (mask << 1) | 1;
                 imm >>= 1;
             }
-            self.andi(dst, opr, mask)
+            self.binary_with_imm("and", dst, opr, mask)
         } else {
             self.li(self.temp_reg, imm)?;
             self.binary("rem", dst, opr, self.temp_reg)
@@ -172,10 +196,6 @@ impl<'a> AsmGenerator<'a> {
 
     pub fn srai(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
         writeln!(self.f, "  srai {}, {}, {}", dst, opr, imm)
-    }
-
-    pub fn unary(&mut self, op: &str, dst: &str, opr: &str) -> Result<()> {
-        writeln!(self.f, "  {} {}, {}", op, dst, opr)
     }
 
     pub fn ret(&mut self) -> Result<()> {
@@ -276,6 +296,23 @@ pub fn read_addr_to(gen: &mut AsmGenerator, ctx: &Context, dst: &str, val: Value
     }
 }
 
+pub fn read_addr_with_offset(
+    gen: &mut AsmGenerator,
+    ctx: &Context,
+    dst: &str,
+    val: Value,
+    off: i32,
+) -> Result<()> {
+    if ctx.is_global(val) {
+        let id = ctx.get_global_var(&val);
+        let name = format!("var{}", id);
+        gen.la(dst, &name)?;
+        gen.addi(dst, dst, off)
+    } else {
+        gen.addi(dst, "sp", ctx.cur_func().get_offset(&val) + off)
+    }
+}
+
 pub fn branch(
     gen: &mut AsmGenerator,
     ctx: &Context,
@@ -328,20 +365,24 @@ pub fn binary_with_imm(
     imm: i32,
 ) -> Result<()> {
     match op {
+        BinaryOp::And => gen.binary_with_imm("and", dst, opr, imm),
+        BinaryOp::Or => gen.binary_with_imm("or", dst, opr, imm),
         BinaryOp::Add => gen.addi(dst, opr, imm),
         BinaryOp::Sub => gen.addi(dst, opr, -imm),
         BinaryOp::Mul => gen.muli(dst, opr, imm),
         BinaryOp::Div => gen.divi(dst, opr, imm),
         BinaryOp::Mod => gen.remi(dst, opr, imm),
-        BinaryOp::And => gen.andi(dst, opr, imm),
-        BinaryOp::Or => gen.ori(dst, opr, imm),
-        BinaryOp::Eq => {
-            gen.xori(dst, opr, imm)?;
+        BinaryOp::Lt => gen.slti(dst, opr, imm),
+        BinaryOp::Gt => gen.sgti(dst, opr, imm),
+        BinaryOp::Eq => gen.eqi(dst, opr, imm),
+        BinaryOp::NotEq => gen.neqi(dst, opr, imm),
+        BinaryOp::Le => {
+            gen.sgti(dst, opr, imm)?;
             gen.unary("seqz", dst, dst)
         }
-        BinaryOp::NotEq => {
-            gen.xori(dst, opr, imm)?;
-            gen.unary("snez", dst, dst)
+        BinaryOp::Ge => {
+            gen.slti(dst, opr, imm)?;
+            gen.unary("seqz", dst, dst)
         }
         _ => unreachable!(),
     }
