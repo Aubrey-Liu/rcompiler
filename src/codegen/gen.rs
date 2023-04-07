@@ -182,36 +182,28 @@ impl NonUnitGenerateAsm for Binary {
         if !ctx.is_used(val) {
             return Ok(());
         }
+        // lhs and rhs can't both be integer
+        if let ValueKind::Integer(i) = ctx.value_kind(self.rhs()) {
+            if matches!(
+                self.op(),
+                BinaryOp::Add
+                    | BinaryOp::Sub
+                    | BinaryOp::Mul
+                    | BinaryOp::Div
+                    | BinaryOp::Mod
+                    | BinaryOp::And
+                    | BinaryOp::Or
+                    | BinaryOp::Eq
+                    | BinaryOp::NotEq
+            ) {
+                read_to(gen, ctx, "t1", self.lhs())?;
+                binary_with_imm(gen, self.op(), "t1", "t1", i.value())?;
+                return write_back(gen, ctx, "t1", val);
+            }
+        }
         read_to(gen, ctx, "t1", self.lhs())?;
         read_to(gen, ctx, "t2", self.rhs())?;
-        match self.op() {
-            BinaryOp::Add => gen.binary("add", "t1", "t1", "t2")?,
-            BinaryOp::Sub => gen.binary("sub", "t1", "t1", "t2")?,
-            BinaryOp::Mul => gen.binary("mul", "t1", "t1", "t2")?,
-            BinaryOp::Div => gen.binary("div", "t1", "t1", "t2")?,
-            BinaryOp::Mod => gen.binary("rem", "t1", "t1", "t2")?,
-            BinaryOp::And => gen.binary("and", "t1", "t1", "t2")?,
-            BinaryOp::Or => gen.binary("or", "t1", "t1", "t2")?,
-            BinaryOp::Lt => gen.binary("slt", "t1", "t1", "t2")?,
-            BinaryOp::Gt => gen.binary("sgt", "t1", "t1", "t2")?,
-            BinaryOp::Eq => {
-                gen.binary("xor", "t1", "t1", "t2")?;
-                gen.unary("seqz", "t1", "t1")?;
-            }
-            BinaryOp::NotEq => {
-                gen.binary("xor", "t1", "t1", "t2")?;
-                gen.unary("snez", "t1", "t1")?;
-            }
-            BinaryOp::Le => {
-                gen.binary("sgt", "t1", "t1", "t2")?;
-                gen.unary("seqz", "t1", "t1")?;
-            }
-            BinaryOp::Ge => {
-                gen.binary("slt", "t1", "t1", "t2")?;
-                gen.unary("seqz", "t1", "t1")?;
-            }
-            _ => unreachable!(),
-        }
+        binary(gen, self.op(), "t1", "t1", "t2")?;
         write_back(gen, ctx, "t1", val)
     }
 }

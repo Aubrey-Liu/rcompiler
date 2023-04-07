@@ -30,6 +30,33 @@ impl<'a> AsmGenerator<'a> {
         }
     }
 
+    pub fn andi(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
+        if (-2048..=2047).contains(&imm) {
+            writeln!(self.f, "  andi {}, {}, {}", dst, opr, imm)
+        } else {
+            self.li(self.temp_reg, imm)?;
+            writeln!(self.f, "  and {}, {}, {}", dst, opr, self.temp_reg)
+        }
+    }
+
+    pub fn ori(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
+        if (-2048..=2047).contains(&imm) {
+            writeln!(self.f, "  ori {}, {}, {}", dst, opr, imm)
+        } else {
+            self.li(self.temp_reg, imm)?;
+            writeln!(self.f, "  or {}, {}, {}", dst, opr, self.temp_reg)
+        }
+    }
+
+    pub fn xori(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
+        if (-2048..=2047).contains(&imm) {
+            writeln!(self.f, "  xori {}, {}, {}", dst, opr, imm)
+        } else {
+            self.li(self.temp_reg, imm)?;
+            writeln!(self.f, "  xor {}, {}, {}", dst, opr, self.temp_reg)
+        }
+    }
+
     pub fn li(&mut self, dst: &str, imm: i32) -> Result<()> {
         writeln!(self.f, "  li {}, {}", dst, imm)
     }
@@ -76,9 +103,15 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f, "  {} {}, {}, {}", op, dst, lhs, rhs)
     }
 
-    pub fn muli(&mut self, dst: &str, lhs: &str, imm: i32) -> Result<()> {
+    pub fn muli(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
         if imm == 0 {
             self.mv(dst, "x0")
+        } else if imm == 1 {
+            if dst != opr {
+                self.mv(dst, opr)
+            } else {
+                Ok(())
+            }
         } else if imm > 0 && (imm & (imm - 1)) == 0 {
             let mut shift = 0;
             let mut imm = imm >> 1;
@@ -86,15 +119,59 @@ impl<'a> AsmGenerator<'a> {
                 shift += 1;
                 imm >>= 1;
             }
-            self.slli(dst, lhs, shift)
+            self.slli(dst, opr, shift)
         } else {
             self.li(self.temp_reg, imm)?;
-            self.binary("mul", dst, lhs, self.temp_reg)
+            self.binary("mul", dst, opr, self.temp_reg)
         }
     }
 
-    pub fn slli(&mut self, dst: &str, lhs: &str, imm: i32) -> Result<()> {
-        writeln!(self.f, "  slli {}, {}, {}", dst, lhs, imm)
+    pub fn divi(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
+        // promise imm != 0 after the semantic analysis
+        if imm == 1 {
+            if dst != opr {
+                self.mv(dst, opr)
+            } else {
+                Ok(())
+            }
+        } else if imm > 0 && (imm & (imm - 1)) == 0 {
+            let mut shift = 0;
+            let mut imm = imm >> 1;
+            while imm != 0 {
+                shift += 1;
+                imm >>= 1;
+            }
+            self.srai(dst, opr, shift)
+        } else {
+            self.li(self.temp_reg, imm)?;
+            self.binary("div", dst, opr, self.temp_reg)
+        }
+    }
+
+    pub fn remi(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
+        // promise imm != 0 after the semantic analysis
+        if imm == 1 {
+            self.mv(dst, "x0")
+        } else if imm > 0 && (imm & (imm - 1)) == 0 {
+            let mut mask = 0;
+            let mut imm = imm >> 1;
+            while imm != 0 {
+                mask = (mask << 1) | 1;
+                imm >>= 1;
+            }
+            self.andi(dst, opr, mask)
+        } else {
+            self.li(self.temp_reg, imm)?;
+            self.binary("rem", dst, opr, self.temp_reg)
+        }
+    }
+
+    pub fn slli(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
+        writeln!(self.f, "  slli {}, {}, {}", dst, opr, imm)
+    }
+
+    pub fn srai(&mut self, dst: &str, opr: &str, imm: i32) -> Result<()> {
+        writeln!(self.f, "  srai {}, {}, {}", dst, opr, imm)
     }
 
     pub fn unary(&mut self, op: &str, dst: &str, opr: &str) -> Result<()> {
@@ -210,4 +287,62 @@ pub fn branch(
     let false_bb = ctx.cur_func().get_bb_name(false_bb);
     gen.bnez(cond, true_bb)?;
     gen.j(false_bb)
+}
+
+pub fn binary(gen: &mut AsmGenerator, op: BinaryOp, dst: &str, lhs: &str, rhs: &str) -> Result<()> {
+    match op {
+        BinaryOp::Add => gen.binary("add", dst, lhs, rhs),
+        BinaryOp::Sub => gen.binary("sub", dst, lhs, rhs),
+        BinaryOp::Mul => gen.binary("mul", dst, lhs, rhs),
+        BinaryOp::Div => gen.binary("div", dst, lhs, rhs),
+        BinaryOp::Mod => gen.binary("rem", dst, lhs, rhs),
+        BinaryOp::And => gen.binary("and", dst, lhs, rhs),
+        BinaryOp::Or => gen.binary("or", dst, lhs, rhs),
+        BinaryOp::Lt => gen.binary("slt", dst, lhs, rhs),
+        BinaryOp::Gt => gen.binary("sgt", dst, lhs, rhs),
+        BinaryOp::Eq => {
+            gen.binary("xor", dst, lhs, rhs)?;
+            gen.unary("seqz", dst, dst)
+        }
+        BinaryOp::NotEq => {
+            gen.binary("xor", dst, lhs, rhs)?;
+            gen.unary("snez", dst, dst)
+        }
+        BinaryOp::Le => {
+            gen.binary("sgt", dst, lhs, rhs)?;
+            gen.unary("seqz", dst, dst)
+        }
+        BinaryOp::Ge => {
+            gen.binary("slt", dst, lhs, rhs)?;
+            gen.unary("seqz", dst, dst)
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub fn binary_with_imm(
+    gen: &mut AsmGenerator,
+    op: BinaryOp,
+    dst: &str,
+    opr: &str,
+    imm: i32,
+) -> Result<()> {
+    match op {
+        BinaryOp::Add => gen.addi(dst, opr, imm),
+        BinaryOp::Sub => gen.addi(dst, opr, -imm),
+        BinaryOp::Mul => gen.muli(dst, opr, imm),
+        BinaryOp::Div => gen.divi(dst, opr, imm),
+        BinaryOp::Mod => gen.remi(dst, opr, imm),
+        BinaryOp::And => gen.andi(dst, opr, imm),
+        BinaryOp::Or => gen.ori(dst, opr, imm),
+        BinaryOp::Eq => {
+            gen.xori(dst, opr, imm)?;
+            gen.unary("seqz", dst, dst)
+        }
+        BinaryOp::NotEq => {
+            gen.xori(dst, opr, imm)?;
+            gen.unary("snez", dst, dst)
+        }
+        _ => unreachable!(),
+    }
 }
