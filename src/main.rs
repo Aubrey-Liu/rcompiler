@@ -9,6 +9,7 @@ use irgen::generate_ir;
 mod ast;
 mod codegen;
 mod irgen;
+mod opt;
 mod sema;
 
 lalrpop_mod!(sysy);

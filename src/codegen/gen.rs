@@ -57,11 +57,12 @@ impl GenerateAsm for FunctionData {
             0
         };
 
-        self.dfg()
-            .values()
-            .iter()
-            .filter(|(_, data)| data.kind().is_local_inst() && !data.used_by().is_empty())
-            .for_each(|(&val, data)| {
+        self.layout().bbs().nodes().for_each(|node| {
+            for &val in node.insts().keys() {
+                let data = self.dfg().value(val);
+                if data.ty().is_unit() {
+                    continue;
+                }
                 if let ValueKind::Alloc(_) = data.kind() {
                     ctx.cur_func_mut().register_var(val, off, false);
                     off += match data.ty().kind() {
@@ -73,7 +74,10 @@ impl GenerateAsm for FunctionData {
                     ctx.cur_func_mut().register_var(val, off as i32, is_ptr);
                     off += data.ty().size() as i32;
                 }
-            });
+            }
+        });
+
+        // give a name to each basic block
         self.dfg()
             .bbs()
             .iter()
