@@ -109,10 +109,6 @@ impl<'i> Context<'i> {
         *self.global_values.get(global_var).unwrap()
     }
 
-    pub fn is_used(&self, val: Value) -> bool {
-        !self.cur_func_data().dfg().value(val).used_by().is_empty()
-    }
-
     pub fn is_global(&self, val: Value) -> bool {
         self.cur_func.is_none() || self.global_values.contains_key(&val)
     }

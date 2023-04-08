@@ -35,12 +35,7 @@ impl SsaBuilder {
     fn visit_func(&mut self, func: &mut FunctionData) {
         // go from back to the front
         for (&bb, node) in func.layout().bbs().iter() {
-            'inst: for &val in node.insts().keys() {
-                for &user in func.dfg().value(val).used_by() {
-                    if func.layout().parent_bb(user).unwrap() != bb {
-                        continue 'inst;
-                    }
-                }
+            for &val in node.insts().keys() {
                 match value_kind(func, val) {
                     ValueKind::Alloc(_) => {
                         self.defs.insert(val, HashMap::new());
@@ -62,8 +57,15 @@ impl SsaBuilder {
                         if !matches!(value_kind(func, l.src()), ValueKind::Alloc(_)) {
                             continue;
                         }
+                        let mut not_cross_bb = true;
+                        for &user in func.dfg().value(val).used_by() {
+                            if func.layout().parent_bb(user).unwrap() != bb {
+                                not_cross_bb = false;
+                                break;
+                            }
+                        }
                         let def = self.defs.get(&l.src()).unwrap().get(&bb);
-                        if def.is_some() {
+                        if def.is_some() && not_cross_bb {
                             self.replace_with.push((bb, val, *def.unwrap()));
                         }
                     }
@@ -74,68 +76,32 @@ impl SsaBuilder {
 
         for &(bb, origin, replace_by) in self.replace_with.iter() {
             for user in func.dfg().value(origin).used_by().clone() {
-                match value_kind(func, user).clone() {
+                let mut user_data = func.dfg().value(user).clone();
+                match user_data.kind_mut() {
+                    ValueKind::Branch(br) => *br.cond_mut() = replace_by,
+                    ValueKind::Return(ret) => *ret.value_mut() = Some(replace_by),
+                    ValueKind::Store(s) => *s.value_mut() = replace_by,
+                    ValueKind::GetElemPtr(g) => *g.index_mut() = replace_by,
+                    ValueKind::GetPtr(g) => *g.index_mut() = replace_by,
                     ValueKind::Binary(b) => {
-                        if func.dfg().value_eq(origin, b.lhs()) {
-                            func.dfg_mut().replace_value_with(user).binary(
-                                b.op(),
-                                replace_by,
-                                b.rhs(),
-                            );
+                        if origin == b.lhs() {
+                            *b.lhs_mut() = replace_by;
                         } else {
-                            func.dfg_mut().replace_value_with(user).binary(
-                                b.op(),
-                                b.lhs(),
-                                replace_by,
-                            );
+                            *b.rhs_mut() = replace_by;
                         }
                     }
-                    ValueKind::Branch(br) => {
-                        func.dfg_mut().replace_value_with(user).branch(
-                            replace_by,
-                            br.true_bb(),
-                            br.false_bb(),
-                        );
-                    }
                     ValueKind::Call(call) => {
-                        let args: Vec<_> = call
-                            .args()
-                            .iter()
-                            .map(|arg| {
-                                if func.dfg().value_eq(*arg, origin) {
-                                    replace_by
-                                } else {
-                                    *arg
-                                }
-                            })
-                            .collect();
-                        func.dfg_mut()
-                            .replace_value_with(user)
-                            .call(call.callee(), args);
-                    }
-                    ValueKind::Return(ret) => {
-                        func.dfg_mut()
-                            .replace_value_with(user)
-                            .ret(Some(replace_by));
-                    }
-                    ValueKind::Store(s) => {
-                        func.dfg_mut()
-                            .replace_value_with(user)
-                            .store(replace_by, s.dest());
-                    }
-                    ValueKind::GetElemPtr(g) => {
-                        func.dfg_mut()
-                            .replace_value_with(user)
-                            .get_elem_ptr(g.src(), replace_by);
-                    }
-                    ValueKind::GetPtr(g) => {
-                        func.dfg_mut()
-                            .replace_value_with(user)
-                            .get_ptr(g.src(), replace_by);
+                        for arg in call.args_mut() {
+                            if *arg == origin {
+                                *arg = replace_by;
+                            }
+                        }
                     }
                     _ => {}
                 }
+                func.dfg_mut().replace_value_with(user).raw(user_data);
             }
+            func.dfg_mut().remove_value(origin);
             func.layout_mut().bb_mut(bb).insts_mut().remove(&origin);
         }
 

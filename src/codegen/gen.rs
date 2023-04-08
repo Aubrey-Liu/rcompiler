@@ -170,9 +170,6 @@ pub trait NonUnitGenerateAsm {
 
 impl NonUnitGenerateAsm for Load {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context, val: Value) -> Result<()> {
-        if !ctx.is_used(val) {
-            return Ok(());
-        }
         read_to(gen, ctx, "t1", self.src())?;
         if ctx.is_pointer(self.src()) {
             gen.lw("t1", "t1", 0)?;
@@ -183,10 +180,6 @@ impl NonUnitGenerateAsm for Load {
 
 impl NonUnitGenerateAsm for Binary {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context, val: Value) -> Result<()> {
-        if !ctx.is_used(val) {
-            return Ok(());
-        }
-        // lhs and rhs can't both be integer
         if let ValueKind::Integer(i) = ctx.value_kind(self.rhs()) {
             read_to(gen, ctx, "t1", self.lhs())?;
             binary_with_imm(gen, self.op(), "t1", "t1", i.value())?;
@@ -230,7 +223,7 @@ impl NonUnitGenerateAsm for Call {
         gen.call(callee)?;
         // write the return value to pre-allocated space
         if let TypeKind::Function(_, ret_ty) = ctx.func_data(self.callee()).ty().kind() {
-            if ret_ty.is_i32() && ctx.is_used(val) {
+            if ret_ty.is_i32() {
                 write_back(gen, ctx, "a0", val)?;
             }
         }
