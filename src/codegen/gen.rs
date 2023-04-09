@@ -71,7 +71,7 @@ impl GenerateAsm for FunctionData {
                     };
                 } else {
                     let is_ptr = matches!(data.ty().kind(), TypeKind::Pointer(_));
-                    ctx.cur_func_mut().register_var(val, off as i32, is_ptr);
+                    ctx.cur_func_mut().register_var(val, off, is_ptr);
                     off += data.ty().size() as i32;
                 }
             }

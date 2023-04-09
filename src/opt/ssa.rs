@@ -153,13 +153,13 @@ impl SsaBuilder {
                     .push_key_back(inst);
             }
             func.dfg_mut().remove_bb(*bb);
-            let params = self.bb_params.remove(&bb).unwrap();
+            let params = self.bb_params.remove(bb).unwrap();
             self.bb_params.insert(bb_with_param, params);
 
             self.defs.values_mut().for_each(|d| {
                 let def = d.remove(bb);
-                if def.is_some() {
-                    d.insert(bb_with_param, def.unwrap());
+                if let Some(def) = def {
+                    d.insert(bb_with_param, def);
                 }
             });
             self.replace_with.values_mut().for_each(|(old_bb, _)| {
@@ -223,8 +223,8 @@ impl SsaBuilder {
 
     fn read_variable(&mut self, func: &FunctionData, variable: Value, bb: BasicBlock) -> Def {
         let def = self.defs.get(&variable).unwrap().get(&bb);
-        if def.is_some() {
-            *def.unwrap()
+        if let Some(def) = def {
+            *def
         } else {
             self.read_variable_recur(func, variable, bb)
         }
@@ -233,12 +233,12 @@ impl SsaBuilder {
     fn read_variable_recur(&mut self, func: &FunctionData, variable: Value, bb: BasicBlock) -> Def {
         let preds = self.preds.get(&bb).unwrap().clone();
         let def = if !self.is_sealed(bb) {
-            if !self.incomplete_bbs.contains_key(&bb) {
-                self.incomplete_bbs.insert(bb, smallvec![variable]);
-            } else {
-                self.incomplete_bbs.get_mut(&bb).unwrap().push(variable);
-            }
+            self.incomplete_bbs
+                .entry(bb)
+                .or_insert(SmallVec::new())
+                .push(variable);
             self.bb_params.get_mut(&bb).unwrap().push(variable);
+
             Def::Argument
         } else if preds.len() == 1 {
             self.read_variable(func, variable, *preds.first().unwrap())
@@ -251,6 +251,7 @@ impl SsaBuilder {
             for pred in preds {
                 self.read_variable(func, variable, pred);
             }
+
             Def::Argument
         };
         self.defs.get_mut(&variable).unwrap().insert(bb, def);

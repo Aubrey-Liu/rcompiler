@@ -2,8 +2,8 @@ use core::panic;
 
 #[derive(Debug)]
 pub enum Expr {
-    UnaryExpr(UnaryExpr),
-    BinaryExpr(BinaryExpr),
+    Unary(UnaryExpr),
+    Binary(BinaryExpr),
     Integer(i32),
     LVal(LVal),
     Error,

@@ -190,8 +190,8 @@ pub fn walk_return<'a, V: MutVisitor<'a>>(visitor: &mut V, ret: &'a mut Return) 
 
 pub fn walk_expr<'a, V: MutVisitor<'a>>(visitor: &mut V, exp: &'a mut Expr) {
     match exp {
-        Expr::BinaryExpr(bxp) => visitor.visit_binary_expr(bxp),
-        Expr::UnaryExpr(uxp) => visitor.visit_unary_expr(uxp),
+        Expr::Binary(bxp) => visitor.visit_binary_expr(bxp),
+        Expr::Unary(uxp) => visitor.visit_unary_expr(uxp),
         Expr::LVal(lval) => visitor.visit_lval(lval),
         Expr::Integer(_) => {}
         Expr::Error => panic!("expected an expression"),

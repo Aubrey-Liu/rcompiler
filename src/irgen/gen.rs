@@ -419,8 +419,8 @@ impl<'i> GenerateIR<'i> for Expr {
     fn generate_ir(&'i self, recorder: &mut ProgramRecorder<'i>) -> Result<Self::Out> {
         Ok(match self {
             Expr::Integer(i) => recorder.new_value().integer(*i),
-            Expr::UnaryExpr(uxp) => uxp.generate_ir(recorder)?,
-            Expr::BinaryExpr(bxp) => bxp.generate_ir(recorder)?,
+            Expr::Unary(uxp) => uxp.generate_ir(recorder)?,
+            Expr::Binary(bxp) => bxp.generate_ir(recorder)?,
             Expr::LVal(lval) => load_lval(recorder, lval),
             Expr::Error => panic!("expected an expression"),
         })

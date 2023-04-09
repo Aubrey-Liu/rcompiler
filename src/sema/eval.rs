@@ -47,8 +47,8 @@ impl ConstEval for Expr {
     fn const_eval(&self, eval: &Evaluator) -> Option<i32> {
         match self {
             Self::Integer(i) => Some(*i),
-            Self::UnaryExpr(uxp) => uxp.const_eval(eval),
-            Self::BinaryExpr(bxp) => bxp.const_eval(eval),
+            Self::Binary(bxp) => bxp.const_eval(eval),
+            Self::Unary(uxp) => uxp.const_eval(eval),
             Self::LVal(lval) => eval.get(lval.ident.as_str()).copied(),
             Self::Error => panic!("expected an expression"),
         }

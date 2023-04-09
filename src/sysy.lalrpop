@@ -146,8 +146,8 @@ PrimaryExp: Expr = {
 
 UnaryExpr: Expr = {
   PrimaryExp => <>,
-  Call => Expr::UnaryExpr(UnaryExpr::Call(<>)),
-  <op: UnaryOp> <uxp: UnaryExpr> => Expr::UnaryExpr(UnaryExpr::Unary(op, Box::new(uxp))),
+  Call => Expr::Unary(UnaryExpr::Call(<>)),
+  <op: UnaryOp> <uxp: UnaryExpr> => Expr::Unary(UnaryExpr::Unary(op, Box::new(uxp))),
 };
 
 Call: Call = {
@@ -158,7 +158,7 @@ Call: Call = {
 // macro for all the binary expressions
 Tier<Op, NextTier>: Expr = {
   <l: Tier<Op, NextTier>> <op: Op> <r: NextTier> => {
-    Expr::BinaryExpr(BinaryExpr { op: op, lhs: Box::new(l), rhs: Box::new(r) })
+    Expr::Binary(BinaryExpr { op: op, lhs: Box::new(l), rhs: Box::new(r) })
   },
   NextTier
 };
