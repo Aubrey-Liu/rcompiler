@@ -4,7 +4,7 @@ use anyhow::{bail, Result};
 use lalrpop_util::lalrpop_mod;
 
 use codegen::generate_code;
-use irgen::generate_ir;
+use irgen::{generate_ir, generate_ir_opt};
 
 mod ast;
 mod codegen;
@@ -22,6 +22,7 @@ fn main() -> Result<()> {
 
     match mode.as_str() {
         "-koopa" => generate_ir(&input, &output)?,
+        "-ir_perf" => generate_ir_opt(&input, &output)?,
         "-riscv" => generate_code(&input, &output)?,
         "-perf" => generate_code(&input, &output)?,
         _ => bail!("invalid mode: {}", mode.as_str()),

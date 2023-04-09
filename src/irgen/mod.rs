@@ -16,10 +16,22 @@ use koopa::ir::Type as IrType;
 use koopa::ir::{BasicBlock, Function, FunctionData, Program, Value};
 
 use crate::ast::visit::MutVisitor;
+use crate::opt::pass::{Pass, PassRunner};
+use crate::opt::ssa::SsaBuilder;
 use crate::sema::*;
 use crate::sysy;
 use gen::*;
 use utils::*;
+
+pub fn generate_mem_ir_opt(input: &str) -> Result<Program> {
+    let mut p = generate_mem_ir(input)?;
+
+    let mut pass_runner = PassRunner::new();
+    pass_runner.register_pass(Pass::FunctionPass(Box::new(SsaBuilder::new())));
+    pass_runner.run_passes(&mut p);
+
+    Ok(p)
+}
 
 pub fn generate_mem_ir(input: &str) -> Result<Program> {
     let input = read_to_string(input)?;
@@ -40,15 +52,20 @@ pub fn generate_mem_ir(input: &str) -> Result<Program> {
     let mut recorder = ProgramRecorder::new(&symbols);
     ast.generate_ir(&mut recorder)?;
 
-    use crate::opt::{pass::Pass, ssa::SsaBuilder};
-    let mut ssa = SsaBuilder::new();
-    ssa.run_on(&mut recorder.program);
-
     Ok(recorder.program)
 }
 
 pub fn generate_ir(input: &str, output: &str) -> Result<()> {
     let program = generate_mem_ir(input)?;
+    let output = File::create(output).unwrap();
+    let mut gen = KoopaGenerator::new(BufWriter::new(output));
+    gen.generate_on(&program)?;
+
+    Ok(())
+}
+
+pub fn generate_ir_opt(input: &str, output: &str) -> Result<()> {
+    let program = generate_mem_ir_opt(input)?;
     let output = File::create(output).unwrap();
     let mut gen = KoopaGenerator::new(BufWriter::new(output));
     gen.generate_on(&program)?;

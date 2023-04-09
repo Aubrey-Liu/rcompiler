@@ -78,10 +78,10 @@ impl GenerateAsm for FunctionData {
         });
 
         // give a name to each basic block
-        self.dfg()
+        self.layout()
             .bbs()
-            .iter()
-            .for_each(|(&bb, _)| ctx.register_bb(bb));
+            .keys()
+            .for_each(|&bb| ctx.register_bb(bb));
 
         // align stack size to 16
         let ss = (off + protect_space + 15) / 16 * 16;

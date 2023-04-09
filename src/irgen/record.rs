@@ -17,7 +17,7 @@ pub struct ProgramRecorder<'i> {
     values: HashMap<&'i str, Value>,
     funcs: HashMap<&'i str, Function>,
     cur_func: Option<FunctionInfo>,
-    loops: SmallVec<[LoopInfo; 6]>,
+    loops: SmallVec<[LoopInfo; 4]>,
 }
 
 #[derive(Debug)]
