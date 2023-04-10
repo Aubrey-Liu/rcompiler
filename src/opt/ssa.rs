@@ -5,7 +5,7 @@ use std::{
     env::var,
 };
 
-use super::pass::*;
+use super::*;
 use koopa::ir::{
     builder::EntityInfoQuerier,
     builder_traits::{BasicBlockBuilder, LocalInstBuilder, ValueBuilder},
@@ -166,9 +166,7 @@ impl SsaBuilder {
             let params = func.dfg().bb(bb).params().to_owned();
             let preds = self.preds.get(&bb).unwrap().clone();
             for pred in preds {
-                if self.preds.get(&pred).unwrap().is_empty()
-                    && func.layout().entry_bb().unwrap() != pred
-                {
+                if !self.preds.contains_key(&pred) && func.layout().entry_bb().unwrap() != pred {
                     continue;
                 }
                 // arg is the def of variable
@@ -223,7 +221,11 @@ impl SsaBuilder {
     }
 
     fn read_variable_recur(&mut self, func: &FunctionData, variable: Value, bb: BasicBlock) -> Def {
-        let preds = self.preds.get(&bb).unwrap().clone();
+        let preds = self.preds.get(&bb);
+        if preds.is_none() {
+            return Def::Argument(variable);
+        }
+        let preds = preds.unwrap().clone();
         let def = if !self.is_sealed(bb) {
             self.incomplete_bbs.entry(bb).or_default().push(variable);
             self.bb_params.entry(bb).or_default().push(variable);
@@ -266,44 +268,14 @@ impl SsaBuilder {
     fn replace_var_with_arg(&self, func: &mut FunctionData, origin: Value, variable: Value) {
         let bb = func.layout().parent_bb(origin).unwrap();
         let replace_by = self.read_argument_value(func, variable, bb);
-        self.replace_variable(func, origin, replace_by);
-    }
-
-    /// Replace all the usage of a variable with a new value
-    fn replace_variable(&self, func: &mut FunctionData, origin: Value, replace_by: Value) {
-        for user in func.dfg().value(origin).used_by().clone() {
-            let mut data = func.dfg().value(user).clone();
-            match data.kind_mut() {
-                ValueKind::Branch(br) => *br.cond_mut() = replace_by,
-                ValueKind::Return(ret) => *ret.value_mut() = Some(replace_by),
-                ValueKind::Store(s) => *s.value_mut() = replace_by,
-                ValueKind::GetElemPtr(g) => *g.index_mut() = replace_by,
-                ValueKind::GetPtr(g) => *g.index_mut() = replace_by,
-                ValueKind::Binary(b) => {
-                    if origin == b.lhs() {
-                        *b.lhs_mut() = replace_by;
-                    } else {
-                        *b.rhs_mut() = replace_by;
-                    }
-                }
-                ValueKind::Call(call) => {
-                    for arg in call.args_mut() {
-                        if *arg == origin {
-                            *arg = replace_by;
-                        }
-                    }
-                }
-                _ => {}
-            }
-            func.dfg_mut().replace_value_with(user).raw(data);
-        }
+        replace_variable(func, origin, replace_by);
     }
 
     /// Replace the load of local variables with the variable's definition
     fn replace_load_with_def(&mut self, func: &mut FunctionData) {
         for (&origin, &(bb, replace_by)) in &self.replace_with {
             match replace_by {
-                Def::Assign(val) => self.replace_variable(func, origin, val),
+                Def::Assign(val) => replace_variable(func, origin, val),
                 Def::Argument(variable) => self.replace_var_with_arg(func, origin, variable),
             }
             func.dfg_mut().remove_value(origin);
@@ -358,29 +330,5 @@ impl SsaBuilder {
         self.preds.clear();
         self.filled_bbs.clear();
         self.incomplete_bbs.clear();
-    }
-}
-
-fn value_kind(func: &FunctionData, val: Value) -> &ValueKind {
-    func.dfg().value(val).kind()
-}
-
-fn replace_bb_with(func: &mut FunctionData, bb: BasicBlock, new_bb: BasicBlock) {
-    for user in func.dfg().bb(bb).used_by().clone() {
-        let mut user_data = func.dfg().value(user).clone();
-        match user_data.kind_mut() {
-            ValueKind::Jump(j) => {
-                *j.target_mut() = new_bb;
-            }
-            ValueKind::Branch(br) => {
-                if br.true_bb() == bb {
-                    *br.true_bb_mut() = new_bb;
-                } else {
-                    *br.false_bb_mut() = new_bb;
-                }
-            }
-            _ => unreachable!(),
-        }
-        func.dfg_mut().replace_value_with(user).raw(user_data);
     }
 }
