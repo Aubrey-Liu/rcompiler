@@ -20,7 +20,7 @@ use smallvec::{smallvec, SmallVec};
 #[derive(Debug, Clone, Copy)]
 pub enum Def {
     Assign(Value),
-    Argument,
+    Argument(Value),
 }
 
 #[derive(Debug, Default)]
@@ -184,7 +184,7 @@ impl SsaBuilder {
                 for (i, v) in var.iter().enumerate() {
                     args.push(match self.read_variable(func, *v, pred) {
                         Def::Assign(val) => val,
-                        Def::Argument => self.read_argument_value(func, *v, pred),
+                        Def::Argument(variable) => self.read_argument_value(func, variable, pred),
                     });
                 }
                 self.add_params_to_inst(func, pred, bb, args);
@@ -239,7 +239,7 @@ impl SsaBuilder {
                 .push(variable);
             self.bb_params.get_mut(&bb).unwrap().push(variable);
 
-            Def::Argument
+            Def::Argument(variable)
         } else if preds.len() == 1 {
             self.read_variable(func, variable, *preds.first().unwrap())
         } else {
@@ -247,12 +247,12 @@ impl SsaBuilder {
             self.defs
                 .get_mut(&variable)
                 .unwrap()
-                .insert(bb, Def::Argument);
+                .insert(bb, Def::Argument(variable));
             for pred in preds {
                 self.read_variable(func, variable, pred);
             }
 
-            Def::Argument
+            Def::Argument(variable)
         };
         self.defs.get_mut(&variable).unwrap().insert(bb, def);
 
@@ -317,13 +317,8 @@ impl SsaBuilder {
         }
     }
 
-    fn replace_var_with_arg(&self, func: &mut FunctionData, origin: Value) {
+    fn replace_var_with_arg(&self, func: &mut FunctionData, origin: Value, variable: Value) {
         let bb = func.layout().parent_bb(origin).unwrap();
-        let variable = if let ValueKind::Load(l) = value_kind(func, origin) {
-            l.src()
-        } else {
-            unreachable!()
-        };
         let replace_by = self.read_argument_value(func, variable, bb);
         self.replace_variable(func, origin, replace_by);
     }
@@ -362,8 +357,8 @@ impl SsaBuilder {
     fn replace_load_with_def(&mut self, func: &mut FunctionData) {
         for (&origin, &(bb, replace_by)) in &self.replace_with {
             match replace_by {
-                Def::Argument => self.replace_var_with_arg(func, origin),
                 Def::Assign(val) => self.replace_variable(func, origin, val),
+                Def::Argument(variable) => self.replace_var_with_arg(func, origin, variable),
             }
             func.dfg_mut().remove_value(origin);
             func.layout_mut().bb_mut(bb).insts_mut().remove(&origin);
