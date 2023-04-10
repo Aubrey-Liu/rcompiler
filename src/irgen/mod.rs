@@ -16,8 +16,7 @@ use koopa::ir::Type as IrType;
 use koopa::ir::{BasicBlock, Function, FunctionData, Program, Value};
 
 use crate::ast::visit::MutVisitor;
-use crate::opt::pass::{Pass, PassRunner};
-use crate::opt::ssa::SsaBuilder;
+use crate::opt::optimize;
 use crate::sema::*;
 use crate::sysy;
 use gen::*;
@@ -25,10 +24,7 @@ use utils::*;
 
 pub fn generate_mem_ir_opt(input: &str) -> Result<Program> {
     let mut p = generate_mem_ir(input)?;
-
-    let mut pass_runner = PassRunner::new();
-    pass_runner.register_pass(Pass::FunctionPass(Box::new(SsaBuilder::new())));
-    pass_runner.run_passes(&mut p);
+    optimize(&mut p);
 
     Ok(p)
 }

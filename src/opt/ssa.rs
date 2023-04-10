@@ -60,7 +60,6 @@ impl SsaBuilder {
         self.insert_bb_params(func);
         self.replace_load_with_def(func);
         self.remove_local_variables(func);
-        self.remove_unreachable_bb(func);
         self.clear();
     }
 
@@ -90,11 +89,12 @@ impl SsaBuilder {
                         if !self.defs.contains_key(&s.dest()) {
                             continue;
                         }
-                        let def = if let ValueKind::Load(l) = value_kind(func, s.value()) {
-                            self.read_variable(func, l.src(), bb)
-                        } else {
-                            Def::Assign(s.value())
-                        };
+                        let mut def = Def::Assign(s.value());
+                        if let ValueKind::Load(l) = value_kind(func, s.value()) {
+                            if self.defs.contains_key(&l.src()) {
+                                def = self.read_variable(func, l.src(), bb);
+                            }
+                        }
                         self.defs.get_mut(&s.dest()).unwrap().insert(bb, def);
                     }
                     ValueKind::Load(l) => {
@@ -381,36 +381,6 @@ impl SsaBuilder {
                 .bb_mut(entry_bb)
                 .insts_mut()
                 .remove(&local);
-        }
-    }
-
-    fn remove_unreachable_bb(&mut self, func: &mut FunctionData) {
-        loop {
-            let mut changed = false;
-            let mut removed_bbs = SmallVec::<[BasicBlock; 4]>::new();
-            for bb in func.dfg().bbs().keys() {
-                if func.layout().entry_bb().unwrap() != *bb
-                    && func.dfg().bb(*bb).used_by().is_empty()
-                {
-                    removed_bbs.push(*bb);
-                    changed = true;
-                }
-            }
-            for bb in removed_bbs {
-                // remove a bb will not automatically remove the value attaching to it
-                let mut removed_values = SmallVec::<[Value; 6]>::new();
-                for &v in func.layout().bbs().node(&bb).unwrap().insts().keys() {
-                    removed_values.push(v);
-                }
-                for &v in &removed_values {
-                    func.dfg_mut().remove_value(v);
-                }
-                func.dfg_mut().remove_bb(bb);
-                func.layout_mut().bbs_mut().remove(&bb);
-            }
-            if !changed {
-                break;
-            }
         }
     }
 
