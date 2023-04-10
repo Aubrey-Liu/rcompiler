@@ -54,19 +54,12 @@ impl SsaBuilder {
     }
 
     fn build_ssa(&mut self, func: &mut FunctionData) {
-        self.init(func);
         self.record_preds(func);
         self.walk_bbs(func);
         self.insert_bb_params(func);
         self.replace_load_with_def(func);
         self.remove_local_variables(func);
         self.clear();
-    }
-
-    fn init(&mut self, func: &FunctionData) {
-        for &bb in func.layout().bbs().keys() {
-            self.bb_params.insert(bb, SmallVec::new());
-        }
     }
 
     fn walk_bbs(&mut self, func: &mut FunctionData) {
@@ -117,14 +110,12 @@ impl SsaBuilder {
             self.preds.clear();
         }
         for &bb in func.layout().bbs().keys() {
-            self.preds.insert(bb, SmallVec::new());
-        }
-        for &bb in func.layout().bbs().keys() {
             for &user in func.dfg().bb(bb).used_by() {
                 let pred = func.layout().parent_bb(user).unwrap();
                 match value_kind(func, user) {
-                    ValueKind::Jump(j) => self.preds.get_mut(&bb).unwrap().push(pred),
-                    ValueKind::Branch(br) => self.preds.get_mut(&bb).unwrap().push(pred),
+                    ValueKind::Jump(_) | ValueKind::Branch(_) => {
+                        self.preds.entry(bb).or_default().push(pred)
+                    }
                     _ => unreachable!(),
                 }
             }
@@ -142,9 +133,10 @@ impl SsaBuilder {
                 .new_bb()
                 .basic_block_with_params(None, vec![Type::get_i32(); var.len()]);
 
-            self.replace_bb_with(func, *bb, bb_with_param);
+            // replace the old bb with the new bb
+            replace_bb_with(func, *bb, bb_with_param);
+            func.dfg_mut().remove_bb(*bb);
             let (_, node) = func.layout_mut().bbs_mut().remove(bb).unwrap();
-
             func.layout_mut().bbs_mut().push_key_back(bb_with_param);
             for &inst in node.insts().keys() {
                 func.layout_mut()
@@ -152,10 +144,10 @@ impl SsaBuilder {
                     .insts_mut()
                     .push_key_back(inst);
             }
-            func.dfg_mut().remove_bb(*bb);
+
+            // keep information consistent with the new dfg
             let params = self.bb_params.remove(bb).unwrap();
             self.bb_params.insert(bb_with_param, params);
-
             self.defs.values_mut().for_each(|d| {
                 let def = d.remove(bb);
                 if let Some(def) = def {
@@ -233,17 +225,14 @@ impl SsaBuilder {
     fn read_variable_recur(&mut self, func: &FunctionData, variable: Value, bb: BasicBlock) -> Def {
         let preds = self.preds.get(&bb).unwrap().clone();
         let def = if !self.is_sealed(bb) {
-            self.incomplete_bbs
-                .entry(bb)
-                .or_insert(SmallVec::new())
-                .push(variable);
-            self.bb_params.get_mut(&bb).unwrap().push(variable);
+            self.incomplete_bbs.entry(bb).or_default().push(variable);
+            self.bb_params.entry(bb).or_default().push(variable);
 
             Def::Argument(variable)
         } else if preds.len() == 1 {
             self.read_variable(func, variable, *preds.first().unwrap())
         } else {
-            self.bb_params.get_mut(&bb).unwrap().push(variable);
+            self.bb_params.entry(bb).or_default().push(variable);
             self.defs
                 .get_mut(&variable)
                 .unwrap()
@@ -272,49 +261,6 @@ impl SsaBuilder {
             i += 1;
         };
         func.dfg().bb(bb).params()[arg_idx]
-    }
-
-    fn is_sealed(&self, bb: BasicBlock) -> bool {
-        for pred in self.preds.get(&bb).unwrap() {
-            if !self.filled_bbs.contains(pred) {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    fn try_seal(&mut self, func: &FunctionData) {
-        for (bb, vars) in self.incomplete_bbs.clone() {
-            if self.is_sealed(bb) {
-                for v in vars {
-                    for pred in self.preds.get(&bb).unwrap().clone() {
-                        self.read_variable(func, v, pred);
-                    }
-                }
-                self.incomplete_bbs.remove(&bb);
-            }
-        }
-    }
-
-    fn replace_bb_with(&self, func: &mut FunctionData, bb: BasicBlock, new_bb: BasicBlock) {
-        for user in func.dfg().bb(bb).used_by().clone() {
-            let mut user_data = func.dfg().value(user).clone();
-            match user_data.kind_mut() {
-                ValueKind::Jump(j) => {
-                    *j.target_mut() = new_bb;
-                }
-                ValueKind::Branch(br) => {
-                    if br.true_bb() == bb {
-                        *br.true_bb_mut() = new_bb;
-                    } else {
-                        *br.false_bb_mut() = new_bb;
-                    }
-                }
-                _ => unreachable!(),
-            }
-            func.dfg_mut().replace_value_with(user).raw(user_data);
-        }
     }
 
     fn replace_var_with_arg(&self, func: &mut FunctionData, origin: Value, variable: Value) {
@@ -382,6 +328,29 @@ impl SsaBuilder {
         }
     }
 
+    fn is_sealed(&self, bb: BasicBlock) -> bool {
+        for pred in self.preds.get(&bb).unwrap() {
+            if !self.filled_bbs.contains(pred) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn try_seal(&mut self, func: &FunctionData) {
+        for (bb, vars) in self.incomplete_bbs.clone() {
+            if self.is_sealed(bb) {
+                for v in vars {
+                    for pred in self.preds.get(&bb).unwrap().clone() {
+                        self.read_variable(func, v, pred);
+                    }
+                }
+                self.incomplete_bbs.remove(&bb);
+            }
+        }
+    }
+
     fn clear(&mut self) {
         self.defs.clear();
         self.replace_with.clear();
@@ -394,4 +363,24 @@ impl SsaBuilder {
 
 fn value_kind(func: &FunctionData, val: Value) -> &ValueKind {
     func.dfg().value(val).kind()
+}
+
+fn replace_bb_with(func: &mut FunctionData, bb: BasicBlock, new_bb: BasicBlock) {
+    for user in func.dfg().bb(bb).used_by().clone() {
+        let mut user_data = func.dfg().value(user).clone();
+        match user_data.kind_mut() {
+            ValueKind::Jump(j) => {
+                *j.target_mut() = new_bb;
+            }
+            ValueKind::Branch(br) => {
+                if br.true_bb() == bb {
+                    *br.true_bb_mut() = new_bb;
+                } else {
+                    *br.false_bb_mut() = new_bb;
+                }
+            }
+            _ => unreachable!(),
+        }
+        func.dfg_mut().replace_value_with(user).raw(user_data);
+    }
 }
