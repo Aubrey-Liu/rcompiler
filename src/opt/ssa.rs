@@ -328,6 +328,7 @@ impl SsaBuilder {
         self.replace_variable(func, origin, replace_by);
     }
 
+    /// Replace all the usage of a variable with a new value
     fn replace_variable(&self, func: &mut FunctionData, origin: Value, replace_by: Value) {
         for user in func.dfg().value(origin).used_by().clone() {
             let mut data = func.dfg().value(user).clone();
@@ -357,6 +358,7 @@ impl SsaBuilder {
         }
     }
 
+    /// Replace the load of local variables with the variable's definition
     fn replace_load_with_def(&mut self, func: &mut FunctionData) {
         for (&origin, &(bb, replace_by)) in &self.replace_with {
             match replace_by {
@@ -368,6 +370,7 @@ impl SsaBuilder {
         }
     }
 
+    /// Remove all local variables, except arrays
     fn remove_local_variables(&self, func: &mut FunctionData) {
         let entry_bb = func.layout().entry_bb().unwrap();
         for &local in self.defs.keys() {
