@@ -325,6 +325,8 @@ impl<'i> GenerateIR<'i> for While {
 
         if let ValueKind::Integer(i) = recorder.get_value_data(cond).kind() {
             if i.value() == 0 {
+                recorder.remove_bb(loop_body);
+                recorder.remove_bb(loop_exit);
                 recorder.exit_loop();
                 return Ok(());
             } else {

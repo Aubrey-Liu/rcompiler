@@ -216,6 +216,11 @@ impl ProgramRecorder<'_> {
         self.func_mut().set_cur_bb(bb);
     }
 
+    pub fn remove_bb(&mut self, bb: BasicBlock) {
+        let func_id = self.cur_func_id();
+        self.program.func_mut(func_id).dfg_mut().remove_bb(bb);
+    }
+
     pub fn is_global(&self) -> bool {
         self.cur_func.is_none()
     }
