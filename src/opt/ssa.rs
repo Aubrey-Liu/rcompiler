@@ -16,7 +16,7 @@ pub enum Def {
 #[derive(Debug, Default)]
 pub struct SsaBuilder {
     /// mapping from a basic block to its predecessors
-    preds: HashMap<BasicBlock, SmallVec<[BasicBlock; 4]>>,
+    cfg: HashMap<BasicBlock, SmallVec<[BasicBlock; 4]>>,
     /// mapping from a local variable to its recent definition
     defs: HashMap<Value, HashMap<BasicBlock, Def>>,
     /// mapping from a load instruction to the previous definition
@@ -43,19 +43,20 @@ impl SsaBuilder {
         Default::default()
     }
 
-    fn build_ssa(&mut self, func: &mut FunctionData) {
-        self.record_preds(func);
-        self.walk_bbs(func);
-        self.insert_bb_params(func);
-        self.replace_load_with_def(func);
-        self.remove_local_variables(func);
+    fn build_ssa(&mut self, f: &mut FunctionData) {
+        self.walk_bbs(f);
+        self.insert_bb_params(f);
+        self.replace_load_with_def(f);
+        self.remove_local_variables(f);
         self.clear();
     }
 
-    fn walk_bbs(&mut self, func: &mut FunctionData) {
-        for (&bb, node) in func.layout().bbs().iter() {
+    fn walk_bbs(&mut self, f: &mut FunctionData) {
+        self.update_cfg(f);
+
+        for (&bb, node) in f.layout().bbs().iter() {
             for &val in node.insts().keys() {
-                let val_data = func.dfg().value(val);
+                let val_data = f.dfg().value(val);
                 match val_data.kind() {
                     ValueKind::Alloc(_) => {
                         // record local variables
@@ -73,9 +74,9 @@ impl SsaBuilder {
                             continue;
                         }
                         let mut def = Def::Assign(s.value());
-                        if let ValueKind::Load(l) = value_kind(func, s.value()) {
+                        if let ValueKind::Load(l) = value_kind(f, s.value()) {
                             if self.defs.contains_key(&l.src()) {
-                                def = self.read_variable(func, l.src(), bb);
+                                def = self.read_variable(f, l.src(), bb);
                             }
                         }
                         self.defs.get_mut(&s.dest()).unwrap().insert(bb, def);
@@ -84,27 +85,27 @@ impl SsaBuilder {
                         if !self.defs.contains_key(&l.src()) {
                             continue;
                         }
-                        let def = self.read_variable(func, l.src(), bb);
+                        let def = self.read_variable(f, l.src(), bb);
                         self.replace_with.insert(val, (bb, def));
                     }
                     _ => {}
                 }
             }
             self.filled_bbs.insert(bb);
-            self.try_seal(func);
+            self.try_seal(f);
         }
     }
 
-    fn record_preds(&mut self, func: &mut FunctionData) {
-        if !self.preds.is_empty() {
-            self.preds.clear();
+    fn update_cfg(&mut self, f: &mut FunctionData) {
+        if !self.cfg.is_empty() {
+            self.cfg.clear();
         }
-        for &bb in func.layout().bbs().keys() {
-            for &user in func.dfg().bb(bb).used_by() {
-                let pred = func.layout().parent_bb(user).unwrap();
-                match value_kind(func, user) {
+        for &bb in f.layout().bbs().keys() {
+            for &user in f.dfg().bb(bb).used_by() {
+                let pred = f.layout().parent_bb(user).unwrap();
+                match value_kind(f, user) {
                     ValueKind::Jump(_) | ValueKind::Branch(_) => {
-                        self.preds.entry(bb).or_default().push(pred)
+                        self.cfg.entry(bb).or_default().push(pred)
                     }
                     _ => unreachable!(),
                 }
@@ -112,7 +113,7 @@ impl SsaBuilder {
         }
     }
 
-    fn insert_bb_params(&mut self, func: &mut FunctionData) {
+    fn insert_bb_params(&mut self, f: &mut FunctionData) {
         // add params into basic blocks
         let mut new_bbs = Vec::with_capacity(self.bb_params.len());
         for (bb, var) in &self.bb_params {
@@ -120,22 +121,22 @@ impl SsaBuilder {
                 continue;
             }
 
-            let bb_with_param = func
+            let bb_with_param = f
                 .dfg_mut()
                 .new_bb()
                 .basic_block_with_params(None, vec![Type::get_i32(); var.len()]);
 
             // replace the old bb with the new bb
-            replace_bb_with(func, *bb, bb_with_param);
-            func.dfg_mut().remove_bb(*bb);
+            replace_bb_with(f, *bb, bb_with_param);
+            f.dfg_mut().remove_bb(*bb);
 
-            let (_, node) = func.layout_mut().bbs_mut().remove(bb).unwrap();
-            func.layout_mut()
+            let (_, node) = f.layout_mut().bbs_mut().remove(bb).unwrap();
+            f.layout_mut()
                 .bbs_mut()
                 .push_key_back(bb_with_param)
                 .unwrap();
             for &inst in node.insts().keys() {
-                func.layout_mut()
+                f.layout_mut()
                     .bb_mut(bb_with_param)
                     .insts_mut()
                     .push_key_back(inst)
@@ -146,7 +147,7 @@ impl SsaBuilder {
         }
 
         // keep information consistent with the new dfg
-        self.record_preds(func);
+        self.update_cfg(f);
         for &(old_bb, new_bb) in &new_bbs {
             let params = self.bb_params.remove(&old_bb).unwrap();
             self.bb_params.insert(new_bb, params);
@@ -165,36 +166,36 @@ impl SsaBuilder {
         }
 
         for (bb, var) in self.bb_params.clone() {
-            let preds = self.preds.get(&bb).unwrap().clone();
+            let preds = self.cfg.get(&bb).unwrap().clone();
             for pred in preds {
-                if !self.preds.contains_key(&pred) && func.layout().entry_bb().unwrap() != pred {
+                if !self.cfg.contains_key(&pred) && f.layout().entry_bb().unwrap() != pred {
                     continue;
                 }
                 // arg is the def of variable
                 let mut args: SmallVec<[Value; 6]> = SmallVec::new();
                 for (_, v) in var.iter().enumerate() {
-                    args.push(match self.read_variable(func, *v, pred) {
+                    args.push(match self.read_variable(f, *v, pred) {
                         Def::Assign(val) => val,
-                        Def::Argument(variable) => self.read_argument_value(func, variable, pred),
+                        Def::Argument(variable) => self.read_argument_value(f, variable, pred),
                     });
                 }
-                self.add_params_to_inst(func, pred, bb, args);
+                self.add_params_to_inst(f, pred, bb, args);
             }
         }
     }
 
     fn add_params_to_inst(
         &self,
-        func: &mut FunctionData,
+        f: &mut FunctionData,
         bb: BasicBlock,
         target: BasicBlock,
         args: SmallVec<[Value; 6]>,
     ) {
-        for user in func.dfg().bb(target).used_by().clone() {
-            if func.layout().parent_bb(user).unwrap() != bb {
+        for user in f.dfg().bb(target).used_by().clone() {
+            if f.layout().parent_bb(user).unwrap() != bb {
                 continue;
             }
-            let mut user_data = func.dfg().value(user).clone();
+            let mut user_data = f.dfg().value(user).clone();
             match user_data.kind_mut() {
                 ValueKind::Jump(j) => {
                     *j.args_mut() = args.to_vec();
@@ -208,21 +209,21 @@ impl SsaBuilder {
                 }
                 _ => unreachable!(),
             }
-            func.dfg_mut().replace_value_with(user).raw(user_data);
+            f.dfg_mut().replace_value_with(user).raw(user_data);
         }
     }
 
-    fn read_variable(&mut self, func: &FunctionData, variable: Value, bb: BasicBlock) -> Def {
+    fn read_variable(&mut self, f: &FunctionData, variable: Value, bb: BasicBlock) -> Def {
         let def = self.defs.get(&variable).unwrap().get(&bb);
         if let Some(def) = def {
             *def
         } else {
-            self.read_variable_recur(func, variable, bb)
+            self.read_variable_recur(f, variable, bb)
         }
     }
 
-    fn read_variable_recur(&mut self, func: &FunctionData, variable: Value, bb: BasicBlock) -> Def {
-        let preds = self.preds.get(&bb);
+    fn read_variable_recur(&mut self, f: &FunctionData, variable: Value, bb: BasicBlock) -> Def {
+        let preds = self.cfg.get(&bb);
         if preds.is_none() {
             return Def::Argument(variable);
         }
@@ -233,7 +234,7 @@ impl SsaBuilder {
 
             Def::Argument(variable)
         } else if preds.len() == 1 {
-            self.read_variable(func, variable, *preds.first().unwrap())
+            self.read_variable(f, variable, *preds.first().unwrap())
         } else {
             self.bb_params.entry(bb).or_default().push(variable);
             self.defs
@@ -241,7 +242,7 @@ impl SsaBuilder {
                 .unwrap()
                 .insert(bb, Def::Argument(variable));
             for pred in preds {
-                self.read_variable(func, variable, pred);
+                self.read_variable(f, variable, pred);
             }
 
             Def::Argument(variable)
@@ -251,10 +252,10 @@ impl SsaBuilder {
         def
     }
 
-    fn read_argument_value(&self, func: &FunctionData, variable: Value, bb: BasicBlock) -> Value {
-        let preds = self.preds.get(&bb).unwrap();
+    fn read_argument_value(&self, f: &FunctionData, variable: Value, bb: BasicBlock) -> Value {
+        let preds = self.cfg.get(&bb).unwrap();
         if preds.len() == 1 {
-            return self.read_argument_value(func, variable, *preds.first().unwrap());
+            return self.read_argument_value(f, variable, *preds.first().unwrap());
         }
         let mut i = 0;
         let arg_idx = loop {
@@ -263,46 +264,43 @@ impl SsaBuilder {
             }
             i += 1;
         };
-        func.dfg().bb(bb).params()[arg_idx]
+        f.dfg().bb(bb).params()[arg_idx]
     }
 
-    fn replace_var_with_arg(&self, func: &mut FunctionData, origin: Value, variable: Value) {
-        let bb = func.layout().parent_bb(origin).unwrap();
-        let replace_by = self.read_argument_value(func, variable, bb);
-        replace_variable(func, origin, replace_by);
+    fn replace_var_with_arg(&self, f: &mut FunctionData, origin: Value, variable: Value) {
+        let bb = f.layout().parent_bb(origin).unwrap();
+        let replace_by = self.read_argument_value(f, variable, bb);
+        replace_variable(f, origin, replace_by);
     }
 
     /// Replace the load of local variables with the variable's definition
-    fn replace_load_with_def(&mut self, func: &mut FunctionData) {
+    fn replace_load_with_def(&mut self, f: &mut FunctionData) {
         for (&origin, &(bb, replace_by)) in &self.replace_with {
             match replace_by {
-                Def::Assign(val) => replace_variable(func, origin, val),
-                Def::Argument(variable) => self.replace_var_with_arg(func, origin, variable),
+                Def::Assign(val) => replace_variable(f, origin, val),
+                Def::Argument(variable) => self.replace_var_with_arg(f, origin, variable),
             }
-            func.dfg_mut().remove_value(origin);
-            func.layout_mut().bb_mut(bb).insts_mut().remove(&origin);
+            f.dfg_mut().remove_value(origin);
+            f.layout_mut().bb_mut(bb).insts_mut().remove(&origin);
         }
     }
 
     /// Remove all local variables, except arrays
-    fn remove_local_variables(&self, func: &mut FunctionData) {
-        let entry_bb = func.layout().entry_bb().unwrap();
+    fn remove_local_variables(&self, f: &mut FunctionData) {
+        let entry_bb = f.layout().entry_bb().unwrap();
         for &local in self.defs.keys() {
-            for store in func.dfg().value(local).used_by().clone() {
-                let bb = func.layout().parent_bb(store).unwrap();
-                func.layout_mut().bb_mut(bb).insts_mut().remove(&store);
-                func.dfg_mut().remove_value(store);
+            for store in f.dfg().value(local).used_by().clone() {
+                let bb = f.layout().parent_bb(store).unwrap();
+                f.layout_mut().bb_mut(bb).insts_mut().remove(&store);
+                f.dfg_mut().remove_value(store);
             }
-            func.dfg_mut().remove_value(local);
-            func.layout_mut()
-                .bb_mut(entry_bb)
-                .insts_mut()
-                .remove(&local);
+            f.dfg_mut().remove_value(local);
+            f.layout_mut().bb_mut(entry_bb).insts_mut().remove(&local);
         }
     }
 
     fn is_sealed(&self, bb: BasicBlock) -> bool {
-        for pred in self.preds.get(&bb).unwrap() {
+        for pred in self.cfg.get(&bb).unwrap() {
             if !self.filled_bbs.contains(pred) {
                 return false;
             }
@@ -311,12 +309,12 @@ impl SsaBuilder {
         true
     }
 
-    fn try_seal(&mut self, func: &FunctionData) {
+    fn try_seal(&mut self, f: &FunctionData) {
         for (bb, vars) in self.incomplete_bbs.clone() {
             if self.is_sealed(bb) {
                 for v in vars {
-                    for pred in self.preds.get(&bb).unwrap().clone() {
-                        self.read_variable(func, v, pred);
+                    for pred in self.cfg.get(&bb).unwrap().clone() {
+                        self.read_variable(f, v, pred);
                     }
                 }
                 self.incomplete_bbs.remove(&bb);
@@ -328,7 +326,7 @@ impl SsaBuilder {
         self.defs.clear();
         self.replace_with.clear();
         self.bb_params.clear();
-        self.preds.clear();
+        self.cfg.clear();
         self.filled_bbs.clear();
         self.incomplete_bbs.clear();
     }

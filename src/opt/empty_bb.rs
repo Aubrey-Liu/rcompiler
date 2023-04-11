@@ -63,16 +63,20 @@ impl RemoveEmptyBB {
                 return;
             }
 
-            replace_bb_with(f, j.target(), entry_bb);
+            let target = j.target();
+            replace_bb_with(f, target, entry_bb);
 
-            f.layout_mut()
+            let (exit, _) = f
+                .layout_mut()
                 .bbs_mut()
                 .node_mut(&entry_bb)
                 .unwrap()
                 .insts_mut()
-                .clear();
-
-            let (_, node) = f.layout_mut().bbs_mut().remove(&j.target()).unwrap();
+                .pop_back()
+                .unwrap();
+            f.dfg_mut().remove_value(exit);
+            f.dfg_mut().remove_bb(target);
+            let (_, node) = f.layout_mut().bbs_mut().remove(&target).unwrap();
             for val in node.insts().keys() {
                 f.layout_mut()
                     .bb_mut(entry_bb)
