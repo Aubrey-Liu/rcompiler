@@ -1,21 +1,11 @@
-#![allow(unused)]
-use std::{
-    collections::{hash_map, HashMap, HashSet},
-    default,
-    env::var,
-};
+use std::collections::{HashMap, HashSet};
 
 use super::*;
 use koopa::ir::{
-    builder::EntityInfoQuerier,
-    builder_traits::{BasicBlockBuilder, LocalInstBuilder, ValueBuilder},
-    dfg::DataFlowGraph,
-    entities::{BasicBlockData, ValueData},
-    layout::BasicBlockNode,
-    values::BlockArgRef,
+    builder_traits::{BasicBlockBuilder, ValueBuilder},
     *,
 };
-use smallvec::{smallvec, SmallVec};
+use smallvec::SmallVec;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Def {
@@ -124,10 +114,12 @@ impl SsaBuilder {
 
     fn insert_bb_params(&mut self, func: &mut FunctionData) {
         // add params into basic blocks
-        for (bb, var) in &self.bb_params.clone() {
+        let mut new_bbs = Vec::with_capacity(self.bb_params.len());
+        for (bb, var) in &self.bb_params {
             if var.is_empty() {
                 continue;
             }
+
             let bb_with_param = func
                 .dfg_mut()
                 .new_bb()
@@ -136,34 +128,43 @@ impl SsaBuilder {
             // replace the old bb with the new bb
             replace_bb_with(func, *bb, bb_with_param);
             func.dfg_mut().remove_bb(*bb);
+
             let (_, node) = func.layout_mut().bbs_mut().remove(bb).unwrap();
-            func.layout_mut().bbs_mut().push_key_back(bb_with_param);
+            func.layout_mut()
+                .bbs_mut()
+                .push_key_back(bb_with_param)
+                .unwrap();
             for &inst in node.insts().keys() {
                 func.layout_mut()
                     .bb_mut(bb_with_param)
                     .insts_mut()
-                    .push_key_back(inst);
+                    .push_key_back(inst)
+                    .unwrap();
             }
 
-            // keep information consistent with the new dfg
-            let params = self.bb_params.remove(bb).unwrap();
-            self.bb_params.insert(bb_with_param, params);
+            new_bbs.push((*bb, bb_with_param));
+        }
+
+        // keep information consistent with the new dfg
+        self.record_preds(func);
+        for &(old_bb, new_bb) in &new_bbs {
+            let params = self.bb_params.remove(&old_bb).unwrap();
+            self.bb_params.insert(new_bb, params);
+
             self.defs.values_mut().for_each(|d| {
-                let def = d.remove(bb);
+                let def = d.remove(&old_bb);
                 if let Some(def) = def {
-                    d.insert(bb_with_param, def);
+                    d.insert(new_bb, def);
                 }
             });
-            self.replace_with.values_mut().for_each(|(old_bb, _)| {
-                if old_bb == bb {
-                    *old_bb = bb_with_param;
+            self.replace_with.values_mut().for_each(|(bb, _)| {
+                if *bb == old_bb {
+                    *bb = new_bb;
                 }
             });
         }
-        self.record_preds(func);
 
         for (bb, var) in self.bb_params.clone() {
-            let params = func.dfg().bb(bb).params().to_owned();
             let preds = self.preds.get(&bb).unwrap().clone();
             for pred in preds {
                 if !self.preds.contains_key(&pred) && func.layout().entry_bb().unwrap() != pred {
@@ -171,7 +172,7 @@ impl SsaBuilder {
                 }
                 // arg is the def of variable
                 let mut args: SmallVec<[Value; 6]> = SmallVec::new();
-                for (i, v) in var.iter().enumerate() {
+                for (_, v) in var.iter().enumerate() {
                     args.push(match self.read_variable(func, *v, pred) {
                         Def::Assign(val) => val,
                         Def::Argument(variable) => self.read_argument_value(func, variable, pred),

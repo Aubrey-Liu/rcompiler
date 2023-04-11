@@ -1,7 +1,7 @@
-mod const_folding;
 mod empty_bb;
 mod live;
 pub mod pass;
+mod sccp;
 mod ssa;
 mod unreachable;
 mod utils;

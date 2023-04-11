@@ -9,6 +9,7 @@ impl FunctionPass for RemoveEmptyBB {
     fn run_on(&mut self, f: &mut FunctionData) {
         if f.layout().entry_bb().is_some() {
             while self.remove_empty_bb(f) {}
+            self.try_coalesce_entry(f);
         }
     }
 }
@@ -51,6 +52,35 @@ impl RemoveEmptyBB {
         }
 
         changed
+    }
+
+    fn try_coalesce_entry(&self, f: &mut FunctionData) {
+        let entry_bb = f.layout().entry_bb().unwrap();
+        let node = f.layout().bbs().node(&entry_bb).unwrap();
+        let val = node.insts().front_key().unwrap();
+        if let ValueKind::Jump(j) = value_kind(f, *val).clone() {
+            if !j.args().is_empty() {
+                return;
+            }
+
+            replace_bb_with(f, j.target(), entry_bb);
+
+            f.layout_mut()
+                .bbs_mut()
+                .node_mut(&entry_bb)
+                .unwrap()
+                .insts_mut()
+                .clear();
+
+            let (_, node) = f.layout_mut().bbs_mut().remove(&j.target()).unwrap();
+            for val in node.insts().keys() {
+                f.layout_mut()
+                    .bb_mut(entry_bb)
+                    .insts_mut()
+                    .push_key_back(*val)
+                    .unwrap();
+            }
+        }
     }
 
     fn append_params_to_succ(&self, f: &mut FunctionData, target_bb: BasicBlock, params: &[Value]) {
