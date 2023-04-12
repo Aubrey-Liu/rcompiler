@@ -1,15 +1,24 @@
 use std::collections::HashMap;
 
-use koopa::ir::{BasicBlock, BinaryOp, FunctionData, Value, ValueKind};
+use koopa::ir::{
+    builder_traits::{LocalInstBuilder, ValueBuilder},
+    BasicBlock, BinaryOp, FunctionData, Value, ValueKind,
+};
 use smallvec::SmallVec;
 
 use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum LatticeCell {
+enum CellType {
     Top,
     Constant(i32),
     Bottom,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LatticeCell {
+    ty: CellType,
+    bb: BasicBlock,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -69,12 +78,14 @@ impl SCCP {
 
             for &val in f.layout().bbs().node(&bb).unwrap().insts().keys() {
                 if self.is_expr(f, val) {
-                    self.lattice_cells.insert(val, LatticeCell::Top);
+                    self.lattice_cells
+                        .insert(val, LatticeCell::new(CellType::Top, bb));
                 }
             }
 
             for &p in f.dfg().bb(bb).params() {
-                self.lattice_cells.insert(p, LatticeCell::Top);
+                self.lattice_cells
+                    .insert(p, LatticeCell::new(CellType::Top, bb));
             }
         }
     }
@@ -91,10 +102,9 @@ impl SCCP {
                 self.visit_ssa_edge(f);
             }
         }
-    }
 
-    fn is_expr(&self, f: &FunctionData, val: Value) -> bool {
-        matches!(value_kind(f, val), ValueKind::Binary(_))
+        self.remove_all_consts(f);
+        self.remove_trivial_branch(f);
     }
 
     fn visit_entry(&mut self, f: &FunctionData) {
@@ -168,7 +178,7 @@ impl SCCP {
     fn visit_param(&mut self, f: &FunctionData, bb: BasicBlock, param: Value) {
         if let ValueKind::BlockArgRef(arg) = value_kind(f, param) {
             let arg_idx = arg.index();
-            let mut oprands: SmallVec<[LatticeCell; 4]> = SmallVec::new();
+            let mut oprands: SmallVec<[CellType; 4]> = SmallVec::new();
             for &id in self.incoming_edges.get(&bb).unwrap() {
                 let edge = self.edges[id];
                 if !edge.executable {
@@ -188,16 +198,18 @@ impl SCCP {
                     _ => unreachable!(),
                 };
 
-                oprands.push(self.value_to_cell(f, arg));
+                oprands.push(self.value_to_type(f, arg));
             }
 
-            let new_cell = self.meet(&oprands);
+            let new_ty = self.meet(&oprands);
+
             let old_cell = *self.lattice_cells.get(&param).unwrap();
-            if new_cell == old_cell {
+            if old_cell.ty == new_ty {
                 return;
             }
 
-            self.lattice_cells.insert(param, new_cell);
+            self.lattice_cells
+                .insert(param, LatticeCell::new(new_ty, old_cell.bb));
             self.add_ssa_edges(f, param);
         }
     }
@@ -205,34 +217,35 @@ impl SCCP {
     fn visit_expr(&mut self, f: &FunctionData, expr: Value) {
         if let ValueKind::Binary(b) = value_kind(f, expr) {
             let old_cell = *self.lattice_cells.get(&expr).unwrap();
-            let lhs = self.value_to_cell(f, b.lhs());
-            let rhs = self.value_to_cell(f, b.rhs());
-            let new_cell = self.evaluate(b.op(), lhs, rhs);
-            if old_cell == new_cell {
+            let lhs = self.value_to_type(f, b.lhs());
+            let rhs = self.value_to_type(f, b.rhs());
+            let new_ty = self.evaluate(b.op(), lhs, rhs);
+            if old_cell.ty == new_ty {
                 return;
             }
-            self.lattice_cells.insert(expr, new_cell);
+            self.lattice_cells
+                .insert(expr, LatticeCell::new(new_ty, old_cell.bb));
             self.add_ssa_edges(f, expr);
         }
     }
 
     fn add_ssa_edges(&mut self, f: &FunctionData, val: Value) {
-        let cell = *self.lattice_cells.get(&val).unwrap();
+        let cell_ty = self.lattice_cells.get(&val).unwrap().ty;
         for &user in f.dfg().value(val).used_by() {
             let bb = f.layout().parent_bb(user).unwrap();
             if self.is_control_br(f, user, val) {
                 if let ValueKind::Branch(br) = value_kind(f, user) {
-                    match cell {
-                        LatticeCell::Top => {}
-                        LatticeCell::Constant(i) if i != 0 => {
+                    match cell_ty {
+                        CellType::Top => {}
+                        CellType::Constant(i) if i != 0 => {
                             let id = self.get_edge_id(bb, br.true_bb());
                             self.flow_worklist.push(id);
                         }
-                        LatticeCell::Constant(_) => {
+                        CellType::Constant(_) => {
                             let id = self.get_edge_id(bb, br.false_bb());
                             self.flow_worklist.push(id);
                         }
-                        LatticeCell::Bottom => {
+                        CellType::Bottom => {
                             let edges = self.outcoming_edges.get(&bb).unwrap();
                             self.flow_worklist.extend(edges);
                         }
@@ -244,6 +257,80 @@ impl SCCP {
                     src: val,
                     dst: user,
                 });
+            }
+        }
+    }
+
+    fn remove_all_consts(&self, f: &mut FunctionData) {
+        for (val, cell) in &self.lattice_cells {
+            if let CellType::Constant(i) = cell.ty {
+                if let ValueKind::BlockArgRef(arg) = value_kind(f, *val).clone() {
+                    self.remove_const_param(f, cell.bb, arg.index(), i);
+                } else {
+                    f.dfg_mut().replace_value_with(*val).integer(i);
+                    f.layout_mut().bb_mut(cell.bb).insts_mut().remove(val);
+                }
+            }
+        }
+    }
+
+    fn remove_const_param(&self, f: &mut FunctionData, bb: BasicBlock, idx: usize, val: i32) {
+        self.remove_unused_arg(f, bb, idx);
+        let param = f.dfg_mut().bb_mut(bb).params_mut().remove(idx);
+        f.dfg_mut().replace_value_with(param).integer(val);
+    }
+
+    fn remove_unused_arg(&self, f: &mut FunctionData, bb: BasicBlock, idx: usize) {
+        for &id in self.incoming_edges.get(&bb).unwrap() {
+            let edge = &self.edges[id];
+            let exit = f
+                .layout()
+                .bbs()
+                .node(&edge.src)
+                .map(|n| *n.insts().back_key().unwrap())
+                .unwrap();
+            let mut data = f.dfg().value(exit).clone();
+            match data.kind_mut() {
+                ValueKind::Jump(j) => {
+                    j.args_mut().remove(idx);
+                }
+                ValueKind::Branch(br) => {
+                    if br.true_bb() == bb {
+                        br.true_args_mut().remove(idx);
+                    } else {
+                        br.false_args_mut().remove(idx);
+                    }
+                }
+                _ => unreachable!(),
+            }
+            f.dfg_mut().replace_value_with(exit).raw(data);
+        }
+    }
+
+    fn remove_trivial_branch(&self, f: &mut FunctionData) {
+        let flow_insts: Vec<_> = f
+            .layout()
+            .bbs()
+            .nodes()
+            .map(|node| *node.insts().back_key().unwrap())
+            .collect();
+
+        for val in flow_insts {
+            match value_kind(f, val).clone() {
+                ValueKind::Branch(br) => {
+                    let cond = br.cond();
+                    if let ValueKind::Integer(i) = value_kind(f, cond).clone() {
+                        let (target, args) = if i.value() != 0 {
+                            (br.true_bb(), br.true_args().to_vec())
+                        } else {
+                            (br.false_bb(), br.false_args().to_vec())
+                        };
+                        f.dfg_mut()
+                            .replace_value_with(val)
+                            .jump_with_args(target, args);
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -322,15 +409,15 @@ impl SCCP {
         executable_in_edges != 1
     }
 
-    fn meet(&self, operands: &[LatticeCell]) -> LatticeCell {
-        let mut res = LatticeCell::Top;
+    fn meet(&self, operands: &[CellType]) -> CellType {
+        let mut res = CellType::Top;
         for &opr in operands {
             match (res, opr) {
-                (LatticeCell::Top, _) => res = opr,
-                (_, LatticeCell::Top) | (LatticeCell::Bottom, _) => {}
-                (LatticeCell::Constant(i), LatticeCell::Constant(j)) if i == j => {}
-                (LatticeCell::Constant(_), LatticeCell::Constant(_)) | (_, LatticeCell::Bottom) => {
-                    res = LatticeCell::Bottom;
+                (CellType::Top, _) => res = opr,
+                (_, CellType::Top) | (CellType::Bottom, _) => {}
+                (CellType::Constant(i), CellType::Constant(j)) if i == j => {}
+                (CellType::Constant(_), CellType::Constant(_)) | (_, CellType::Bottom) => {
+                    res = CellType::Bottom;
                 }
             }
         }
@@ -338,13 +425,13 @@ impl SCCP {
         res
     }
 
-    fn value_to_cell(&self, f: &FunctionData, val: Value) -> LatticeCell {
+    fn value_to_type(&self, f: &FunctionData, val: Value) -> CellType {
         if let ValueKind::Integer(i) = value_kind(f, val) {
-            LatticeCell::Constant(i.value())
+            CellType::Constant(i.value())
         } else if self.lattice_cells.contains_key(&val) {
-            *self.lattice_cells.get(&val).unwrap()
+            self.lattice_cells.get(&val).unwrap().ty
         } else {
-            LatticeCell::Bottom
+            CellType::Bottom
         }
     }
 
@@ -358,6 +445,10 @@ impl SCCP {
         false
     }
 
+    fn is_expr(&self, f: &FunctionData, val: Value) -> bool {
+        matches!(value_kind(f, val), ValueKind::Binary(_))
+    }
+
     fn get_edge_id(&self, src: BasicBlock, dst: BasicBlock) -> EdgeId {
         let ids = self.outcoming_edges.get(&src).unwrap();
         let edge0 = self.edges[ids[0]];
@@ -368,16 +459,11 @@ impl SCCP {
         }
     }
 
-    fn evaluate(
-        &mut self,
-        op: BinaryOp,
-        lhs_cell: LatticeCell,
-        rhs_cell: LatticeCell,
-    ) -> LatticeCell {
-        match (lhs_cell, rhs_cell) {
-            (LatticeCell::Bottom, _) | (_, LatticeCell::Bottom) => LatticeCell::Bottom,
-            (LatticeCell::Top, _) | (_, LatticeCell::Top) => LatticeCell::Top,
-            (LatticeCell::Constant(lhs), LatticeCell::Constant(rhs)) => {
+    fn evaluate(&mut self, op: BinaryOp, lhs_ty: CellType, rhs_ty: CellType) -> CellType {
+        match (lhs_ty, rhs_ty) {
+            (CellType::Bottom, _) | (_, CellType::Bottom) => CellType::Bottom,
+            (CellType::Top, _) | (_, CellType::Top) => CellType::Top,
+            (CellType::Constant(lhs), CellType::Constant(rhs)) => {
                 let lhs = lhs;
                 let rhs = rhs;
                 let result = match op {
@@ -409,9 +495,15 @@ impl SCCP {
                     _ => unimplemented!(),
                 };
 
-                LatticeCell::Constant(result)
+                CellType::Constant(result)
             }
         }
+    }
+}
+
+impl LatticeCell {
+    fn new(ty: CellType, bb: BasicBlock) -> Self {
+        Self { ty, bb }
     }
 }
 

@@ -278,6 +278,7 @@ impl SsaBuilder {
                 Def::Assign(val) => replace_variable(f, origin, val),
                 Def::Argument(variable) => self.replace_var_with_arg(f, origin, variable),
             }
+            f.dfg_mut().remove_value(origin);
             f.layout_mut().bb_mut(bb).insts_mut().remove(&origin);
         }
     }

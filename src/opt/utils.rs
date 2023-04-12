@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use koopa::ir::{
     builder_traits::{LocalInstBuilder, ValueBuilder},
     *,
@@ -43,6 +45,41 @@ pub fn replace_bb_with(f: &mut FunctionData, bb: BasicBlock, new_bb: BasicBlock)
 }
 
 pub fn replace_variable(f: &mut FunctionData, origin: Value, replace_by: Value) {
-    let data = f.dfg().value(replace_by).clone();
-    f.dfg_mut().replace_value_with(origin).raw(data);
+    for user in f.dfg().value(origin).used_by().clone() {
+        let used_by = f.dfg().value(user).used_by().clone();
+        let mut data = f.dfg().value(user).clone();
+        match data.kind_mut() {
+            ValueKind::Branch(br) => *br.cond_mut() = replace_by,
+            ValueKind::Return(ret) => *ret.value_mut() = Some(replace_by),
+            ValueKind::Store(s) => *s.value_mut() = replace_by,
+            ValueKind::GetElemPtr(g) => *g.index_mut() = replace_by,
+            ValueKind::GetPtr(g) => *g.index_mut() = replace_by,
+            ValueKind::Binary(b) => {
+                if origin == b.lhs() {
+                    *b.lhs_mut() = replace_by;
+                } else {
+                    *b.rhs_mut() = replace_by;
+                }
+            }
+            ValueKind::Call(call) => {
+                for arg in call.args_mut() {
+                    if *arg == origin {
+                        *arg = replace_by;
+                    }
+                }
+            }
+            _ => {}
+        }
+        f.dfg_mut().replace_value_with(user).raw(data);
+        fix_used_by(f, &used_by);
+    }
+}
+
+fn fix_used_by(f: &mut FunctionData, used_by: &HashSet<Value>) {
+    for &user in used_by {
+        let deeper_used_by = f.dfg().value(user).used_by().clone();
+        let data = f.dfg().value(user).clone();
+        f.dfg_mut().replace_value_with(user).raw(data);
+        fix_used_by(f, &deeper_used_by);
+    }
 }
