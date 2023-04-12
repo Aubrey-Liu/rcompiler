@@ -68,6 +68,9 @@ impl<'i> GenerateIR<'i> for FuncDef {
         // allocate the return value
         if !matches!(self.ret_kind, ExprKind::Void) {
             let ret_val = local_alloc(recorder, ret_ty.get_ir_ty(), Some("%ret".to_owned()));
+            let init = recorder.new_value().integer(0);
+            let store = recorder.new_value().store(init, ret_val);
+            recorder.push_inst(store);
             recorder.func_mut().set_ret_val(ret_val);
         }
 

@@ -197,14 +197,12 @@ impl SsaBuilder {
             }
             let mut user_data = f.dfg().value(user).clone();
             match user_data.kind_mut() {
-                ValueKind::Jump(j) => {
-                    *j.args_mut() = args.to_vec();
-                }
+                ValueKind::Jump(j) => j.args_mut().extend(args.clone()),
                 ValueKind::Branch(br) => {
                     if br.true_bb() == target {
-                        *br.true_args_mut() = args.to_vec();
+                        br.true_args_mut().extend(args.clone());
                     } else {
-                        *br.false_args_mut() = args.to_vec();
+                        br.false_args_mut().extend(args.clone());
                     }
                 }
                 _ => unreachable!(),
@@ -280,7 +278,6 @@ impl SsaBuilder {
                 Def::Assign(val) => replace_variable(f, origin, val),
                 Def::Argument(variable) => self.replace_var_with_arg(f, origin, variable),
             }
-            f.dfg_mut().remove_value(origin);
             f.layout_mut().bb_mut(bb).insts_mut().remove(&origin);
         }
     }

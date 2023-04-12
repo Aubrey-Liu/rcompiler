@@ -88,7 +88,7 @@ pub fn eval_binary(op: BinaryOp, lhs: i32, rhs: i32) -> i32 {
             if rhs != 0 {
                 lhs % rhs
             } else {
-                panic!("attempt to calculate the remainder of `1_i32` with a divisor of zero");
+                panic!("attempt to calculate the remainder of integer with a divisor of zero");
             }
         }
     }
