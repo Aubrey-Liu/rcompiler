@@ -12,7 +12,7 @@ use crate::sema::symbol::SymbolTable;
 use crate::sema::ty::{Type, TypeKind};
 
 pub struct ProgramRecorder<'i> {
-    pub program: Program,
+    program: &'i mut Program,
     symbols: &'i SymbolTable,
     values: HashMap<&'i str, Value>,
     funcs: HashMap<&'i str, Function>,
@@ -36,9 +36,9 @@ pub struct LoopInfo {
 }
 
 impl<'i> ProgramRecorder<'i> {
-    pub fn new(symbols: &'i SymbolTable) -> Self {
+    pub fn new(program: &'i mut Program, symbols: &'i SymbolTable) -> Self {
         Self {
-            program: Program::new(),
+            program,
             symbols,
             values: HashMap::new(),
             funcs: HashMap::new(),

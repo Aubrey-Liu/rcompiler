@@ -45,10 +45,11 @@ pub fn generate_mem_ir(input: &str) -> Result<Program> {
     let mut symbols = SymbolTable::new();
     symbols.visit_comp_unit(&mut ast);
 
-    let mut recorder = ProgramRecorder::new(&symbols);
+    let mut program = Program::new();
+    let mut recorder = ProgramRecorder::new(&mut program, &symbols);
     ast.generate_ir(&mut recorder)?;
 
-    Ok(recorder.program)
+    Ok(program)
 }
 
 pub fn generate_ir(input: &str, output: &str) -> Result<()> {
