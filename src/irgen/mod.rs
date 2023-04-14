@@ -15,7 +15,6 @@ use koopa::ir::BinaryOp as IrBinaryOp;
 use koopa::ir::Type as IrType;
 use koopa::ir::{BasicBlock, Function, FunctionData, Program, Value};
 
-use crate::ast::visit::MutVisitor;
 use crate::opt::optimize;
 use crate::sema::*;
 use crate::sysy;
@@ -36,14 +35,14 @@ pub fn generate_mem_ir(input: &str) -> Result<Program> {
         .parse(&mut errors, &input)
         .unwrap();
 
-    let mut manager = NameManager::new();
-    manager.visit_comp_unit(&mut ast);
+    let mut name_manager = NameManager::new();
+    ast.accept(&mut name_manager);
 
     let mut evaluator = Evaluator::new();
-    evaluator.visit_comp_unit(&mut ast);
+    ast.accept(&mut evaluator);
 
     let mut symbols = SymbolTable::new();
-    symbols.visit_comp_unit(&mut ast);
+    ast.accept(&mut symbols);
 
     let mut program = Program::new();
     let mut recorder = ProgramRecorder::new(&mut program, &symbols);

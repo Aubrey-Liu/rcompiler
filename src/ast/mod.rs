@@ -138,3 +138,9 @@ impl ConstDecl {
         Self { lval, init, kind }
     }
 }
+
+impl CompUnit {
+    pub fn accept<'ast, V: MutVisitor<'ast>>(&'ast mut self, v: &mut V) {
+        v.visit_comp_unit(self);
+    }
+}
