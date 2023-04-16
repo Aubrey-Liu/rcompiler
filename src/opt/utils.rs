@@ -61,13 +61,11 @@ pub fn replace_variable(f: &mut FunctionData, origin: Value, replace_by: Value) 
                     *b.rhs_mut() = replace_by;
                 }
             }
-            ValueKind::Call(call) => {
-                for arg in call.args_mut() {
-                    if *arg == origin {
-                        *arg = replace_by;
-                    }
+            ValueKind::Call(call) => call.args_mut().iter_mut().for_each(|arg| {
+                if *arg == origin {
+                    *arg = replace_by;
                 }
-            }
+            }),
             _ => {}
         }
         f.dfg_mut().replace_value_with(user).raw(data);
