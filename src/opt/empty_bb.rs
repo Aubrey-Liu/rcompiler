@@ -33,22 +33,21 @@ impl RemoveEmptyBB {
             if let ValueKind::Jump(j) = f.dfg().value(val).kind().clone() {
                 let params = f.dfg().bb(bb).params().to_owned();
                 let target_params_num = f.dfg().bb(j.target()).params().len();
-                let args = j.args();
-
-                if params.len() < args.len() {
+                if params.len() < j.args().len() {
                     self.append_args_to_pred(f, bb, &j.args()[params.len()..]);
                 }
                 replace_bb_with(f, bb, j.target());
                 if params.len() > target_params_num {
                     self.append_params_to_succ(f, j.target(), &params[target_params_num..]);
-                    f.dfg_mut().bb_mut(bb).params_mut().clear();
+                    f.dfg_mut()
+                        .bb_mut(bb)
+                        .params_mut()
+                        .truncate(target_params_num);
                 }
-            } else {
-                unreachable!()
+                f.dfg_mut().remove_value(val);
+                f.dfg_mut().remove_bb(bb);
+                f.layout_mut().bbs_mut().remove(&bb);
             }
-            f.dfg_mut().remove_value(val);
-            f.dfg_mut().remove_bb(bb);
-            f.layout_mut().bbs_mut().remove(&bb);
         }
 
         changed

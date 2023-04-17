@@ -73,11 +73,19 @@ pub fn replace_variable(f: &mut FunctionData, origin: Value, replace_by: Value) 
     }
 }
 
-fn fix_used_by(f: &mut FunctionData, used_by: &HashSet<Value>) {
+pub fn fix_used_by(f: &mut FunctionData, used_by: &HashSet<Value>) {
     for &user in used_by {
         let deeper_used_by = f.dfg().value(user).used_by().clone();
         let data = f.dfg().value(user).clone();
         f.dfg_mut().replace_value_with(user).raw(data);
         fix_used_by(f, &deeper_used_by);
     }
+}
+
+pub fn last_inst_of_bb(f: &FunctionData, bb: BasicBlock) -> Value {
+    f.layout()
+        .bbs()
+        .node(&bb)
+        .map(|n| *n.insts().back_key().unwrap())
+        .unwrap()
 }

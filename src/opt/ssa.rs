@@ -221,11 +221,7 @@ impl SsaBuilder {
     }
 
     fn read_variable_recur(&mut self, f: &FunctionData, variable: Value, bb: BasicBlock) -> Def {
-        let preds = self.cfg.get(&bb);
-        if preds.is_none() {
-            return Def::Argument(variable);
-        }
-        let preds = preds.unwrap().clone();
+        let preds = self.cfg.get(&bb).unwrap().clone();
         let def = if !self.is_sealed(bb) {
             self.incomplete_bbs.entry(bb).or_default().push(variable);
             self.bb_params.entry(bb).or_default().push(variable);

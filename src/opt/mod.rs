@@ -21,7 +21,6 @@ pub fn optimize(p: &mut Program) {
     pass_runner.register_pass(Pass::FunctionPass(Box::new(RemoveUnreachable)));
     pass_runner.register_pass(Pass::FunctionPass(Box::new(SsaBuilder::new())));
     pass_runner.register_pass(Pass::FunctionPass(Box::new(SCCP::new())));
-    pass_runner.register_pass(Pass::FunctionPass(Box::new(RemoveUnreachable)));
     pass_runner.register_pass(Pass::FunctionPass(Box::new(RemoveEmptyBB)));
     pass_runner.run_passes(p);
 }

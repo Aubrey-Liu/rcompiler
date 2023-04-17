@@ -105,6 +105,7 @@ impl SCCP {
 
         self.remove_all_consts(f);
         self.remove_trivial_branch(f);
+        self.remove_unused_integers(f);
     }
 
     fn visit_entry(&mut self, f: &FunctionData) {
@@ -185,12 +186,7 @@ impl SCCP {
                     continue;
                 }
                 let src = edge.src;
-                let src_exit = f
-                    .layout()
-                    .bbs()
-                    .node(&src)
-                    .map(|n| *n.insts().back_key().unwrap())
-                    .unwrap();
+                let src_exit = last_inst_of_bb(f, src);
                 let arg = match value_kind(f, src_exit) {
                     ValueKind::Jump(j) => j.args()[arg_idx],
                     ValueKind::Branch(br) if br.true_bb() == bb => br.true_args()[arg_idx],
@@ -262,14 +258,16 @@ impl SCCP {
     }
 
     fn remove_all_consts(&self, f: &mut FunctionData) {
-        for (val, cell) in &self.lattice_cells {
+        for (&val, cell) in &self.lattice_cells {
             if let CellType::Constant(i) = cell.ty {
-                if let ValueKind::BlockArgRef(arg) = value_kind(f, *val).clone() {
+                let users = f.dfg().value(val).used_by().clone();
+                if let ValueKind::BlockArgRef(arg) = value_kind(f, val).clone() {
                     self.remove_const_param(f, cell.bb, arg.index(), i);
                 } else {
-                    f.dfg_mut().replace_value_with(*val).integer(i);
-                    f.layout_mut().bb_mut(cell.bb).insts_mut().remove(val);
+                    f.dfg_mut().replace_value_with(val).integer(i);
+                    f.layout_mut().bb_mut(cell.bb).insts_mut().remove(&val);
                 }
+                fix_used_by(f, &users);
             }
         }
     }
@@ -283,12 +281,7 @@ impl SCCP {
     fn remove_unused_arg(&self, f: &mut FunctionData, bb: BasicBlock, idx: usize) {
         for &id in self.incoming_edges.get(&bb).unwrap() {
             let edge = &self.edges[id];
-            let exit = f
-                .layout()
-                .bbs()
-                .node(&edge.src)
-                .map(|n| *n.insts().back_key().unwrap())
-                .unwrap();
+            let exit = last_inst_of_bb(f, edge.src);
             let mut data = f.dfg().value(exit).clone();
             match data.kind_mut() {
                 ValueKind::Jump(j) => {
@@ -311,8 +304,8 @@ impl SCCP {
         let flow_insts: Vec<_> = f
             .layout()
             .bbs()
-            .nodes()
-            .map(|node| *node.insts().back_key().unwrap())
+            .keys()
+            .map(|bb| last_inst_of_bb(f, *bb))
             .collect();
 
         for val in flow_insts {
@@ -333,6 +326,19 @@ impl SCCP {
                 _ => {}
             }
         }
+    }
+
+    fn remove_unused_integers(&self, f: &mut FunctionData) {
+        let mut unused_consts = Vec::new();
+        for (&val, data) in f.dfg().values() {
+            if matches!(data.kind(), ValueKind::Integer(_)) && data.used_by().is_empty() {
+                unused_consts.push(val);
+            }
+        }
+
+        unused_consts.iter().for_each(|v| {
+            f.dfg_mut().remove_value(*v);
+        });
     }
 
     fn is_reachable(&self, bb: BasicBlock) -> bool {
