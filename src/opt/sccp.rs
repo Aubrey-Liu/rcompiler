@@ -210,7 +210,7 @@ impl SCCP {
 
             self.lattice_cells
                 .insert(param, LatticeCell::new(new_ty, old_cell.bb));
-            self.add_ssa_edges(f, param);
+            self.add_edges(f, param);
         }
     }
 
@@ -225,11 +225,11 @@ impl SCCP {
             }
             self.lattice_cells
                 .insert(expr, LatticeCell::new(new_ty, old_cell.bb));
-            self.add_ssa_edges(f, expr);
+            self.add_edges(f, expr);
         }
     }
 
-    fn add_ssa_edges(&mut self, f: &FunctionData, val: Value) {
+    fn add_edges(&mut self, f: &FunctionData, val: Value) {
         let cell_ty = self.lattice_cells.get(&val).unwrap().ty;
         for &user in f.dfg().value(val).used_by() {
             let bb = f.layout().parent_bb(user).unwrap();
