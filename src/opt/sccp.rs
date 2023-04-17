@@ -50,6 +50,7 @@ impl FunctionPass for SCCP {
     fn run_on(&mut self, f: &mut FunctionData) {
         if f.layout().entry_bb().is_some() {
             self.work(f);
+            self.clear();
         }
     }
 }
@@ -60,7 +61,7 @@ impl SCCP {
     }
 
     fn init(&mut self, f: &FunctionData) {
-        for &bb in f.layout().bbs().keys() {
+        for (&bb, node) in f.layout().bbs() {
             for &user in f.dfg().bb(bb).used_by() {
                 let pred = f.layout().parent_bb(user).unwrap();
                 let edge = FlowEdge::new(pred, bb);
@@ -76,7 +77,7 @@ impl SCCP {
                 }
             }
 
-            for &val in f.layout().bbs().node(&bb).unwrap().insts().keys() {
+            for &val in node.insts().keys() {
                 if self.is_expr(f, val) {
                     self.lattice_cells
                         .insert(val, LatticeCell::new(CellType::Top, bb));
@@ -258,40 +259,42 @@ impl SCCP {
     }
 
     fn remove_all_consts(&self, f: &mut FunctionData) {
+        let mut removed_params = Vec::new();
         for (&val, cell) in &self.lattice_cells {
+            let bb = cell.bb;
             if let CellType::Constant(i) = cell.ty {
                 let users = f.dfg().value(val).used_by().clone();
-                if let ValueKind::BlockArgRef(arg) = value_kind(f, val).clone() {
-                    self.remove_const_param(f, cell.bb, arg.index(), i);
+                if let ValueKind::BlockArgRef(_) = value_kind(f, val).clone() {
+                    removed_params.push((bb, val));
+                    f.dfg_mut().bb_mut(bb).params_mut().retain(|v| *v != val);
                 } else {
-                    f.dfg_mut().replace_value_with(val).integer(i);
                     f.layout_mut().bb_mut(cell.bb).insts_mut().remove(&val);
                 }
+                f.dfg_mut().replace_value_with(val).integer(i);
                 fix_used_by(f, &users);
             }
         }
+
+        removed_params
+            .iter()
+            .for_each(|(bb, p)| self.remove_unused_arg(f, *bb, *p));
     }
 
-    fn remove_const_param(&self, f: &mut FunctionData, bb: BasicBlock, idx: usize, val: i32) {
-        self.remove_unused_arg(f, bb, idx);
-        let param = f.dfg_mut().bb_mut(bb).params_mut().remove(idx);
-        f.dfg_mut().replace_value_with(param).integer(val);
-    }
-
-    fn remove_unused_arg(&self, f: &mut FunctionData, bb: BasicBlock, idx: usize) {
+    fn remove_unused_arg(&self, f: &mut FunctionData, bb: BasicBlock, val: Value) {
         for &id in self.incoming_edges.get(&bb).unwrap() {
             let edge = &self.edges[id];
             let exit = last_inst_of_bb(f, edge.src);
             let mut data = f.dfg().value(exit).clone();
             match data.kind_mut() {
                 ValueKind::Jump(j) => {
-                    j.args_mut().remove(idx);
+                    j.args_mut().retain(|v| *v != val);
                 }
                 ValueKind::Branch(br) => {
                     if br.true_bb() == bb {
-                        br.true_args_mut().remove(idx);
-                    } else {
-                        br.false_args_mut().remove(idx);
+                        br.true_args_mut().retain(|v| *v != val);
+                    }
+                    if br.false_bb() == bb {
+                        br.false_args_mut().retain(|v| *v != val);
                     }
                 }
                 _ => unreachable!(),
@@ -504,6 +507,13 @@ impl SCCP {
                 CellType::Constant(result)
             }
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.edges.clear();
+        self.incoming_edges.clear();
+        self.outcoming_edges.clear();
+        self.lattice_cells.clear();
     }
 }
 

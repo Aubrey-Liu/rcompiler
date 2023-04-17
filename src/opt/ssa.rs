@@ -191,24 +191,21 @@ impl SsaBuilder {
         target: BasicBlock,
         args: SmallVec<[Value; 6]>,
     ) {
-        for user in f.dfg().bb(target).used_by().clone() {
-            if f.layout().parent_bb(user).unwrap() != bb {
-                continue;
-            }
-            let mut user_data = f.dfg().value(user).clone();
-            match user_data.kind_mut() {
-                ValueKind::Jump(j) => j.args_mut().extend(args.clone()),
-                ValueKind::Branch(br) => {
-                    if br.true_bb() == target {
-                        br.true_args_mut().extend(args.clone());
-                    } else {
-                        br.false_args_mut().extend(args.clone());
-                    }
+        let exit = last_inst_of_bb(f, bb);
+        let mut user_data = f.dfg().value(exit).clone();
+        match user_data.kind_mut() {
+            ValueKind::Jump(j) => *j.args_mut() = args.to_vec(),
+            ValueKind::Branch(br) => {
+                if br.true_bb() == target {
+                    *br.true_args_mut() = args.to_vec();
                 }
-                _ => unreachable!(),
+                if br.false_bb() == target {
+                    *br.false_args_mut() = args.to_vec();
+                }
             }
-            f.dfg_mut().replace_value_with(user).raw(user_data);
+            _ => unreachable!(),
         }
+        f.dfg_mut().replace_value_with(exit).raw(user_data);
     }
 
     fn read_variable(&mut self, f: &FunctionData, variable: Value, bb: BasicBlock) -> Def {
