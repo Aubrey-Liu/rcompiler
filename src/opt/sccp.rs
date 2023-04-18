@@ -259,14 +259,13 @@ impl SCCP {
     }
 
     fn remove_all_consts(&self, f: &mut FunctionData) {
-        let mut removed_params = Vec::new();
+        let mut removed_params: HashMap<BasicBlock, Vec<usize>> = HashMap::new();
         for (&val, cell) in &self.lattice_cells {
             let bb = cell.bb;
             if let CellType::Constant(i) = cell.ty {
                 let users = f.dfg().value(val).used_by().clone();
-                if let ValueKind::BlockArgRef(_) = value_kind(f, val).clone() {
-                    removed_params.push((bb, val));
-                    f.dfg_mut().bb_mut(bb).params_mut().retain(|v| *v != val);
+                if let ValueKind::BlockArgRef(arg) = value_kind(f, val).clone() {
+                    removed_params.entry(bb).or_default().push(arg.index());
                 } else {
                     f.layout_mut().bb_mut(cell.bb).insts_mut().remove(&val);
                 }
@@ -276,25 +275,39 @@ impl SCCP {
         }
 
         removed_params
-            .iter()
-            .for_each(|(bb, p)| self.remove_unused_arg(f, *bb, *p));
+            .values_mut()
+            .for_each(|idxs| idxs.sort_by(|a, b| b.cmp(a)));
+
+        for (&bb, idxs) in &removed_params {
+            for &idx in idxs {
+                self.remove_unused_arg(f, bb, idx);
+                f.dfg_mut().bb_mut(bb).params_mut().remove(idx);
+            }
+            for (i, &param) in f.dfg().bb(bb).params().to_owned().iter().enumerate() {
+                let mut data = f.dfg().value(param).clone();
+                if let ValueKind::BlockArgRef(arg) = data.kind_mut() {
+                    *arg.index_mut() = i;
+                }
+                f.dfg_mut().replace_value_with(param).raw(data);
+            }
+        }
     }
 
-    fn remove_unused_arg(&self, f: &mut FunctionData, bb: BasicBlock, val: Value) {
+    fn remove_unused_arg(&self, f: &mut FunctionData, bb: BasicBlock, idx: usize) {
         for &id in self.incoming_edges.get(&bb).unwrap() {
             let edge = &self.edges[id];
             let exit = last_inst_of_bb(f, edge.src);
             let mut data = f.dfg().value(exit).clone();
             match data.kind_mut() {
                 ValueKind::Jump(j) => {
-                    j.args_mut().retain(|v| *v != val);
+                    j.args_mut().remove(idx);
                 }
                 ValueKind::Branch(br) => {
                     if br.true_bb() == bb {
-                        br.true_args_mut().retain(|v| *v != val);
+                        br.true_args_mut().remove(idx);
                     }
                     if br.false_bb() == bb {
-                        br.false_args_mut().retain(|v| *v != val);
+                        br.false_args_mut().remove(idx);
                     }
                 }
                 _ => unreachable!(),

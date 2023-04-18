@@ -49,7 +49,6 @@ pub fn replace_variable(f: &mut FunctionData, origin: Value, replace_by: Value) 
         let used_by = f.dfg().value(user).used_by().clone();
         let mut data = f.dfg().value(user).clone();
         match data.kind_mut() {
-            ValueKind::Branch(br) => *br.cond_mut() = replace_by,
             ValueKind::Return(ret) => *ret.value_mut() = Some(replace_by),
             ValueKind::Store(s) => *s.value_mut() = replace_by,
             ValueKind::GetElemPtr(g) => *g.index_mut() = replace_by,
@@ -66,6 +65,26 @@ pub fn replace_variable(f: &mut FunctionData, origin: Value, replace_by: Value) 
                     *arg = replace_by;
                 }
             }),
+            ValueKind::Jump(j) => j.args_mut().iter_mut().for_each(|arg| {
+                if *arg == origin {
+                    *arg = replace_by;
+                }
+            }),
+            ValueKind::Branch(br) => {
+                if br.cond() == origin {
+                    *br.cond_mut() = replace_by;
+                }
+                br.true_args_mut().iter_mut().for_each(|arg| {
+                    if *arg == origin {
+                        *arg = replace_by;
+                    }
+                });
+                br.false_args_mut().iter_mut().for_each(|arg| {
+                    if *arg == origin {
+                        *arg = replace_by;
+                    }
+                });
+            }
             _ => {}
         }
         f.dfg_mut().replace_value_with(user).raw(data);
