@@ -37,7 +37,7 @@ struct FlowEdge {
 type EdgeId = usize;
 
 #[derive(Debug, Default)]
-pub struct SCCP {
+pub struct Sccp {
     flow_worklist: Vec<EdgeId>,
     ssa_worklist: Vec<SsaEdge>,
     lattice_cells: HashMap<Value, LatticeCell>,
@@ -46,7 +46,7 @@ pub struct SCCP {
     outcoming_edges: HashMap<BasicBlock, SmallVec<[EdgeId; 2]>>,
 }
 
-impl FunctionPass for SCCP {
+impl FunctionPass for Sccp {
     fn run_on(&mut self, f: &mut FunctionData) {
         if f.layout().entry_bb().is_some() {
             self.work(f);
@@ -55,7 +55,7 @@ impl FunctionPass for SCCP {
     }
 }
 
-impl SCCP {
+impl Sccp {
     pub fn new() -> Self {
         Default::default()
     }
@@ -319,21 +319,18 @@ impl SCCP {
             .collect();
 
         for val in flow_insts {
-            match value_kind(f, val).clone() {
-                ValueKind::Branch(br) => {
-                    let cond = br.cond();
-                    if let ValueKind::Integer(i) = value_kind(f, cond).clone() {
-                        let (target, args) = if i.value() != 0 {
-                            (br.true_bb(), br.true_args().to_vec())
-                        } else {
-                            (br.false_bb(), br.false_args().to_vec())
-                        };
-                        f.dfg_mut()
-                            .replace_value_with(val)
-                            .jump_with_args(target, args);
-                    }
+            if let ValueKind::Branch(br) = value_kind(f, val).clone() {
+                let cond = br.cond();
+                if let ValueKind::Integer(i) = value_kind(f, cond).clone() {
+                    let (target, args) = if i.value() != 0 {
+                        (br.true_bb(), br.true_args().to_vec())
+                    } else {
+                        (br.false_bb(), br.false_args().to_vec())
+                    };
+                    f.dfg_mut()
+                        .replace_value_with(val)
+                        .jump_with_args(target, args);
                 }
-                _ => {}
             }
         }
     }

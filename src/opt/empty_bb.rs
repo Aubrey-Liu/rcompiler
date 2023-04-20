@@ -33,7 +33,7 @@ impl RemoveEmptyBB {
 
         for &(bb, val) in &empty_bbs {
             if let ValueKind::Jump(j) = f.dfg().value(val).kind().clone() {
-                self.replace_empty_bb(f, bb, j.target(), &j.args());
+                self.replace_empty_bb(f, bb, j.target(), j.args());
                 f.dfg_mut().remove_value(val);
                 f.dfg_mut().remove_bb(bb);
                 f.layout_mut().bbs_mut().remove(&bb);
