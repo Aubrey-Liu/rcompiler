@@ -283,13 +283,7 @@ impl SCCP {
                 self.remove_unused_arg(f, bb, idx);
                 f.dfg_mut().bb_mut(bb).params_mut().remove(idx);
             }
-            for (i, &param) in f.dfg().bb(bb).params().to_owned().iter().enumerate() {
-                let mut data = f.dfg().value(param).clone();
-                if let ValueKind::BlockArgRef(arg) = data.kind_mut() {
-                    *arg.index_mut() = i;
-                }
-                f.dfg_mut().replace_value_with(param).raw(data);
-            }
+            fix_bb_param_idx(f, bb);
         }
     }
 

@@ -1,5 +1,6 @@
+use std::collections::HashMap;
+
 use koopa::ir::{builder_traits::ValueBuilder, BasicBlock, FunctionData, Value, ValueKind};
-use smallvec::SmallVec;
 
 use super::*;
 
@@ -15,19 +16,21 @@ impl FunctionPass for RemoveTrivialArgs {
 
 impl RemoveTrivialArgs {
     fn try_remove_trivial_args(&self, f: &mut FunctionData) -> bool {
-        let mut trivial_arg = SmallVec::<[(BasicBlock, usize, Value); 1]>::new();
-        'outer: for (&bb, data) in f.dfg().bbs() {
-            for i in 0..data.params().len() {
+        let mut trivial_arg: HashMap<Value, (BasicBlock, usize)> = HashMap::new();
+        for (&bb, data) in f.dfg().bbs() {
+            for (i, arg) in data.params().iter().enumerate() {
                 let same = match self.is_trivial(f, bb, i) {
                     Some(same) => same,
                     None => continue,
                 };
-                trivial_arg.push((bb, i, same));
-                break 'outer;
+                // replace the argument only when it's not related to any other possible replacements
+                if !trivial_arg.contains_key(arg) {
+                    trivial_arg.insert(same, (bb, i));
+                }
             }
         }
 
-        for &(bb, idx, same) in &trivial_arg {
+        for (&same, &(bb, idx)) in &trivial_arg {
             self.remove_trivial_arg(f, bb, idx, same);
         }
 
@@ -59,17 +62,9 @@ impl RemoveTrivialArgs {
             }
             f.dfg_mut().replace_value_with(user).raw(data);
         }
-
         let param = f.dfg_mut().bb_mut(bb).params_mut().remove(param_idx);
         replace_variable(f, param, same);
-
-        for (i, &p) in f.dfg().bb(bb).params().to_owned().iter().enumerate() {
-            let mut data = f.dfg().value(p).clone();
-            if let ValueKind::BlockArgRef(arg) = data.kind_mut() {
-                *arg.index_mut() = i;
-            }
-            f.dfg_mut().replace_value_with(p).raw(data);
-        }
+        fix_bb_param_idx(f, bb);
     }
 
     fn is_trivial(&self, f: &FunctionData, bb: BasicBlock, idx: usize) -> Option<Value> {

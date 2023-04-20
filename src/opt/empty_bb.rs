@@ -1,4 +1,3 @@
-#![allow(unused)]
 use koopa::ir::{builder_traits::ValueBuilder, BasicBlock, FunctionData, Value, ValueKind};
 use smallvec::SmallVec;
 
@@ -24,7 +23,7 @@ impl RemoveEmptyBB {
                 continue;
             }
             let val = *node.insts().front_key().unwrap();
-            if let ValueKind::Jump(j) = f.dfg().value(val).kind() {
+            if let ValueKind::Jump(_) = f.dfg().value(val).kind() {
                 if f.dfg().bb(*bb).params().is_empty() {
                     empty_bbs.push((*bb, val));
                     changed = true;
