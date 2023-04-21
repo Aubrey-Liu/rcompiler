@@ -1,6 +1,6 @@
 use std::{collections::HashMap, vec};
 
-use koopa::ir::builder::{GlobalBuilder, LocalBuilder};
+use koopa::ir::builder::{GlobalBuilder, LocalBuilder, ReplaceBuilder};
 use koopa::ir::builder_traits::*;
 use koopa::ir::entities::ValueData;
 use koopa::ir::Type as IrType;
@@ -156,6 +156,13 @@ impl ProgramRecorder<'_> {
             .func_mut(self.cur_func_id())
             .dfg_mut()
             .new_value()
+    }
+
+    pub fn replace_value_with(&mut self, val: Value) -> ReplaceBuilder<'_> {
+        self.program
+            .func_mut(self.cur_func_id())
+            .dfg_mut()
+            .replace_value_with(val)
     }
 
     pub fn new_global_value(&mut self) -> GlobalBuilder<'_> {

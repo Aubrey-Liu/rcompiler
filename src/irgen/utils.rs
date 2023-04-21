@@ -1,4 +1,5 @@
 use koopa::ir::builder_traits::{LocalInstBuilder, ValueBuilder};
+use koopa::ir::ValueKind;
 use smallvec::SmallVec;
 
 use super::*;
@@ -210,9 +211,75 @@ pub fn negative(recorder: &mut ProgramRecorder, opr: Value) -> Value {
 }
 
 pub fn logical_not(recorder: &mut ProgramRecorder, opr: Value) -> Value {
-    let zero = recorder.new_value().integer(0);
-    let not = recorder.new_value().binary(IrBinaryOp::Eq, opr, zero);
-    recorder.push_inst(not);
+    let val = if let ValueKind::Binary(b) = recorder.get_value_data(opr).kind().clone() {
+        match b.op() {
+            IrBinaryOp::Eq => {
+                recorder
+                    .replace_value_with(opr)
+                    .binary(IrBinaryOp::NotEq, b.lhs(), b.rhs())
+            }
+            IrBinaryOp::NotEq => {
+                recorder
+                    .replace_value_with(opr)
+                    .binary(IrBinaryOp::NotEq, b.lhs(), b.rhs())
+            }
+            IrBinaryOp::Lt => {
+                recorder
+                    .replace_value_with(opr)
+                    .binary(IrBinaryOp::Ge, b.lhs(), b.rhs())
+            }
+            IrBinaryOp::Le => {
+                recorder
+                    .replace_value_with(opr)
+                    .binary(IrBinaryOp::Gt, b.lhs(), b.rhs())
+            }
+            IrBinaryOp::Gt => {
+                recorder
+                    .replace_value_with(opr)
+                    .binary(IrBinaryOp::Le, b.lhs(), b.rhs())
+            }
+            IrBinaryOp::Ge => {
+                recorder
+                    .replace_value_with(opr)
+                    .binary(IrBinaryOp::Lt, b.lhs(), b.rhs())
+            }
+            _ => {
+                let zero = recorder.new_value().integer(0);
+                let not = recorder.new_value().binary(IrBinaryOp::Eq, opr, zero);
+                recorder.push_inst(not);
 
-    not
+                not
+            }
+        }
+    } else {
+        let zero = recorder.new_value().integer(0);
+        let not = recorder.new_value().binary(IrBinaryOp::Eq, opr, zero);
+        recorder.push_inst(not);
+
+        not
+    };
+
+    val
+}
+
+pub fn value_checked(recorder: &mut ProgramRecorder, val: Value) -> Value {
+    if let ValueKind::Binary(b) = recorder.get_value_data(val).kind() {
+        if matches!(
+            b.op(),
+            IrBinaryOp::Eq
+                | IrBinaryOp::NotEq
+                | IrBinaryOp::Lt
+                | IrBinaryOp::Le
+                | IrBinaryOp::Gt
+                | IrBinaryOp::Ge
+        ) {
+            return val;
+        }
+    }
+
+    let zero = recorder.new_value().integer(0);
+    let checked = recorder.new_value().binary(IrBinaryOp::NotEq, val, zero);
+    recorder.push_inst(checked);
+
+    checked
 }
