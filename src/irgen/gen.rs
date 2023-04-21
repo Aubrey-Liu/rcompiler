@@ -518,45 +518,29 @@ fn short_circuit<'i>(
     end_bb: BasicBlock,
 ) -> Result<Value> {
     let result = local_alloc(recorder, IrType::get_i32(), None);
+    let check_rhs = recorder.new_anonymous_bb();
 
-    match cond.op {
-        BinaryOp::And => {
-            let check_rhs = recorder.new_anonymous_bb();
-            let lhs = cond.lhs.generate_ir(recorder)?;
-            let lhs_checked = value_checked(recorder, lhs);
-            let st = recorder.new_value().store(lhs_checked, result);
-            let br = recorder.new_value().branch(lhs_checked, check_rhs, end_bb);
-            recorder.push_inst(st);
-            recorder.push_inst(br);
-
-            recorder.push_bb(check_rhs);
-            let rhs = cond.rhs.generate_ir(recorder)?;
-            let rhs_checked = value_checked(recorder, rhs);
-            let st = recorder.new_value().store(rhs_checked, result);
-            let jump = recorder.new_value().jump(end_bb);
-            recorder.push_inst(st);
-            recorder.push_inst(jump);
-        }
-
-        BinaryOp::Or => {
-            let check_rhs = recorder.new_anonymous_bb();
-            let lhs = cond.lhs.generate_ir(recorder)?;
-            let lhs_checked = value_checked(recorder, lhs);
-            let st = recorder.new_value().store(lhs_checked, result);
-            let br = recorder.new_value().branch(lhs_checked, end_bb, check_rhs);
-            recorder.push_inst(st);
-            recorder.push_inst(br);
-
-            recorder.push_bb(check_rhs);
-            let rhs = cond.rhs.generate_ir(recorder)?;
-            let rhs_checked = value_checked(recorder, rhs);
-            let st = recorder.new_value().store(rhs_checked, result);
-            let jump = recorder.new_value().jump(end_bb);
-            recorder.push_inst(st);
-            recorder.push_inst(jump);
-        }
+    let (left_true_bb, left_false_bb) = match cond.op {
+        BinaryOp::And => (check_rhs, end_bb),
+        BinaryOp::Or => (end_bb, check_rhs),
         _ => unreachable!(),
-    }
+    };
+    let lhs = cond.lhs.generate_ir(recorder)?;
+    let lhs_checked = value_checked(recorder, lhs);
+    let st = recorder.new_value().store(lhs_checked, result);
+    let br = recorder
+        .new_value()
+        .branch(lhs_checked, left_true_bb, left_false_bb);
+    recorder.push_inst(st);
+    recorder.push_inst(br);
+
+    recorder.push_bb(check_rhs);
+    let rhs = cond.rhs.generate_ir(recorder)?;
+    let rhs_checked = value_checked(recorder, rhs);
+    let st = recorder.new_value().store(rhs_checked, result);
+    let jump = recorder.new_value().jump(end_bb);
+    recorder.push_inst(st);
+    recorder.push_inst(jump);
 
     Ok(result)
 }
