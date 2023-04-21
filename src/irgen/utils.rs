@@ -60,6 +60,10 @@ pub fn eval_array(init: &InitVal, ty: &Type) -> Vec<i32> {
 }
 
 pub fn init_array(recorder: &mut ProgramRecorder, dst: Value, ty: &Type, init: &[i32]) {
+    let zero_init = recorder.new_value().zero_init(ty.get_ir_ty());
+    let st = recorder.new_value().store(zero_init, dst);
+    recorder.push_inst(st);
+
     fn init_array_recur(
         recorder: &mut ProgramRecorder,
         dst: Value,
@@ -69,6 +73,9 @@ pub fn init_array(recorder: &mut ProgramRecorder, dst: Value, ty: &Type, init: &
     ) {
         match ty.kind() {
             TypeKind::Integer => {
+                if *init.get(pos).unwrap_or(&0) == 0 {
+                    return;
+                }
                 let value = recorder.new_value().integer(*init.get(pos).unwrap_or(&0));
                 let store = recorder.new_value().store(value, dst);
                 recorder.push_inst(store);
@@ -77,6 +84,9 @@ pub fn init_array(recorder: &mut ProgramRecorder, dst: Value, ty: &Type, init: &
                 let stride: usize = base_ty.size();
                 for i in 0..*len {
                     let next_pos = pos + i * stride;
+                    if next_pos >= init.len() {
+                        break;
+                    }
                     let index = recorder.new_value().integer(i as i32);
                     let dst = get_elem_ptr(recorder, dst, &[index]);
                     init_array_recur(recorder, dst, base_ty, init, next_pos);

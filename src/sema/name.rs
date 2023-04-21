@@ -25,6 +25,7 @@ impl NameManager {
         self.insert_name("putarray");
         self.insert_name("starttime");
         self.insert_name("stoptime");
+        self.insert_name("zmemset");
     }
 
     pub fn enter_scope(&mut self) {

@@ -9,10 +9,6 @@ pub struct AsmGenerator<'a> {
 }
 
 impl<'a> AsmGenerator<'a> {
-    pub fn flush(&mut self) -> Result<()> {
-        self.f.flush()
-    }
-
     pub fn blank_line(&mut self) -> Result<()> {
         writeln!(self.f)
     }
@@ -51,12 +47,16 @@ impl<'a> AsmGenerator<'a> {
         }
     }
 
-    pub fn j(&mut self, target: &String) -> Result<()> {
+    pub fn j(&mut self, target: &str) -> Result<()> {
         writeln!(self.f, "  j {}", target)
     }
 
     pub fn bnez(&mut self, cond: &str, target: &str) -> Result<()> {
         writeln!(self.f, "  bnez {}, {}", cond, target)
+    }
+
+    pub fn beqz(&mut self, cond: &str, target: &str) -> Result<()> {
+        writeln!(self.f, "  beqz {}, {}", cond, target)
     }
 
     pub fn call(&mut self, callee: &str) -> Result<()> {
@@ -202,9 +202,9 @@ impl<'a> AsmGenerator<'a> {
         writeln!(self.f, "  ret")
     }
 
-    pub fn global_alloc(&mut self, id: usize) -> Result<()> {
-        writeln!(self.f, "  .globl var{}", id)?;
-        writeln!(self.f, "var{}:", id)
+    pub fn global_alloc(&mut self, name: &str) -> Result<()> {
+        writeln!(self.f, "  .globl {}", name)?;
+        writeln!(self.f, "{}:", name)
     }
 
     pub fn global_zero_init(&mut self, size: usize) -> Result<()> {
@@ -250,9 +250,8 @@ impl<'a> AsmGenerator<'a> {
 
 pub fn write_back(gen: &mut AsmGenerator, ctx: &Context, src: &str, val: Value) -> Result<()> {
     if ctx.is_global(val) {
-        let id = ctx.get_global_var(&val);
-        let name = format!("var{}", id);
-        gen.la("t0", &name)?;
+        let name = ctx.get_global_var(&val);
+        gen.la("t0", name)?;
         gen.sw(src, "t0", 0)
     } else {
         gen.sw(src, "sp", ctx.cur_func().get_offset(&val))
@@ -261,9 +260,8 @@ pub fn write_back(gen: &mut AsmGenerator, ctx: &Context, src: &str, val: Value) 
 
 pub fn read_to(gen: &mut AsmGenerator, ctx: &Context, dst: &str, val: Value) -> Result<()> {
     if ctx.is_global(val) {
-        let id = ctx.get_global_var(&val);
-        let name = format!("var{}", id);
-        gen.la("t0", &name)?;
+        let name = ctx.get_global_var(&val);
+        gen.la("t0", name)?;
         return gen.lw(dst, "t0", 0);
     }
     match ctx.cur_func().params().get(&val) {
@@ -288,9 +286,8 @@ pub fn read_to(gen: &mut AsmGenerator, ctx: &Context, dst: &str, val: Value) -> 
 
 pub fn read_addr_to(gen: &mut AsmGenerator, ctx: &Context, dst: &str, val: Value) -> Result<()> {
     if ctx.is_global(val) {
-        let id = ctx.get_global_var(&val);
-        let name = format!("var{}", id);
-        gen.la(dst, &name)
+        let name = ctx.get_global_var(&val);
+        gen.la(dst, name)
     } else {
         gen.addi(dst, "sp", ctx.cur_func().get_offset(&val))
     }
@@ -304,9 +301,8 @@ pub fn read_addr_with_offset(
     off: i32,
 ) -> Result<()> {
     if ctx.is_global(val) {
-        let id = ctx.get_global_var(&val);
-        let name = format!("var{}", id);
-        gen.la(dst, &name)?;
+        let name = ctx.get_global_var(&val);
+        gen.la(dst, name)?;
         gen.addi(dst, dst, off)
     } else {
         gen.addi(dst, "sp", ctx.cur_func().get_offset(&val) + off)
@@ -386,4 +382,20 @@ pub fn binary_with_imm(
         }
         _ => unreachable!(),
     }
+}
+
+pub fn memset_def(gen: &mut AsmGenerator) -> Result<()> {
+    gen.prologue("zmemset", 0, true)?;
+    gen.binary("add", "a2", "a0", "a1")?;
+
+    gen.enter_bb(".Lentry")?;
+    gen.binary("slt", "a3", "a0", "a2")?;
+    gen.beqz("a3", ".Lend")?;
+
+    gen.sw("x0", "a0", 0)?;
+    gen.addi("a0", "a0", 4)?;
+    gen.j(".Lentry")?;
+
+    gen.enter_bb(".Lend")?;
+    gen.epilogue(0, true)
 }

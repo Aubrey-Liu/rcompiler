@@ -12,7 +12,8 @@ impl GenerateAsm for Program {
         Type::set_ptr_size(4);
 
         self.inst_layout().iter().try_for_each(|&g| {
-            ctx.register_global_var(g);
+            let name = ctx.global_value_data(g).name().as_ref().unwrap()[1..].to_string();
+            ctx.register_global_var(g, name);
             gen.data_seg()?;
             g.generate(gen, ctx)?;
             gen.blank_line()
@@ -27,7 +28,7 @@ impl GenerateAsm for Program {
                 data.generate(gen, ctx)
             })?;
 
-        gen.flush()
+        memset_def(gen)
     }
 }
 
@@ -37,12 +38,14 @@ impl GenerateAsm for FunctionData {
             .dfg()
             .values()
             .values()
-            .filter_map(|data| {
-                if let ValueKind::Call(c) = data.kind() {
-                    Some(c.args().len())
-                } else {
-                    None
+            .filter_map(|data| match data.kind() {
+                ValueKind::Call(c) => Some(c.args().len()),
+                ValueKind::Store(s)
+                    if matches!(self.dfg().value(s.value()).kind(), ValueKind::ZeroInit(_)) =>
+                {
+                    Some(2)
                 }
+                _ => None,
             })
             .max();
 
@@ -120,12 +123,18 @@ impl GenerateAsm for Value {
 
 impl GenerateAsm for Store {
     fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
-        read_to(gen, ctx, "t1", self.value())?;
-        if ctx.is_pointer(self.dest()) {
-            read_to(gen, ctx, "t2", self.dest())?;
-            gen.sw("t1", "t2", 0)
+        if let ValueKind::ZeroInit(_) = ctx.value_kind(self.value()) {
+            read_addr_to(gen, ctx, "a0", self.dest())?;
+            gen.li("a1", ctx.value_data(self.value()).ty().size() as i32)?;
+            gen.call("zmemset")
         } else {
-            write_back(gen, ctx, "t1", self.dest())
+            read_to(gen, ctx, "t1", self.value())?;
+            if ctx.is_pointer(self.dest()) {
+                read_to(gen, ctx, "t2", self.dest())?;
+                gen.sw("t1", "t2", 0)
+            } else {
+                write_back(gen, ctx, "t1", self.dest())
+            }
         }
     }
 }

@@ -9,7 +9,7 @@ use super::*;
 
 pub struct Context<'i> {
     program: &'i Program,
-    global_values: HashMap<Value, usize>,
+    global_values: HashMap<Value, String>,
     functions: HashMap<Function, usize>,
     cur_func: Option<FunctionInfo>,
 }
@@ -100,13 +100,12 @@ impl<'i> Context<'i> {
         self.cur_func_mut().register_bb(bb, name);
     }
 
-    pub fn register_global_var(&mut self, global_var: Value) {
-        let id = self.global_values.len();
-        self.global_values.insert(global_var, id);
+    pub fn register_global_var(&mut self, global_var: Value, name: String) {
+        self.global_values.insert(global_var, name);
     }
 
-    pub fn get_global_var(&self, global_var: &Value) -> usize {
-        *self.global_values.get(global_var).unwrap()
+    pub fn get_global_var(&self, global_var: &Value) -> &String {
+        self.global_values.get(global_var).unwrap()
     }
 
     pub fn is_global(&self, val: Value) -> bool {
