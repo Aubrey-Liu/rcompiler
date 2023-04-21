@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use koopa::ir::{builder_traits::ValueBuilder, BasicBlock, FunctionData, Value, ValueKind};
 
@@ -16,7 +16,8 @@ impl FunctionPass for RemoveTrivialArgs {
 
 impl RemoveTrivialArgs {
     fn try_remove_trivial_args(&self, f: &mut FunctionData) -> bool {
-        let mut trivial_arg: HashMap<Value, (BasicBlock, usize)> = HashMap::new();
+        let mut used_values = HashSet::new();
+        let mut trivial_args = Vec::new();
         for (&bb, data) in f.dfg().bbs() {
             for (i, arg) in data.params().iter().enumerate() {
                 let same = match self.is_trivial(f, bb, i) {
@@ -24,17 +25,20 @@ impl RemoveTrivialArgs {
                     None => continue,
                 };
                 // replace the argument only when it's not related to any other possible replacements
-                if !trivial_arg.contains_key(arg) {
-                    trivial_arg.insert(same, (bb, i));
+                if !used_values.contains(arg) {
+                    used_values.insert(same);
+                    trivial_args.push((same, bb, i));
                 }
             }
         }
 
-        for (&same, &(bb, idx)) in &trivial_arg {
+        trivial_args.sort_by(|a, b| b.2.cmp(&a.2));
+
+        for &(same, bb, idx) in &trivial_args {
             self.remove_trivial_arg(f, bb, idx, same);
         }
 
-        !trivial_arg.is_empty()
+        !trivial_args.is_empty()
     }
 
     fn remove_trivial_arg(
