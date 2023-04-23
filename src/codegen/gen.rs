@@ -1,39 +1,45 @@
 use std::cmp::max;
-use std::io::Result;
+
+use lazy_static_include::lazy_static::lazy_static;
 
 use super::*;
 
+lazy_static! {
+    static ref T1: RegID = "t1".into_id();
+    static ref T2: RegID = "t2".into_id();
+}
+
 pub trait GenerateAsm {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()>;
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram);
 }
 
 impl GenerateAsm for Program {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram) {
         Type::set_ptr_size(4);
 
-        self.inst_layout().iter().try_for_each(|&g| {
+        self.inst_layout().iter().for_each(|&g| {
             let name = ctx.global_value_data(g).name().as_ref().unwrap()[1..].to_string();
             ctx.register_global_var(g, name);
-            gen.data_seg()?;
-            g.generate(gen, ctx)?;
-            gen.blank_line()
-        })?;
+            p.push(AsmValue::Directive(Directive::Data));
+            g.generate(ctx, p);
+            p.push(AsmValue::Blank);
+        });
 
         self.funcs()
             .iter()
             .filter(|(_, data)| data.layout().entry_bb().is_some())
-            .try_for_each(|(&f, data)| {
+            .for_each(|(&f, data)| {
                 ctx.new_func(f);
                 ctx.set_func(f);
-                data.generate(gen, ctx)
-            })?;
+                data.generate(ctx, p);
+            });
 
-        memset_def(gen)
+        p.memset_def();
     }
 }
 
 impl GenerateAsm for FunctionData {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram) {
         let max_arg_num = self
             .dfg()
             .values()
@@ -60,6 +66,7 @@ impl GenerateAsm for FunctionData {
             0
         };
 
+        let mut full = 3;
         self.layout().bbs().nodes().for_each(|node| {
             for &val in node.insts().keys() {
                 let data = self.dfg().value(val);
@@ -67,15 +74,21 @@ impl GenerateAsm for FunctionData {
                     continue;
                 }
                 if let ValueKind::Alloc(_) = data.kind() {
-                    ctx.cur_func_mut().register_var(val, off, false);
+                    ctx.cur_func_mut().spill_to_mem(val, off, false);
                     off += match data.ty().kind() {
                         TypeKind::Pointer(base_ty) => base_ty.size() as i32,
                         _ => unreachable!(),
                     };
                 } else {
                     let is_ptr = matches!(data.ty().kind(), TypeKind::Pointer(_));
-                    ctx.cur_func_mut().register_var(val, off, is_ptr);
-                    off += data.ty().size() as i32;
+                    if full == 0 {
+                        ctx.cur_func_mut().spill_to_mem(val, off, is_ptr);
+                        off += data.ty().size() as i32;
+                    } else {
+                        let id = format!("t{}", 6 - full).into_id();
+                        ctx.cur_func_mut().alloca_reg(val, id, is_ptr);
+                        full -= 1;
+                    }
                 }
             }
         });
@@ -90,158 +103,162 @@ impl GenerateAsm for FunctionData {
         let ss = (off + protect_space + 15) / 16 * 16;
         ctx.cur_func_mut().set_ss(ss);
 
-        gen.prologue(&self.name()[1..], ss, is_leaf)?;
-        self.layout().bbs().iter().try_for_each(|(bb, node)| {
-            gen.enter_bb(ctx.cur_func().get_bb_name(bb))?;
-            node.insts()
-                .keys()
-                .try_for_each(|inst| inst.generate(gen, ctx))
+        p.prologue(&self.name()[1..], ss, is_leaf);
+        self.layout().bbs().iter().for_each(|(bb, node)| {
+            p.local_symbol(ctx.cur_func().get_bb_name(bb));
+            node.insts().keys().for_each(|inst| inst.generate(ctx, p))
         })
     }
 }
 
 impl GenerateAsm for Value {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram) {
         match ctx.value_kind(*self) {
-            ValueKind::Branch(v) => v.generate(gen, ctx),
-            ValueKind::Jump(v) => v.generate(gen, ctx),
-            ValueKind::Return(v) => v.generate(gen, ctx),
-            ValueKind::Store(v) => v.generate(gen, ctx),
-            ValueKind::Aggregate(v) => v.generate(gen, ctx),
-            ValueKind::Integer(v) => v.generate(gen, ctx),
-            ValueKind::ZeroInit(v) => v.generate(gen, ctx, *self),
-            ValueKind::Binary(v) => v.generate(gen, ctx, *self),
-            ValueKind::Load(v) => v.generate(gen, ctx, *self),
-            ValueKind::Call(v) => v.generate(gen, ctx, *self),
-            ValueKind::GetElemPtr(v) => v.generate(gen, ctx, *self),
-            ValueKind::GetPtr(v) => v.generate(gen, ctx, *self),
-            ValueKind::GlobalAlloc(v) => v.generate(gen, ctx, *self),
-            _ => Ok(()),
+            ValueKind::Branch(v) => v.generate(ctx, p),
+            ValueKind::Jump(v) => v.generate(ctx, p),
+            ValueKind::Return(v) => v.generate(ctx, p),
+            ValueKind::Store(v) => v.generate(ctx, p),
+            ValueKind::Aggregate(v) => v.generate(ctx, p),
+            ValueKind::Integer(v) => v.generate(ctx, p),
+            ValueKind::ZeroInit(v) => v.generate(ctx, p, *self),
+            ValueKind::Binary(v) => v.generate(ctx, p, *self),
+            ValueKind::Load(v) => v.generate(ctx, p, *self),
+            ValueKind::Call(v) => v.generate(ctx, p, *self),
+            ValueKind::GetElemPtr(v) => v.generate(ctx, p, *self),
+            ValueKind::GetPtr(v) => v.generate(ctx, p, *self),
+            ValueKind::GlobalAlloc(v) => v.generate(ctx, p, *self),
+            _ => {}
         }
     }
 }
 
 impl GenerateAsm for Store {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram) {
+        let (t1, t2) = (*T1, *T2);
         if let ValueKind::ZeroInit(_) = ctx.value_kind(self.value()) {
-            read_addr_to(gen, ctx, "a0", self.dest())?;
-            gen.li("a1", ctx.value_data(self.value()).ty().size() as i32)?;
-            gen.call("zmemset")
+            p.read_addr_to(ctx, "a0".into_id(), self.dest());
+            p.load_imm(
+                "a1".into_id(),
+                ctx.value_data(self.value()).ty().size() as i32,
+            );
+            p.call("zmemset");
         } else {
-            read_to(gen, ctx, "t1", self.value())?;
+            p.read_to(ctx, t1, self.value());
             if ctx.is_pointer(self.dest()) {
-                read_to(gen, ctx, "t2", self.dest())?;
-                gen.sw("t1", "t2", 0)
+                p.read_to(ctx, t2, self.dest());
+                p.store(t1, t2, 0);
             } else {
-                write_back(gen, ctx, "t1", self.dest())
+                p.write_back(ctx, t1, self.dest());
             }
         }
     }
 }
 
 impl GenerateAsm for Branch {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
-        read_to(gen, ctx, "t1", self.cond())?;
-        branch(gen, ctx, "t1", &self.true_bb(), &self.false_bb())
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram) {
+        p.read_to(ctx, *T1, self.cond());
+
+        let true_bb = ctx.cur_func().get_bb_name(&self.true_bb());
+        let false_bb = ctx.cur_func().get_bb_name(&self.false_bb());
+        p.branch(*T1, true_bb);
+        p.jump(false_bb);
     }
 }
 
 impl GenerateAsm for Jump {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
-        gen.j(ctx.cur_func().get_bb_name(&self.target()))
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram) {
+        p.jump(ctx.cur_func().get_bb_name(&self.target()));
     }
 }
 
 impl GenerateAsm for Return {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram) {
         if self.value().is_some() {
-            read_to(gen, ctx, "a0", self.value().unwrap())?;
+            p.read_to(ctx, "a0".into_id(), self.value().unwrap());
         }
-        gen.epilogue(ctx.cur_func().ss(), ctx.cur_func().is_leaf())
+        p.epilogue(ctx.cur_func().ss(), ctx.cur_func().is_leaf());
     }
 }
 
 impl GenerateAsm for Integer {
-    fn generate(&self, gen: &mut AsmGenerator, _ctx: &mut Context) -> Result<()> {
-        gen.global_word(self.value())
+    #[allow(unused_variables)]
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram) {
+        p.directive(Directive::Word(self.value()));
     }
 }
 
 impl GenerateAsm for Aggregate {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context) -> Result<()> {
-        self.elems().iter().try_for_each(|e| e.generate(gen, ctx))
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram) {
+        self.elems().iter().for_each(|e| e.generate(ctx, p))
     }
 }
 
 pub trait NonUnitGenerateAsm {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context, val: Value) -> Result<()>;
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram, val: Value);
 }
 
 impl NonUnitGenerateAsm for Load {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context, val: Value) -> Result<()> {
-        read_to(gen, ctx, "t1", self.src())?;
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram, val: Value) {
+        let t1 = *T1;
+        p.read_to(ctx, t1, self.src());
         if ctx.is_pointer(self.src()) {
-            gen.lw("t1", "t1", 0)?;
+            p.load(t1, t1, 0);
         }
-        write_back(gen, ctx, "t1", val)
+        p.write_back(ctx, t1, val);
     }
 }
 
 impl NonUnitGenerateAsm for Binary {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context, val: Value) -> Result<()> {
-        if let ValueKind::Integer(i) = ctx.value_kind(self.rhs()) {
-            read_to(gen, ctx, "t1", self.lhs())?;
-            binary_with_imm(gen, self.op(), "t1", "t1", i.value())?;
-        } else {
-            read_to(gen, ctx, "t1", self.lhs())?;
-            read_to(gen, ctx, "t2", self.rhs())?;
-            binary(gen, self.op(), "t1", "t1", "t2")?;
-        }
-
-        write_back(gen, ctx, "t1", val)
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram, val: Value) {
+        let (t1, t2) = (*T1, *T2);
+        p.read_to(ctx, t1, self.lhs());
+        p.read_to(ctx, t2, self.rhs());
+        p.ir_binary(self.op(), t1, t1, t2);
+        p.write_back(ctx, t1, val);
     }
 }
 
 impl NonUnitGenerateAsm for GlobalAlloc {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context, val: Value) -> Result<()> {
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram, val: Value) {
         let id = ctx.get_global_var(&val);
-        gen.global_alloc(id)?;
-        self.init().generate(gen, ctx)
+        p.global_symbol(id);
+        self.init().generate(ctx, p)
     }
 }
 
 impl NonUnitGenerateAsm for ZeroInit {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context, val: Value) -> Result<()> {
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram, val: Value) {
         let size = ctx.global_value_data(val).ty().size();
-        gen.global_zero_init(size)
+        p.directive(Directive::Zero(size));
     }
 }
 
 impl NonUnitGenerateAsm for Call {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context, val: Value) -> Result<()> {
-        self.args().iter().enumerate().try_for_each(|(i, &arg)| {
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram, val: Value) {
+        self.args().iter().enumerate().for_each(|(i, &arg)| {
             if i < 8 {
                 let dst = format!("a{}", i);
-                read_to(gen, ctx, &dst, arg)
+                p.read_to(ctx, dst.into_id(), arg);
             } else {
-                read_to(gen, ctx, "t0", arg)?;
-                gen.sw("t0", "sp", (i as i32 - 8) * 4)
+                p.read_to(ctx, "t0".into_id(), arg);
+                p.store("t0".into_id(), "sp".into_id(), (i as i32 - 8) * 4);
             }
-        })?;
+        });
+
         let callee = &ctx.get_func_name(self.callee())[1..];
-        gen.call(callee)?;
+        p.call(callee);
+
         // write the return value to pre-allocated space
         if let TypeKind::Function(_, ret_ty) = ctx.func_data(self.callee()).ty().kind() {
             if ret_ty.is_i32() {
-                write_back(gen, ctx, "a0", val)?;
+                p.write_back(ctx, "a0".into_id(), val);
             }
         }
-        Ok(())
     }
 }
 
 impl NonUnitGenerateAsm for GetElemPtr {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context, val: Value) -> Result<()> {
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram, val: Value) {
         let ty = ctx.value_ty(val);
         let stride = if let TypeKind::Pointer(base_ty) = ty.kind() {
             base_ty.size() as i32
@@ -250,31 +267,33 @@ impl NonUnitGenerateAsm for GetElemPtr {
         };
 
         let src = self.src();
+        let (t1, t2) = (*T1, *T2);
         if let ValueKind::Integer(i) = ctx.value_kind(self.index()) {
             let offset = i.value() * stride;
             if ctx.is_pointer(src) {
-                read_to(gen, ctx, "t1", src)?;
-                gen.addi("t1", "t1", offset)?;
+                p.read_to(ctx, t1, src);
+                p.binary_with_imm(AsmBinaryOp::Add, t1, t1, offset);
             } else {
-                read_addr_with_offset(gen, ctx, "t1", src, offset)?;
+                p.read_addr_to(ctx, t1, src);
+                p.binary_with_imm(AsmBinaryOp::Add, t1, t1, offset);
             }
         } else {
             if ctx.is_pointer(src) {
-                read_to(gen, ctx, "t1", src)?;
+                p.read_to(ctx, t1, src);
             } else {
-                read_addr_to(gen, ctx, "t1", src)?;
+                p.read_addr_to(ctx, t1, src);
             }
-            read_to(gen, ctx, "t2", self.index())?;
-            gen.muli("t2", "t2", stride)?;
-            gen.binary("add", "t1", "t1", "t2")?;
+            p.read_to(ctx, t2, self.index());
+            p.muli(t2, t2, stride);
+            p.binary(AsmBinaryOp::Add, t1, t1, t2);
         }
 
-        write_back(gen, ctx, "t1", val)
+        p.write_back(ctx, t1, val);
     }
 }
 
 impl NonUnitGenerateAsm for GetPtr {
-    fn generate(&self, gen: &mut AsmGenerator, ctx: &mut Context, val: Value) -> Result<()> {
+    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram, val: Value) {
         let ty = ctx.value_ty(val);
         let stride = if let TypeKind::Pointer(base_ty) = ty.kind() {
             base_ty.size() as i32
@@ -283,25 +302,27 @@ impl NonUnitGenerateAsm for GetPtr {
         };
 
         let src = self.src();
+        let (t1, t2) = (*T1, *T2);
         if let ValueKind::Integer(i) = ctx.value_kind(self.index()) {
             let offset = i.value() * stride;
             if ctx.is_pointer(src) {
-                read_to(gen, ctx, "t1", src)?;
-                gen.addi("t1", "t1", offset)?;
+                p.read_to(ctx, t1, src);
+                p.binary_with_imm(AsmBinaryOp::Add, t1, t1, offset);
             } else {
-                read_addr_with_offset(gen, ctx, "t1", src, offset)?;
+                p.read_addr_to(ctx, t1, src);
+                p.binary_with_imm(AsmBinaryOp::Add, t1, t1, offset);
             }
         } else {
             if ctx.is_pointer(src) {
-                read_to(gen, ctx, "t1", src)?;
+                p.read_to(ctx, t1, src);
             } else {
-                read_addr_to(gen, ctx, "t1", src)?;
+                p.read_addr_to(ctx, t1, src);
             }
-            read_to(gen, ctx, "t2", self.index())?;
-            gen.muli("t2", "t2", stride)?;
-            gen.binary("add", "t1", "t1", "t2")?;
+            p.read_to(ctx, t2, self.index());
+            p.muli(t2, t2, stride);
+            p.binary(AsmBinaryOp::Add, t1, t1, t2);
         }
 
-        write_back(gen, ctx, "t1", val)
+        p.write_back(ctx, t1, val);
     }
 }

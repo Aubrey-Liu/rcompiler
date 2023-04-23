@@ -285,6 +285,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "lazy-static-include"
+version = "3.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "597baa47fc6cc1496795d9c52ef3a364f963e8826febd0f3c99e2ecce0a5dfa4"
+dependencies = [
+ "lazy_static",
+ "manifest-dir-macros",
+ "syn",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -319,6 +330,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "abb12e687cfb44aa40f41fc3978ef76448f9b6038cad6aef4259d3c095a2382e"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "manifest-dir-macros"
+version = "0.1.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "450e5ef583bc05177c4975b9ea907047091a9f62e74e81fcafb99dbffac51e7e"
+dependencies = [
+ "once_cell",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -413,12 +436,13 @@ dependencies = [
 
 [[package]]
 name = "rcompiler"
-version = "0.7.6"
+version = "0.7.7"
 dependencies = [
  "anyhow",
  "koopa",
  "lalrpop",
  "lalrpop-util",
+ "lazy-static-include",
  "regex",
  "smallvec",
 ]

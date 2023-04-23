@@ -1,5 +1,6 @@
 mod context;
 mod gen;
+mod program;
 mod write;
 
 use std::fs::File;
@@ -10,13 +11,16 @@ use koopa::ir::{values::*, *};
 
 use context::*;
 use gen::*;
+use program::*;
 use write::*;
 
 pub fn generate_code(input: &str, output: &str) -> Result<()> {
     let program = generate_mem_ir(input)?;
     let mut ctx = Context::new_with_program(&program);
-    let mut generator = AsmGenerator::from_path(output, "t0");
-    program.generate(&mut generator, &mut ctx)?;
+    let mut asm_program = AsmProgram::new();
+    program.generate(&mut ctx, &mut asm_program);
+    let mut generator = AsmWriter::from_path(output);
+    generator.write_program(&asm_program)?;
 
     Ok(())
 }

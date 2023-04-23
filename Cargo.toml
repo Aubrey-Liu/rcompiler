@@ -1,6 +1,6 @@
 [package]
 name = "rcompiler"
-version = "0.7.6"
+version = "0.7.7"
 edition = "2021"
 
 [build-dependencies] # <-- We added this and everything after!
@@ -10,5 +10,6 @@ lalrpop = "0.19.9"
 anyhow = "1.0.70"
 koopa = "0.0.6"
 lalrpop-util = { version = "0.19.9", features = ["lexer"] }
+lazy-static-include = "3.1.4"
 regex = "1"
 smallvec = "1.10.0"

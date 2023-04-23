@@ -4,8 +4,23 @@ use std::{
 };
 
 use koopa::ir::entities::ValueData;
+use lazy_static_include::lazy_static::lazy_static;
 
 use super::*;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RegID(usize);
+
+#[derive(Debug, Clone, Copy)]
+pub enum Place {
+    Reg(RegID),
+    Mem(i32),
+}
+
+pub struct LocalValue {
+    place: Place,
+    is_pointer: bool,
+}
 
 pub struct Context<'i> {
     program: &'i Program,
@@ -16,7 +31,7 @@ pub struct Context<'i> {
 
 pub struct FunctionInfo {
     id: Function,
-    local_values: HashMap<Value, (i32, bool)>,
+    local_values: HashMap<Value, LocalValue>,
     params: HashMap<Value, i32>,
     blocks: HashMap<BasicBlock, String>,
     ss: i32, // stack size
@@ -117,8 +132,8 @@ impl<'i> Context<'i> {
         self.cur_func()
             .local_values
             .get(&val)
-            .unwrap_or(&(0, false))
-            .1
+            .map(|v| v.is_pointer)
+            .unwrap_or(false)
     }
 }
 
@@ -161,8 +176,16 @@ impl FunctionInfo {
         self.is_leaf = is_leaf;
     }
 
+    pub fn get_local_place(&self, val: Value) -> Place {
+        self.local_values.get(&val).unwrap().place
+    }
+
     pub fn get_offset(&self, val: &Value) -> i32 {
-        self.local_values.get(val).unwrap().0
+        if let Place::Mem(offset) = self.local_values.get(val).unwrap().place {
+            offset
+        } else {
+            unreachable!()
+        }
     }
 
     pub fn get_bb_name(&self, bb: &BasicBlock) -> &String {
@@ -173,12 +196,65 @@ impl FunctionInfo {
         self.ss = ss;
     }
 
-    pub fn register_var(&mut self, inst: Value, off: i32, is_ptr: bool) {
-        self.local_values.insert(inst, (off, is_ptr));
+    pub fn spill_to_mem(&mut self, val: Value, offset: i32, is_pointer: bool) {
+        self.local_values.insert(
+            val,
+            LocalValue {
+                place: Place::Mem(offset),
+                is_pointer,
+            },
+        );
+    }
+
+    pub fn alloca_reg(&mut self, val: Value, reg_id: RegID, is_pointer: bool) {
+        self.local_values.insert(
+            val,
+            LocalValue {
+                place: Place::Reg(reg_id),
+                is_pointer,
+            },
+        );
     }
 
     /// Record the name of a basic block
     pub fn register_bb(&mut self, bb: BasicBlock, name: String) {
         self.blocks.insert(bb, name);
+    }
+}
+
+lazy_static! {
+    static ref REG_NAMES: Vec<&'static str> = vec![
+        "x0", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1", "a0", "a1", "a2", "a3", "a4",
+        "a5", "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "t3", "t4",
+        "t5", "t6",
+    ];
+    static ref NAME_ID_MAPPING: HashMap<&'static str, RegID> = {
+        let mut m = HashMap::new();
+
+        REG_NAMES.iter().enumerate().for_each(|(i, n)| {
+            m.insert(*n, RegID(i));
+        });
+
+        m
+    };
+}
+
+pub trait IntoID {
+    fn into_id(self) -> RegID;
+}
+
+pub trait IntoName {
+    fn into_name(self) -> &'static str;
+}
+
+impl IntoName for RegID {
+    fn into_name(self) -> &'static str {
+        REG_NAMES.get(self.0).unwrap()
+    }
+}
+
+impl IntoID for &str {
+    fn into_id(self) -> RegID {
+        *NAME_ID_MAPPING.get(self).unwrap()
     }
 }
