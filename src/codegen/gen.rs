@@ -155,7 +155,7 @@ impl GenerateAsm for Store {
                 "a1".into_id(),
                 ctx.value_data(self.value()).ty().size() as i32,
             );
-            p.call("zmemset");
+            p.call("mmemset");
         } else {
             p.read_to(ctx, t1, self.value());
             if ctx.is_pointer(self.dest()) {

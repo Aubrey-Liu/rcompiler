@@ -202,7 +202,7 @@ impl AsmProgram {
     }
 
     pub fn memset_def(&mut self) {
-        self.prologue("zmemset", 0, true);
+        self.prologue("mmemset", 0, true);
         let (a0, a1, a2) = ("a0".into_id(), "a1".into_id(), "a2".into_id());
         self.binary(AsmBinaryOp::Add, a1, a0, a1);
         self.local_symbol(".Lentry");
