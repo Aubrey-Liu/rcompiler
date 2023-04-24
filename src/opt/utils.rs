@@ -50,13 +50,35 @@ pub fn replace_variable(f: &mut FunctionData, origin: Value, replace_by: Value) 
         let mut data = f.dfg().value(user).clone();
         match data.kind_mut() {
             ValueKind::Return(ret) => *ret.value_mut() = Some(replace_by),
-            ValueKind::Store(s) => *s.value_mut() = replace_by,
-            ValueKind::GetElemPtr(g) => *g.index_mut() = replace_by,
-            ValueKind::GetPtr(g) => *g.index_mut() = replace_by,
+            ValueKind::Store(s) => {
+                if s.value() == origin {
+                    *s.value_mut() = replace_by;
+                }
+                if s.dest() == origin {
+                    *s.dest_mut() = replace_by;
+                }
+            }
+            ValueKind::GetElemPtr(g) => {
+                if g.src() == origin {
+                    *g.src_mut() = replace_by;
+                }
+                if g.index() == origin {
+                    *g.index_mut() = replace_by;
+                }
+            }
+            ValueKind::GetPtr(g) => {
+                if g.src() == origin {
+                    *g.src_mut() = replace_by;
+                }
+                if g.index() == origin {
+                    *g.index_mut() = replace_by;
+                }
+            }
             ValueKind::Binary(b) => {
-                if origin == b.lhs() {
+                if b.lhs() == origin {
                     *b.lhs_mut() = replace_by;
-                } else {
+                }
+                if b.rhs() == origin {
                     *b.rhs_mut() = replace_by;
                 }
             }
@@ -85,7 +107,7 @@ pub fn replace_variable(f: &mut FunctionData, origin: Value, replace_by: Value) 
                     }
                 });
             }
-            _ => {}
+            _ => unreachable!(),
         }
         f.dfg_mut().replace_value_with(user).raw(data);
         fix_used_by(f, &used_by);
@@ -111,10 +133,12 @@ pub fn last_inst_of_bb(f: &FunctionData, bb: BasicBlock) -> Value {
 
 pub fn fix_bb_param_idx(f: &mut FunctionData, bb: BasicBlock) {
     for (i, &param) in f.dfg().bb(bb).params().to_owned().iter().enumerate() {
+        let used_by = f.dfg().value(param).used_by().to_owned();
         let mut data = f.dfg().value(param).clone();
         if let ValueKind::BlockArgRef(arg) = data.kind_mut() {
             *arg.index_mut() = i;
         }
         f.dfg_mut().replace_value_with(param).raw(data);
+        fix_used_by(f, &used_by);
     }
 }

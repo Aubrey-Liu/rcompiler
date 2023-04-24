@@ -13,6 +13,7 @@ pub struct RegID(usize);
 
 #[derive(Debug, Clone, Copy)]
 pub enum Place {
+    #[allow(dead_code)]
     Reg(RegID),
     Mem(i32),
 }
@@ -32,7 +33,6 @@ pub struct Context<'i> {
 pub struct FunctionInfo {
     id: Function,
     local_values: HashMap<Value, LocalValue>,
-    params: HashMap<Value, i32>,
     blocks: HashMap<BasicBlock, String>,
     ss: i32, // stack size
     is_leaf: bool,
@@ -142,21 +142,10 @@ impl FunctionInfo {
         FunctionInfo {
             id,
             local_values: HashMap::new(),
-            params: HashMap::new(),
             blocks: HashMap::new(),
             ss: 0,
             is_leaf: false,
         }
-    }
-
-    pub fn set_params(&mut self, params: &[Value]) {
-        params.iter().enumerate().for_each(|(id, &val)| {
-            self.params.insert(val, id as i32);
-        });
-    }
-
-    pub fn params(&self) -> &HashMap<Value, i32> {
-        &self.params
     }
 
     pub fn id(&self) -> Function {
@@ -206,6 +195,7 @@ impl FunctionInfo {
         );
     }
 
+    #[allow(dead_code)]
     pub fn alloca_reg(&mut self, val: Value, reg_id: RegID, is_pointer: bool) {
         self.local_values.insert(
             val,

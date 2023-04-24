@@ -16,23 +16,18 @@ impl FunctionPass for RemoveTrivialArgs {
 
 impl RemoveTrivialArgs {
     fn try_remove_trivial_args(&self, f: &mut FunctionData) -> bool {
-        let mut used_values = HashSet::new();
         let mut trivial_args = Vec::new();
-        for (&bb, data) in f.dfg().bbs() {
-            for (i, arg) in data.params().iter().enumerate() {
+        'outer: for (&bb, data) in f.dfg().bbs() {
+            for i in 0..data.params().len() {
                 let same = match self.is_trivial(f, bb, i) {
                     Some(same) => same,
                     None => continue,
                 };
                 // replace the argument only when it's not related to any other possible replacements
-                if !used_values.contains(arg) {
-                    used_values.insert(same);
-                    trivial_args.push((same, bb, i));
-                }
+                trivial_args.push((same, bb, i));
+                break 'outer;
             }
         }
-
-        trivial_args.sort_by(|a, b| b.2.cmp(&a.2));
 
         for &(same, bb, idx) in &trivial_args {
             self.remove_trivial_arg(f, bb, idx, same);
@@ -66,8 +61,11 @@ impl RemoveTrivialArgs {
             }
             f.dfg_mut().replace_value_with(user).raw(data);
         }
+
         let param = f.dfg_mut().bb_mut(bb).params_mut().remove(param_idx);
         replace_variable(f, param, same);
+        f.dfg_mut().remove_value(param);
+
         fix_bb_param_idx(f, bb);
     }
 
@@ -89,11 +87,12 @@ impl RemoveTrivialArgs {
             if arg == param {
                 continue;
             }
-            if same.is_some() && f.dfg().value_eq(same.unwrap(), arg) {
-                continue;
-            }
-            if same.is_some() {
-                return None;
+            if let Some(s) = same {
+                if value_eq(f, s, arg) {
+                    continue;
+                } else {
+                    return None;
+                }
             }
 
             same = Some(arg);
@@ -101,4 +100,14 @@ impl RemoveTrivialArgs {
 
         same
     }
+}
+
+fn value_eq(f: &FunctionData, x: Value, y: Value) -> bool {
+    if x == y {
+        return true;
+    }
+    if let (ValueKind::Integer(i), ValueKind::Integer(j)) = (value_kind(f, x), value_kind(f, y)) {
+        return i.value() == j.value();
+    }
+    false
 }

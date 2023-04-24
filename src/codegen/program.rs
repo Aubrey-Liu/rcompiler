@@ -115,16 +115,6 @@ impl AsmProgram {
             self.load(dst, t0, 0);
             return;
         }
-        if let Some(id) = ctx.cur_func().params().get(&val) {
-            if *id < 8 {
-                let src = format!("a{}", id);
-                self.unary(AsmUnaryOp::Move, dst, src.into_id());
-            } else {
-                let offset = ctx.cur_func().ss() + (id - 8) * 4;
-                self.load(dst, sp, offset);
-            }
-            return;
-        }
         if let ValueKind::Integer(imm) = ctx.value_kind(val) {
             self.load_imm(dst, imm.value());
         } else {
@@ -213,17 +203,12 @@ impl AsmProgram {
 
     pub fn memset_def(&mut self) {
         self.prologue("zmemset", 0, true);
-        let (a0, a1, a2, a3) = (
-            "a0".into_id(),
-            "a1".into_id(),
-            "a2".into_id(),
-            "a3".into_id(),
-        );
-        self.binary(AsmBinaryOp::Add, a2, a0, a1);
+        let (a0, a1, a2) = ("a0".into_id(), "a1".into_id(), "a2".into_id());
+        self.binary(AsmBinaryOp::Add, a1, a0, a1);
         self.local_symbol(".Lentry");
-        self.binary(AsmBinaryOp::Xor, a3, a0, a2);
-        self.unary(AsmUnaryOp::Seqz, a3, a3);
-        self.branch(a3, ".Lend");
+        self.binary(AsmBinaryOp::Xor, a2, a0, a1);
+        self.unary(AsmUnaryOp::Seqz, a2, a2);
+        self.branch(a2, ".Lend");
         self.store("x0".into_id(), a0, 0);
         self.binary_with_imm(AsmBinaryOp::Add, a0, a0, 4);
         self.jump(".Lentry");

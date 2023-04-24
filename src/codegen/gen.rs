@@ -58,15 +58,13 @@ impl GenerateAsm for FunctionData {
         let is_leaf = max_arg_num.is_none();
         let protect_space = if is_leaf { 0 } else { 4 };
         ctx.cur_func_mut().set_is_leaf(is_leaf);
-        ctx.cur_func_mut().set_params(self.params());
 
-        let mut off = if let Some(n) = max_arg_num {
-            max(n as i32 - 8, 0) * 4
-        } else {
-            0
-        };
+        let mut off = max(max_arg_num.unwrap_or(0) as i32 - 8, 0) * 4;
+        self.params().iter().for_each(|p| {
+            ctx.cur_func_mut().spill_to_mem(*p, off, false);
+            off += 4;
+        });
 
-        let mut full = 3;
         self.layout().bbs().nodes().for_each(|node| {
             for &val in node.insts().keys() {
                 let data = self.dfg().value(val);
@@ -81,17 +79,18 @@ impl GenerateAsm for FunctionData {
                     };
                 } else {
                     let is_ptr = matches!(data.ty().kind(), TypeKind::Pointer(_));
-                    if full == 0 {
-                        ctx.cur_func_mut().spill_to_mem(val, off, is_ptr);
-                        off += data.ty().size() as i32;
-                    } else {
-                        let id = format!("t{}", 6 - full).into_id();
-                        ctx.cur_func_mut().alloca_reg(val, id, is_ptr);
-                        full -= 1;
-                    }
+                    ctx.cur_func_mut().spill_to_mem(val, off, is_ptr);
+                    off += data.ty().size() as i32;
                 }
             }
         });
+
+        for data in self.dfg().bbs().values() {
+            for p in data.params() {
+                ctx.cur_func_mut().spill_to_mem(*p, off, false);
+                off += 4;
+            }
+        }
 
         // give a name to each basic block
         self.layout()
@@ -104,6 +103,21 @@ impl GenerateAsm for FunctionData {
         ctx.cur_func_mut().set_ss(ss);
 
         p.prologue(&self.name()[1..], ss, is_leaf);
+
+        self.params().iter().enumerate().for_each(|(i, param)| {
+            match ctx.cur_func().get_local_place(*param) {
+                Place::Mem(offset) => {
+                    if i < 8 {
+                        p.store(format!("a{}", i).into_id(), "sp".into_id(), offset);
+                    } else {
+                        p.load(*T1, "sp".into_id(), ss + (i as i32 - 8) * 4);
+                        p.store(*T1, "sp".into_id(), offset);
+                    }
+                }
+                _ => unreachable!(),
+            }
+        });
+
         self.layout().bbs().iter().for_each(|(bb, node)| {
             p.local_symbol(ctx.cur_func().get_bb_name(bb));
             node.insts().keys().for_each(|inst| inst.generate(ctx, p))
@@ -156,6 +170,18 @@ impl GenerateAsm for Store {
 
 impl GenerateAsm for Branch {
     fn generate(&self, ctx: &mut Context, p: &mut AsmProgram) {
+        for (i, &arg) in self.true_args().iter().enumerate() {
+            let param = ctx.cur_func_data().dfg().bb(self.true_bb()).params()[i];
+            p.read_to(ctx, *T1, arg);
+            p.write_back(ctx, *T1, param);
+        }
+
+        for (i, &arg) in self.false_args().iter().enumerate() {
+            let param = ctx.cur_func_data().dfg().bb(self.false_bb()).params()[i];
+            p.read_to(ctx, *T1, arg);
+            p.write_back(ctx, *T1, param);
+        }
+
         p.read_to(ctx, *T1, self.cond());
 
         let true_bb = ctx.cur_func().get_bb_name(&self.true_bb());
@@ -167,6 +193,11 @@ impl GenerateAsm for Branch {
 
 impl GenerateAsm for Jump {
     fn generate(&self, ctx: &mut Context, p: &mut AsmProgram) {
+        for (i, &arg) in self.args().iter().enumerate() {
+            let param = ctx.cur_func_data().dfg().bb(self.target()).params()[i];
+            p.read_to(ctx, *T1, arg);
+            p.write_back(ctx, *T1, param);
+        }
         p.jump(ctx.cur_func().get_bb_name(&self.target()));
     }
 }

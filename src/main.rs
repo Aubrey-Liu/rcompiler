@@ -3,8 +3,8 @@ use std::env::args;
 use anyhow::{bail, Result};
 use lalrpop_util::lalrpop_mod;
 
-use codegen::generate_code;
-use irgen::{generate_ir, generate_ir_opt};
+use codegen::{generate_code, generate_code_opt};
+use irgen::generate_ir;
 
 mod ast;
 mod codegen;
@@ -22,9 +22,8 @@ fn main() -> Result<()> {
 
     match mode.as_str() {
         "-koopa" => generate_ir(&input, &output)?,
-        "-ir_perf" => generate_ir_opt(&input, &output)?,
         "-riscv" => generate_code(&input, &output)?,
-        "-perf" => generate_code(&input, &output)?,
+        "-perf" => generate_code_opt(&input, &output)?,
         _ => bail!("invalid mode: {}", mode.as_str()),
     };
 

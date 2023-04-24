@@ -130,11 +130,12 @@ impl SsaBuilder {
             replace_bb_with(f, *bb, bb_with_param);
             f.dfg_mut().remove_bb(*bb);
 
-            let (_, node) = f.layout_mut().bbs_mut().remove(bb).unwrap();
             f.layout_mut()
                 .bbs_mut()
-                .push_key_back(bb_with_param)
+                .cursor_mut(*bb)
+                .insert_key_after(bb_with_param)
                 .unwrap();
+            let (_, node) = f.layout_mut().bbs_mut().remove(bb).unwrap();
             for &inst in node.insts().keys() {
                 f.layout_mut()
                     .bb_mut(bb_with_param)

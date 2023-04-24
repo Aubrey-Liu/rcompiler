@@ -9,6 +9,7 @@ mod utils;
 use empty_bb::*;
 use koopa::ir::Program;
 use pass::*;
+#[allow(unused_imports)]
 use sccp::*;
 use ssa::SsaBuilder;
 use trivial_arg::*;
@@ -20,7 +21,7 @@ pub fn optimize(p: &mut Program) {
     // remove unreachable bbs before constructing ssa form can result in less bb arguments
     pass_runner.register_pass(Pass::FunctionPass(Box::new(RemoveUnreachable)));
     pass_runner.register_pass(Pass::FunctionPass(Box::new(SsaBuilder::new())));
-    pass_runner.register_pass(Pass::FunctionPass(Box::new(Sccp::new())));
+    // pass_runner.register_pass(Pass::FunctionPass(Box::new(Sccp::new())));
     pass_runner.register_pass(Pass::FunctionPass(Box::new(RemoveEmptyBB)));
     pass_runner.register_pass(Pass::FunctionPass(Box::new(RemoveTrivialArgs)));
     pass_runner.run_passes(p);

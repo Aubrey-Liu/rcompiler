@@ -1,8 +1,5 @@
 use crate::{ast::*, sema::ty::TypeKind};
-use koopa::ir::{
-    builder_traits::{GlobalInstBuilder, LocalInstBuilder, ValueBuilder},
-    ValueKind,
-};
+use koopa::ir::builder_traits::{GlobalInstBuilder, LocalInstBuilder, ValueBuilder};
 use smallvec::SmallVec;
 
 use super::*;
@@ -264,18 +261,6 @@ impl<'i> GenerateIR<'i> for Branch {
     fn generate_ir(&'i self, recorder: &mut ProgramRecorder<'i>) -> Result<Self::Out> {
         let cond = self.cond.generate_ir(recorder)?;
 
-        if let ValueKind::Integer(i) = recorder.get_value_data(cond).kind() {
-            let i = i.value();
-            if i == 0 {
-                if let Some(el_stmt) = &self.el_stmt {
-                    el_stmt.generate_ir(recorder)?;
-                }
-            } else {
-                self.if_stmt.generate_ir(recorder)?;
-            }
-            return Ok(());
-        }
-
         let true_bb = recorder.new_anonymous_bb();
         let false_bb = recorder.new_anonymous_bb();
         let end_bb = recorder.new_anonymous_bb();
@@ -324,22 +309,11 @@ impl<'i> GenerateIR<'i> for While {
 
         // check the loop condition
         recorder.push_bb(loop_entry);
-        let cond = self.cond.generate_ir(recorder)?;
+        short_circuit(recorder, &self.cond, loop_body, loop_exit)?;
 
-        if let ValueKind::Integer(i) = recorder.get_value_data(cond).kind() {
-            if i.value() == 0 {
-                recorder.remove_bb(loop_body);
-                recorder.remove_bb(loop_exit);
-                recorder.exit_loop();
-                return Ok(());
-            } else {
-                let jump = recorder.new_value().jump(loop_body);
-                recorder.push_inst(jump);
-            }
-        } else {
-            let br = recorder.new_value().branch(cond, loop_body, loop_exit);
-            recorder.push_inst(br);
-        }
+        // let cond = self.cond.generate_ir(recorder)?;
+        // let br = recorder.new_value().branch(cond, loop_body, loop_exit);
+        // recorder.push_inst(br);
 
         // enter the loop body block
         recorder.push_bb(loop_body);
@@ -436,23 +410,21 @@ impl<'i> GenerateIR<'i> for BinaryExpr {
     type Out = Value;
 
     fn generate_ir(&'i self, recorder: &mut ProgramRecorder<'i>) -> Result<Self::Out> {
-        Ok(match self.op {
-            BinaryOp::And | BinaryOp::Or => {
-                let end_bb = recorder.new_anonymous_bb();
-                let result = short_circuit(recorder, self, end_bb)?;
-                recorder.push_bb(end_bb);
-                let ld = recorder.new_value().load(result);
-                recorder.push_inst(ld);
+        if matches!(self.op, BinaryOp::And | BinaryOp::Or) {
+            let result = local_alloc(recorder, IrType::get_i32(), None);
+            let end_bb = recorder.new_anonymous_bb();
+            short_circuit_eval(recorder, self, result, end_bb)?;
+            recorder.push_bb(end_bb);
+            let ld = recorder.new_value().load(result);
+            recorder.push_inst(ld);
 
-                ld
-            }
-            _ => {
-                let lhs = self.lhs.generate_ir(recorder)?;
-                let rhs = self.rhs.generate_ir(recorder)?;
+            Ok(ld)
+        } else {
+            let lhs = self.lhs.generate_ir(recorder)?;
+            let rhs = self.rhs.generate_ir(recorder)?;
 
-                binary(recorder, self.op.into(), lhs, rhs)
-            }
-        })
+            Ok(binary(recorder, self.op.into(), lhs, rhs))
+        }
     }
 }
 
@@ -514,35 +486,103 @@ impl<'i> GenerateIR<'i> for Call {
 
 fn short_circuit<'i>(
     recorder: &mut ProgramRecorder<'i>,
-    cond: &'i BinaryExpr,
-    end_bb: BasicBlock,
-) -> Result<Value> {
-    let result = local_alloc(recorder, IrType::get_i32(), None);
+    cond: &'i Expr,
+    true_bb: BasicBlock,
+    false_bb: BasicBlock,
+) -> Result<()> {
+    if let Expr::Binary(bxp) = cond {
+        if !matches!(bxp.op, BinaryOp::And | BinaryOp::Or) {
+            let result = cond.generate_ir(recorder)?;
+            let br = recorder.new_value().branch(result, true_bb, false_bb);
+            recorder.push_inst(br);
+            return Ok(());
+        }
+    } else {
+        let result = cond.generate_ir(recorder)?;
+        let br = recorder.new_value().branch(result, true_bb, false_bb);
+        recorder.push_inst(br);
+        return Ok(());
+    }
+
+    let cond = if let Expr::Binary(bxp) = cond {
+        bxp
+    } else {
+        unreachable!()
+    };
+
+    // let result = local_alloc(recorder, IrType::get_i32(), None);
     let check_rhs = recorder.new_anonymous_bb();
 
     let (left_true_bb, left_false_bb) = match cond.op {
-        BinaryOp::And => (check_rhs, end_bb),
-        BinaryOp::Or => (end_bb, check_rhs),
+        BinaryOp::And => (check_rhs, false_bb),
+        BinaryOp::Or => (true_bb, check_rhs),
         _ => unreachable!(),
     };
-    let lhs = cond.lhs.generate_ir(recorder)?;
-    let lhs_checked = value_checked(recorder, lhs);
-    let st = recorder.new_value().store(lhs_checked, result);
-    let br = recorder
-        .new_value()
-        .branch(lhs_checked, left_true_bb, left_false_bb);
-    recorder.push_inst(st);
-    recorder.push_inst(br);
-
+    short_circuit(recorder, &cond.lhs, left_true_bb, left_false_bb)?;
     recorder.push_bb(check_rhs);
-    let rhs = cond.rhs.generate_ir(recorder)?;
-    let rhs_checked = value_checked(recorder, rhs);
-    let st = recorder.new_value().store(rhs_checked, result);
-    let jump = recorder.new_value().jump(end_bb);
-    recorder.push_inst(st);
-    recorder.push_inst(jump);
+    short_circuit(recorder, &cond.rhs, true_bb, false_bb)?;
 
-    Ok(result)
+    Ok(())
+}
+
+fn short_circuit_eval<'i>(
+    recorder: &mut ProgramRecorder<'i>,
+    cond: &'i BinaryExpr,
+    result: Value,
+    end_bb: BasicBlock,
+) -> Result<()> {
+    // if !matches!(cond.op, BinaryOp::And | BinaryOp::Or) {
+    //     let val = cond.generate_ir(recorder)?;
+    //     let checked_val = value_checked(recorder, val);
+    //     let st = recorder.new_value().store(checked_val, result);
+    //     let jump = recorder.new_value().jump(end_bb);
+    //     recorder.push_inst(st);
+    //     recorder.push_inst(jump);
+
+    //     return Ok(());
+    // }
+
+    let left_true_bb = recorder.new_anonymous_bb();
+    let left_false_bb = recorder.new_anonymous_bb();
+    short_circuit(recorder, &cond.lhs, left_true_bb, left_false_bb)?;
+
+    match cond.op {
+        BinaryOp::And => {
+            recorder.push_bb(left_false_bb);
+            let zero = recorder.new_value().integer(0);
+            let st = recorder.new_value().store(zero, result);
+            let jump = recorder.new_value().jump(end_bb);
+            recorder.push_inst(st);
+            recorder.push_inst(jump);
+
+            recorder.push_bb(left_true_bb);
+            let rhs = cond.rhs.generate_ir(recorder)?;
+            let rhs_checked = value_checked(recorder, rhs);
+            let st = recorder.new_value().store(rhs_checked, result);
+            let jump = recorder.new_value().jump(end_bb);
+            recorder.push_inst(st);
+            recorder.push_inst(jump);
+        }
+        BinaryOp::Or => {
+            recorder.push_bb(left_true_bb);
+            let zero = recorder.new_value().integer(0);
+            let st = recorder.new_value().store(zero, result);
+            let jump = recorder.new_value().jump(end_bb);
+            recorder.push_inst(st);
+            recorder.push_inst(jump);
+
+            recorder.push_bb(left_false_bb);
+            let rhs = cond.rhs.generate_ir(recorder)?;
+            let rhs_checked = value_checked(recorder, rhs);
+            let st = recorder.new_value().store(rhs_checked, result);
+            let jump = recorder.new_value().jump(end_bb);
+            recorder.push_inst(st);
+            recorder.push_inst(jump);
+        }
+        _ => unreachable!(),
+    }
+
+    Ok(())
 }
 
 impl From<BinaryOp> for IrBinaryOp {
