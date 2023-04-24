@@ -169,11 +169,11 @@ impl Sccp {
         let param = self.is_part_of_phi(f, src, dst);
         if let Some((bb, param)) = param {
             self.visit_param(f, bb, param);
-        } else {
-            let dst_bb = f.layout().parent_bb(dst).unwrap();
-            if self.is_reachable(dst_bb) {
-                self.visit_expr(f, dst);
-            }
+            return;
+        }
+        let dst_bb = f.layout().parent_bb(dst).unwrap();
+        if self.is_reachable(dst_bb) {
+            self.visit_expr(f, dst);
         }
     }
 
@@ -197,9 +197,7 @@ impl Sccp {
 
                 oprands.push(self.value_to_type(f, arg));
             }
-
             let new_ty = self.meet(&oprands);
-
             let old_cell = *self.lattice_cells.get(&param).unwrap();
             if old_cell.ty == new_ty {
                 return;
@@ -230,10 +228,10 @@ impl Sccp {
         let cell_ty = self.lattice_cells.get(&val).unwrap().ty;
         for &user in f.dfg().value(val).used_by() {
             let bb = f.layout().parent_bb(user).unwrap();
-            if self.is_control_br(f, user, val) {
-                if let ValueKind::Branch(br) = value_kind(f, user) {
-                    match cell_ty {
-                        CellType::Top => {}
+            match value_kind(f, user) {
+                ValueKind::Branch(br) => {
+                    let br_cell_ty = self.value_to_type(f, br.cond());
+                    match br_cell_ty {
                         CellType::Constant(i) if i != 0 => {
                             let id = self.get_edge_id(bb, br.true_bb());
                             self.flow_worklist.push(id);
@@ -246,14 +244,28 @@ impl Sccp {
                             let edges = self.outcoming_edges.get(&bb).unwrap();
                             self.flow_worklist.extend(edges);
                         }
+                        CellType::Top => {}
                     }
+                    self.ssa_worklist.push(SsaEdge {
+                        src: val,
+                        dst: user,
+                    });
                 }
-            }
-            if self.is_expr(f, user) {
-                self.ssa_worklist.push(SsaEdge {
-                    src: val,
-                    dst: user,
-                });
+                ValueKind::Jump(j) => {
+                    let id = self.get_edge_id(bb, j.target());
+                    self.flow_worklist.push(id);
+                    self.ssa_worklist.push(SsaEdge {
+                        src: val,
+                        dst: user,
+                    });
+                }
+                ValueKind::Binary(_) => {
+                    self.ssa_worklist.push(SsaEdge {
+                        src: val,
+                        dst: user,
+                    });
+                }
+                _ => {}
             }
         }
     }
@@ -439,12 +451,15 @@ impl Sccp {
     }
 
     fn value_to_type(&self, f: &FunctionData, val: Value) -> CellType {
-        if let ValueKind::Integer(i) = value_kind(f, val) {
-            CellType::Constant(i.value())
-        } else if self.lattice_cells.contains_key(&val) {
-            self.lattice_cells.get(&val).unwrap().ty
-        } else {
-            CellType::Bottom
+        match value_kind(f, val) {
+            ValueKind::Integer(i) => CellType::Constant(i.value()),
+            _ => {
+                if self.lattice_cells.contains_key(&val) {
+                    self.lattice_cells.get(&val).unwrap().ty
+                } else {
+                    CellType::Bottom
+                }
+            }
         }
     }
 
@@ -474,8 +489,6 @@ impl Sccp {
 
     fn evaluate(&mut self, op: BinaryOp, lhs_ty: CellType, rhs_ty: CellType) -> CellType {
         match (lhs_ty, rhs_ty) {
-            (CellType::Bottom, _) | (_, CellType::Bottom) => CellType::Bottom,
-            (CellType::Top, _) | (_, CellType::Top) => CellType::Top,
             (CellType::Constant(lhs), CellType::Constant(rhs)) => {
                 let lhs = lhs;
                 let rhs = rhs;
@@ -510,6 +523,8 @@ impl Sccp {
 
                 CellType::Constant(result)
             }
+            (CellType::Bottom, _) | (_, CellType::Bottom) => CellType::Bottom,
+            (CellType::Top, _) | (_, CellType::Top) => CellType::Top,
         }
     }
 

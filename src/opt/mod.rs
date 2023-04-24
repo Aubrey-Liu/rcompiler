@@ -18,11 +18,12 @@ use utils::*;
 
 pub fn optimize(p: &mut Program) {
     let mut pass_runner = PassRunner::new();
-    // remove unreachable bbs before constructing ssa form can result in less bb arguments
     pass_runner.register_pass(Pass::FunctionPass(Box::new(RemoveUnreachable)));
     pass_runner.register_pass(Pass::FunctionPass(Box::new(SsaBuilder::new())));
-    // pass_runner.register_pass(Pass::FunctionPass(Box::new(Sccp::new())));
+    pass_runner.register_pass(Pass::FunctionPass(Box::new(Sccp::new())));
+    pass_runner.register_pass(Pass::FunctionPass(Box::new(RemoveUnreachable)));
     pass_runner.register_pass(Pass::FunctionPass(Box::new(RemoveEmptyBB)));
     pass_runner.register_pass(Pass::FunctionPass(Box::new(RemoveTrivialArgs)));
+    pass_runner.register_pass(Pass::FunctionPass(Box::new(RemoveEmptyBB)));
     pass_runner.run_passes(p);
 }
