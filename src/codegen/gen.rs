@@ -65,6 +65,13 @@ impl GenerateAsm for FunctionData {
             off += 4;
         });
 
+        for data in self.dfg().bbs().values() {
+            for p in data.params() {
+                ctx.cur_func_mut().spill_to_mem(*p, off, false);
+                off += 4;
+            }
+        }
+
         self.layout().bbs().nodes().for_each(|node| {
             for &val in node.insts().keys() {
                 let data = self.dfg().value(val);
@@ -84,13 +91,6 @@ impl GenerateAsm for FunctionData {
                 }
             }
         });
-
-        for data in self.dfg().bbs().values() {
-            for p in data.params() {
-                ctx.cur_func_mut().spill_to_mem(*p, off, false);
-                off += 4;
-            }
-        }
 
         // give a name to each basic block
         self.layout()
