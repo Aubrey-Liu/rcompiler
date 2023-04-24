@@ -18,22 +18,39 @@ impl RemoveEmptyBB {
     fn remove_empty_bb(&self, f: &mut FunctionData) -> bool {
         let mut changed = false;
         let mut empty_bbs: SmallVec<[(BasicBlock, Value); 4]> = SmallVec::new();
-        for (bb, node) in f.layout().bbs() {
+        'outer: for (bb, node) in f.layout().bbs() {
             if f.layout().entry_bb().unwrap() == *bb {
                 continue;
             }
             let val = *node.insts().front_key().unwrap();
-            if let ValueKind::Jump(_) = f.dfg().value(val).kind() {
-                if f.dfg().bb(*bb).params().is_empty() {
+            let params = f.dfg().bb(*bb).params();
+            if let ValueKind::Jump(j) = f.dfg().value(val).kind() {
+                if params.is_empty() {
                     empty_bbs.push((*bb, val));
                     changed = true;
+                    continue;
                 }
+                if params.len() != j.args().len() {
+                    continue;
+                }
+                for (x, y) in params.iter().zip(j.args()) {
+                    if x != y {
+                        continue 'outer;
+                    }
+                }
+                empty_bbs.push((*bb, val));
+                changed = true;
             }
         }
 
         for &(bb, val) in &empty_bbs {
             if let ValueKind::Jump(j) = f.dfg().value(val).kind().clone() {
-                self.replace_empty_bb(f, bb, j.target(), j.args());
+                let extra_args = if f.dfg().bb(bb).params().is_empty() {
+                    j.args()
+                } else {
+                    &[]
+                };
+                self.replace_empty_bb(f, bb, j.target(), extra_args);
                 f.dfg_mut().remove_value(val);
                 f.dfg_mut().remove_bb(bb);
                 f.layout_mut().bbs_mut().remove(&bb);
