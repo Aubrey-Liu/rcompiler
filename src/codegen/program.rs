@@ -195,21 +195,6 @@ impl AsmProgram {
             self.binary(AsmBinaryOp::Mul, dst, opr, "t0".into_id())
         }
     }
-
-    pub fn memset_def(&mut self) {
-        self.prologue("mmemset", 0, true);
-        let (a0, a1, a2) = ("a0".into_id(), "a1".into_id(), "a2".into_id());
-        self.binary(AsmBinaryOp::Add, a1, a0, a1);
-        self.local_symbol(".Lentry");
-        self.binary(AsmBinaryOp::Xor, a2, a0, a1);
-        self.unary(AsmUnaryOp::Seqz, a2, a2);
-        self.branch(a2, ".Lend");
-        self.store("zero".into_id(), a0, 0);
-        self.binary_with_imm(AsmBinaryOp::Add, a0, a0, 4);
-        self.jump(".Lentry");
-        self.local_symbol(".Lend");
-        self.epilogue(0, true);
-    }
 }
 
 pub enum AsmValue {

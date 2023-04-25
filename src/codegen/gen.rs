@@ -32,8 +32,6 @@ impl GenerateAsm for Program {
                 ctx.set_func(f);
                 data.generate(ctx, p);
             });
-
-        p.memset_def();
     }
 }
 
@@ -48,7 +46,7 @@ impl GenerateAsm for FunctionData {
                 ValueKind::Store(s)
                     if matches!(self.dfg().value(s.value()).kind(), ValueKind::ZeroInit(_)) =>
                 {
-                    Some(2)
+                    Some(3)
                 }
                 _ => None,
             })
@@ -150,11 +148,12 @@ impl GenerateAsm for Store {
         let (t1, t2) = (*T1, *T2);
         if let ValueKind::ZeroInit(_) = ctx.value_kind(self.value()) {
             p.read_addr_to(ctx, "a0".into_id(), self.dest());
+            p.load_imm("a1".into_id(), 0);
             p.load_imm(
-                "a1".into_id(),
+                "a2".into_id(),
                 ctx.value_data(self.value()).ty().size() as i32,
             );
-            p.call("mmemset");
+            p.call("memset@plt");
         } else {
             p.read_to(ctx, t1, self.value());
             if ctx.is_pointer(self.dest()) {
