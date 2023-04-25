@@ -22,7 +22,6 @@ impl GenerateAsm for Program {
             ctx.register_global_var(g, name);
             p.push(AsmValue::Directive(Directive::Data));
             g.generate(ctx, p);
-            p.push(AsmValue::Blank);
         });
 
         self.funcs()

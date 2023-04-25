@@ -9,10 +9,6 @@ pub struct AsmWriter {
 }
 
 impl AsmWriter {
-    pub fn blank_line(&mut self) -> Result<()> {
-        writeln!(self.f)
-    }
-
     pub fn segment(&mut self, name: &str) -> Result<()> {
         writeln!(self.f, "  .{}", name)
     }
@@ -150,7 +146,6 @@ impl AsmWriter {
             AsmValue::Jump(target) => self.j(target),
             AsmValue::LocalSymbol(label) => self.local_symbol(label),
             AsmValue::GlobalSymbol(label) => self.global_symbol(label),
-            AsmValue::Blank => self.blank_line(),
             AsmValue::Return => self.ret(),
         })
     }

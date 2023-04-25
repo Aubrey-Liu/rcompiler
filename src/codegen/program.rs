@@ -82,10 +82,6 @@ impl AsmProgram {
         self.push(AsmValue::Return);
     }
 
-    pub fn blank(&mut self) {
-        self.push(AsmValue::Blank);
-    }
-
     pub fn prologue(&mut self, func_name: &str, ss: i32, is_leaf: bool) {
         self.directive(Directive::Text);
         self.global_symbol(func_name);
@@ -103,7 +99,6 @@ impl AsmProgram {
         }
         self.binary_with_imm(AsmBinaryOp::Add, sp, sp, ss);
         self.ret();
-        self.blank();
     }
 
     pub fn read_to(&mut self, ctx: &Context, dst: RegID, val: Value) {
@@ -182,7 +177,7 @@ impl AsmProgram {
 
     pub fn muli(&mut self, dst: RegID, opr: RegID, imm: i32) {
         if imm == 0 {
-            self.unary(AsmUnaryOp::Move, dst, "x0".into_id());
+            self.unary(AsmUnaryOp::Move, dst, "zero".into_id());
         } else if imm == 1 {
             if dst != opr {
                 self.unary(AsmUnaryOp::Move, dst, opr);
@@ -209,7 +204,7 @@ impl AsmProgram {
         self.binary(AsmBinaryOp::Xor, a2, a0, a1);
         self.unary(AsmUnaryOp::Seqz, a2, a2);
         self.branch(a2, ".Lend");
-        self.store("x0".into_id(), a0, 0);
+        self.store("zero".into_id(), a0, 0);
         self.binary_with_imm(AsmBinaryOp::Add, a0, a0, 4);
         self.jump(".Lentry");
         self.local_symbol(".Lend");
@@ -232,12 +227,10 @@ pub enum AsmValue {
     GlobalSymbol(Lable),
     LocalSymbol(Lable),
     Return,
-    Blank,
 }
 
 pub type Lable = String;
 
-#[allow(dead_code)]
 pub enum AsmBinaryOp {
     Add,
     Sub,
@@ -250,16 +243,14 @@ pub enum AsmBinaryOp {
     Sgt,
     Xor,
     Sll,
+    #[allow(dead_code)]
     Sra,
 }
 
-#[allow(dead_code)]
 pub enum AsmUnaryOp {
     Seqz,
     Snez,
     Move,
-    Sltz,
-    Sgtz,
 }
 
 impl AsmBinaryOp {
@@ -297,8 +288,6 @@ impl AsmUnaryOp {
             Self::Seqz => "seqz",
             Self::Snez => "snez",
             Self::Move => "mv",
-            Self::Sltz => "sltz",
-            Self::Sgtz => "sgtz",
         }
     }
 }

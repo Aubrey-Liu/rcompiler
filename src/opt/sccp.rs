@@ -225,7 +225,6 @@ impl Sccp {
     }
 
     fn add_edges(&mut self, f: &FunctionData, val: Value) {
-        let cell_ty = self.lattice_cells.get(&val).unwrap().ty;
         for &user in f.dfg().value(val).used_by() {
             let bb = f.layout().parent_bb(user).unwrap();
             match value_kind(f, user) {
@@ -461,16 +460,6 @@ impl Sccp {
                 }
             }
         }
-    }
-
-    fn is_control_br(&self, f: &FunctionData, br: Value, val: Value) -> bool {
-        if let ValueKind::Branch(br) = value_kind(f, br) {
-            if br.cond() == val {
-                return true;
-            }
-        }
-
-        false
     }
 
     fn is_expr(&self, f: &FunctionData, val: Value) -> bool {

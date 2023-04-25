@@ -9,7 +9,6 @@ mod utils;
 use empty_bb::*;
 use koopa::ir::Program;
 use pass::*;
-#[allow(unused_imports)]
 use sccp::*;
 use ssa::SsaBuilder;
 use trivial_arg::*;
