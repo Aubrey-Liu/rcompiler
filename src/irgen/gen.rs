@@ -259,14 +259,10 @@ impl<'i> GenerateIR<'i> for Branch {
     type Out = ();
 
     fn generate_ir(&'i self, recorder: &mut ProgramRecorder<'i>) -> Result<Self::Out> {
-        let cond = self.cond.generate_ir(recorder)?;
-
         let true_bb = recorder.new_anonymous_bb();
         let false_bb = recorder.new_anonymous_bb();
         let end_bb = recorder.new_anonymous_bb();
-
-        let br = recorder.new_value().branch(cond, true_bb, false_bb);
-        recorder.push_inst(br);
+        short_circuit(recorder, &self.cond, true_bb, false_bb)?;
 
         // enter the "true" block
         recorder.push_bb(true_bb);
@@ -310,10 +306,6 @@ impl<'i> GenerateIR<'i> for While {
         // check the loop condition
         recorder.push_bb(loop_entry);
         short_circuit(recorder, &self.cond, loop_body, loop_exit)?;
-
-        // let cond = self.cond.generate_ir(recorder)?;
-        // let br = recorder.new_value().branch(cond, loop_body, loop_exit);
-        // recorder.push_inst(br);
 
         // enter the loop body block
         recorder.push_bb(loop_body);
@@ -510,9 +502,7 @@ fn short_circuit<'i>(
         unreachable!()
     };
 
-    // let result = local_alloc(recorder, IrType::get_i32(), None);
     let check_rhs = recorder.new_anonymous_bb();
-
     let (left_true_bb, left_false_bb) = match cond.op {
         BinaryOp::And => (check_rhs, false_bb),
         BinaryOp::Or => (true_bb, check_rhs),
@@ -531,17 +521,6 @@ fn short_circuit_eval<'i>(
     result: Value,
     end_bb: BasicBlock,
 ) -> Result<()> {
-    // if !matches!(cond.op, BinaryOp::And | BinaryOp::Or) {
-    //     let val = cond.generate_ir(recorder)?;
-    //     let checked_val = value_checked(recorder, val);
-    //     let st = recorder.new_value().store(checked_val, result);
-    //     let jump = recorder.new_value().jump(end_bb);
-    //     recorder.push_inst(st);
-    //     recorder.push_inst(jump);
-
-    //     return Ok(());
-    // }
-
     let left_true_bb = recorder.new_anonymous_bb();
     let left_false_bb = recorder.new_anonymous_bb();
     short_circuit(recorder, &cond.lhs, left_true_bb, left_false_bb)?;
