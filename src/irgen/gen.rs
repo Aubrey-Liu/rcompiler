@@ -482,24 +482,20 @@ fn short_circuit<'i>(
     true_bb: BasicBlock,
     false_bb: BasicBlock,
 ) -> Result<()> {
-    if let Expr::Binary(bxp) = cond {
+    let cond = if let Expr::Binary(bxp) = cond {
         if !matches!(bxp.op, BinaryOp::And | BinaryOp::Or) {
             let result = cond.generate_ir(recorder)?;
             let br = recorder.new_value().branch(result, true_bb, false_bb);
             recorder.push_inst(br);
             return Ok(());
+        } else {
+            bxp
         }
     } else {
         let result = cond.generate_ir(recorder)?;
         let br = recorder.new_value().branch(result, true_bb, false_bb);
         recorder.push_inst(br);
         return Ok(());
-    }
-
-    let cond = if let Expr::Binary(bxp) = cond {
-        bxp
-    } else {
-        unreachable!()
     };
 
     let check_rhs = recorder.new_anonymous_bb();
@@ -544,8 +540,8 @@ fn short_circuit_eval<'i>(
         }
         BinaryOp::Or => {
             recorder.push_bb(left_true_bb);
-            let zero = recorder.new_value().integer(0);
-            let st = recorder.new_value().store(zero, result);
+            let one = recorder.new_value().integer(1);
+            let st = recorder.new_value().store(one, result);
             let jump = recorder.new_value().jump(end_bb);
             recorder.push_inst(st);
             recorder.push_inst(jump);
