@@ -1,9 +1,7 @@
-use lalrpop_util::ErrorRecovery;
-
 use crate::ast::*;
 
 #[LALR]
-grammar<'err>(errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, &'static str>>);
+grammar;
 
 match {
   // skip blanks and comments
@@ -141,7 +139,7 @@ PrimaryExp: Expr = {
   "(" <Expr> ")" => <>,
   IntConst => Expr::Integer(<>),
   LVal => Expr::LVal(<>),
-  ! => { errors.push(<>); Expr::Error },
+  ! => Expr::Error,
 };
 
 UnaryExpr: Expr = {

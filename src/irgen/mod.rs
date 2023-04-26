@@ -30,10 +30,7 @@ pub fn generate_mem_ir_opt(input: &str) -> Result<Program> {
 
 pub fn generate_mem_ir(input: &str) -> Result<Program> {
     let input = read_to_string(input)?;
-    let mut errors = vec![];
-    let mut ast = sysy::CompUnitParser::new()
-        .parse(&mut errors, &input)
-        .unwrap();
+    let mut ast = sysy::CompUnitParser::new().parse(&input).unwrap();
 
     let mut name_manager = NameManager::new();
     ast.accept(&mut name_manager);
