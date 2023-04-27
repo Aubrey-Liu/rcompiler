@@ -62,7 +62,7 @@ impl SsaBuilder {
                         // record local variables
                         if let TypeKind::Pointer(base_ty) = val_data.ty().kind() {
                             // only deal with integer type
-                            if base_ty.is_i32() {
+                            if matches!(base_ty.kind(), TypeKind::Int32 | TypeKind::Pointer(_)) {
                                 self.defs.insert(val, HashMap::new());
                             }
                         } else {

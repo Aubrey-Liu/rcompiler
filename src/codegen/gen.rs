@@ -58,7 +58,8 @@ impl GenerateAsm for FunctionData {
 
         let mut off = max(max_arg_num.unwrap_or(0) as i32 - 8, 0) * 4;
         self.params().iter().for_each(|p| {
-            ctx.cur_func_mut().spill_to_mem(*p, off, false);
+            let is_ptr = matches!(self.dfg().value(*p).ty().kind(), TypeKind::Pointer(_));
+            ctx.cur_func_mut().spill_to_mem(*p, off, is_ptr);
             off += 4;
         });
 
