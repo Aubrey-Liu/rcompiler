@@ -8,7 +8,7 @@ use lazy_static_include::lazy_static::lazy_static;
 
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RegID(usize);
 
 #[derive(Debug, Clone, Copy)]
@@ -18,38 +18,43 @@ pub enum Place {
     Mem(i32),
 }
 
-pub struct LocalValue {
-    place: Place,
-    is_pointer: bool,
-}
-
 pub struct Context<'i> {
     program: &'i Program,
     global_values: HashMap<Value, String>,
-    functions: HashMap<Function, usize>,
+    allocator: RegAllocator,
     cur_func: Option<FunctionInfo>,
 }
 
 pub struct FunctionInfo {
     id: Function,
-    local_values: HashMap<Value, LocalValue>,
+    local_arrays: HashMap<Value, i32>,
     blocks: HashMap<BasicBlock, String>,
+    saved_regs: (i32, i32),
+    base_offset: i32,
+    spilled_size: i32,
     ss: i32, // stack size
     is_leaf: bool,
 }
 
 impl<'i> Context<'i> {
     thread_local! {
+        static FUNCID: Cell<i32> = Cell::new(-1);
         static NAMETAG: Cell<u32> = Cell::new(0);
     }
 
-    pub fn new_with_program(program: &'i Program) -> Self {
-        Self {
+    pub fn new(program: &'i Program) -> Self {
+        let mut ctx = Self {
             program,
             global_values: HashMap::new(),
-            functions: HashMap::new(),
+            allocator: RegAllocator::new(),
             cur_func: None,
-        }
+        };
+
+        let mut live_ranges = LiveRange::new();
+        live_ranges.analyze(program);
+        ctx.allocator.alloca(&live_ranges, 8);
+
+        ctx
     }
 
     pub fn value_kind(&self, val: Value) -> ValueKind {
@@ -80,6 +85,20 @@ impl<'i> Context<'i> {
         self.program.func(id).name()
     }
 
+    pub fn get_local_place(&self, val: Value) -> Place {
+        match self
+            .allocator
+            .places
+            .get(&self.cur_func().id())
+            .unwrap()
+            .get(&val)
+            .unwrap()
+        {
+            Place::Mem(off) => Place::Mem(self.cur_func().base_offset + off),
+            Place::Reg(reg) => Place::Reg(*reg),
+        }
+    }
+
     pub fn func_data(&self, id: Function) -> &FunctionData {
         self.program.func(id)
     }
@@ -96,21 +115,22 @@ impl<'i> Context<'i> {
         self.cur_func.as_mut().unwrap()
     }
 
-    pub fn set_func(&mut self, func: Function) {
-        self.cur_func = Some(FunctionInfo::new(func));
+    pub fn set_func(&mut self, f: Function) {
+        self.cur_func = Some(FunctionInfo::new(f));
+        self.cur_func_mut().saved_regs =
+            (0, *self.allocator.max_reg.get(&f).unwrap_or(&0) as i32 * 4);
+        self.cur_func_mut().spilled_size = *self.allocator.spill_size.get(&f).unwrap_or(&0) as i32;
+
         Self::NAMETAG.with(|id| id.set(0));
     }
 
-    pub fn new_func(&mut self, func: Function) {
-        let id = self.functions.len();
-        self.functions
-            .insert(func, id)
-            .map_or((), |_| panic!("redifinition of function"));
+    pub fn new_func(&mut self) {
+        Self::FUNCID.with(|id| id.replace(id.get() + 1));
     }
 
     pub fn register_bb(&mut self, bb: BasicBlock) {
         let id = Self::NAMETAG.with(|id| id.replace(id.get() + 1));
-        let func_id = self.functions.get(&self.cur_func().id()).unwrap();
+        let func_id = Self::FUNCID.with(|id| id.get());
         let name = format!(".LBB{}_{}", func_id, id);
         self.cur_func_mut().register_bb(bb, name);
     }
@@ -126,23 +146,17 @@ impl<'i> Context<'i> {
     pub fn is_global(&self, val: Value) -> bool {
         self.cur_func.is_none() || self.global_values.contains_key(&val)
     }
-
-    /// If a value is not an alloc and its type is pointer, then return true
-    pub fn is_pointer(&self, val: Value) -> bool {
-        self.cur_func()
-            .local_values
-            .get(&val)
-            .map(|v| v.is_pointer)
-            .unwrap_or(false)
-    }
 }
 
 impl FunctionInfo {
     pub fn new(id: Function) -> Self {
         FunctionInfo {
             id,
-            local_values: HashMap::new(),
+            local_arrays: HashMap::new(),
             blocks: HashMap::new(),
+            saved_regs: (0, 0),
+            base_offset: 0,
+            spilled_size: 0,
             ss: 0,
             is_leaf: false,
         }
@@ -157,6 +171,14 @@ impl FunctionInfo {
         self.ss
     }
 
+    pub fn spilled_size(&self) -> i32 {
+        self.spilled_size
+    }
+
+    pub fn saved_regs(&self) -> (i32, i32) {
+        self.saved_regs
+    }
+
     pub fn is_leaf(&self) -> bool {
         self.is_leaf
     }
@@ -165,16 +187,15 @@ impl FunctionInfo {
         self.is_leaf = is_leaf;
     }
 
-    pub fn get_local_place(&self, val: Value) -> Place {
-        self.local_values.get(&val).unwrap().place
+    pub fn set_base_offset(&mut self, base_offset: i32) {
+        self.base_offset = base_offset;
+        let shift = base_offset - self.saved_regs.1;
+        self.saved_regs.0 += shift;
+        self.saved_regs.1 += shift;
     }
 
-    pub fn get_offset(&self, val: &Value) -> i32 {
-        if let Place::Mem(offset) = self.local_values.get(val).unwrap().place {
-            offset
-        } else {
-            unreachable!()
-        }
+    pub fn get_local_array(&self, val: Value) -> i32 {
+        *self.local_arrays.get(&val).unwrap() + self.base_offset
     }
 
     pub fn get_bb_name(&self, bb: &BasicBlock) -> &String {
@@ -182,28 +203,11 @@ impl FunctionInfo {
     }
 
     pub fn set_ss(&mut self, ss: i32) {
-        self.ss = ss;
+        self.ss = (ss + self.base_offset + 15) / 16 * 16;
     }
 
-    pub fn spill_to_mem(&mut self, val: Value, offset: i32, is_pointer: bool) {
-        self.local_values.insert(
-            val,
-            LocalValue {
-                place: Place::Mem(offset),
-                is_pointer,
-            },
-        );
-    }
-
-    #[allow(dead_code)]
-    pub fn alloca_reg(&mut self, val: Value, reg_id: RegID, is_pointer: bool) {
-        self.local_values.insert(
-            val,
-            LocalValue {
-                place: Place::Reg(reg_id),
-                is_pointer,
-            },
-        );
+    pub fn spill_to_mem(&mut self, val: Value, offset: i32) {
+        self.local_arrays.insert(val, offset);
     }
 
     /// Record the name of a basic block

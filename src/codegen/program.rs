@@ -30,6 +30,12 @@ impl AsmProgram {
         self.push(AsmValue::Directive(d));
     }
 
+    pub fn mv(&mut self, dst: RegID, src: RegID) {
+        if dst != src {
+            self.unary(AsmUnaryOp::Move, dst, src);
+        }
+    }
+
     pub fn unary(&mut self, op: AsmUnaryOp, dst: RegID, opr: RegID) {
         self.push(AsmValue::Unary(op, dst, opr));
     }
@@ -82,51 +88,107 @@ impl AsmProgram {
         self.push(AsmValue::Return);
     }
 
-    pub fn prologue(&mut self, func_name: &str, ss: i32, is_leaf: bool) {
+    pub fn prologue(
+        &mut self,
+        func_name: &str,
+        ctx: &Context,
+        saved_regs: (i32, i32),
+        is_leaf: bool,
+    ) {
         self.directive(Directive::Text);
         self.global_symbol(func_name);
 
+        let ss = ctx.cur_func().ss();
         self.binary_with_imm(AsmBinaryOp::Add, *SP, *SP, -ss);
         if !is_leaf {
             self.store("ra".into_id(), *SP, ss - 4);
         }
+
+        let mut off: i32 = saved_regs.0;
+        let mut id = 0;
+        while off < saved_regs.1 {
+            self.store(format!("s{}", id).into_id(), *SP, off);
+            id += 1;
+            off += 4;
+        }
     }
 
-    pub fn epilogue(&mut self, ss: i32, is_leaf: bool) {
+    pub fn epilogue(&mut self, ctx: &Context, saved_regs: (i32, i32), is_leaf: bool) {
         let (ra, sp) = ("ra".into_id(), "sp".into_id());
+        let ss = ctx.cur_func().ss();
         if !is_leaf {
             self.load(ra, sp, ss - 4);
+        }
+        let mut off = saved_regs.0;
+        let mut id = 0;
+        while off < saved_regs.1 {
+            self.load(format!("s{}", id).into_id(), *SP, off);
+            id += 1;
+            off += 4;
         }
         self.binary_with_imm(AsmBinaryOp::Add, sp, sp, ss);
         self.ret();
     }
 
-    pub fn read_to(&mut self, ctx: &Context, dst: RegID, val: Value) {
-        let t0 = "t0".into_id();
+    pub fn read_value_addr(&mut self, ctx: &Context, dst: RegID, val: Value) -> RegID {
         let sp = "sp".into_id();
         if ctx.is_global(val) {
             let name = ctx.get_global_var(&val);
-            self.load_address(t0, name);
-            self.load(dst, t0, 0);
-            return;
-        }
-        if let ValueKind::Integer(imm) = ctx.value_kind(val) {
-            self.load_imm(dst, imm.value());
+            self.load_address(dst, name);
+            dst
         } else {
-            match ctx.cur_func().get_local_place(val) {
-                Place::Reg(id) => self.unary(AsmUnaryOp::Move, dst, id),
-                Place::Mem(offset) => self.load(dst, sp, offset),
+            match ctx.get_local_place(val) {
+                Place::Reg(id) => id,
+                Place::Mem(offset) => {
+                    self.load(dst, sp, offset);
+                    dst
+                }
             }
         }
     }
 
-    pub fn read_addr_to(&mut self, ctx: &Context, dst: RegID, val: Value) {
-        let sp = "sp".into_id();
+    pub fn read_value(&mut self, ctx: &Context, dst: RegID, val: Value) -> RegID {
+        let t0 = *T0;
+        let sp = *SP;
         if ctx.is_global(val) {
-            let label = ctx.get_global_var(&val);
-            self.load_address(dst, label);
+            let name = ctx.get_global_var(&val);
+            self.load_address(t0, name);
+            self.load(dst, t0, 0);
+            return dst;
+        }
+        if let ValueKind::Integer(imm) = ctx.value_kind(val) {
+            self.load_imm(dst, imm.value());
+            dst
         } else {
-            self.binary_with_imm(AsmBinaryOp::Add, dst, sp, ctx.cur_func().get_offset(&val));
+            match ctx.get_local_place(val) {
+                Place::Reg(id) => id,
+                Place::Mem(offset) => {
+                    self.load(dst, sp, offset);
+                    dst
+                }
+            }
+        }
+    }
+
+    pub fn move_local_value(&mut self, ctx: &Context, dst: Value, src: Value) {
+        if let ValueKind::Integer(imm) = ctx.value_kind(src) {
+            match ctx.get_local_place(dst) {
+                Place::Reg(dst) => self.load_imm(dst, imm.value()),
+                Place::Mem(off) => {
+                    self.load_imm(*T0, imm.value());
+                    self.store(*T0, *SP, off);
+                }
+            }
+        } else {
+            match (ctx.get_local_place(src), ctx.get_local_place(dst)) {
+                (Place::Reg(src), Place::Reg(dst)) => self.mv(dst, src),
+                (Place::Reg(id), Place::Mem(off)) => self.store(id, *SP, off),
+                (Place::Mem(off), Place::Reg(id)) => self.load(id, *SP, off),
+                (Place::Mem(src_off), Place::Mem(dst_off)) => {
+                    self.load(*T0, *SP, src_off);
+                    self.store(*T0, *SP, dst_off);
+                }
+            }
         }
     }
 
@@ -162,16 +224,21 @@ impl AsmProgram {
     }
 
     pub fn write_back(&mut self, ctx: &Context, src: RegID, val: Value) {
-        let t0 = "t0".into_id();
+        let t0 = *T0;
+        let sp = *SP;
         if ctx.is_global(val) {
             let label = ctx.get_global_var(&val);
             self.load_address(t0, label);
             self.store(src, t0, 0);
-            return;
-        }
-        match ctx.cur_func().get_local_place(val) {
-            Place::Reg(id) => self.unary(AsmUnaryOp::Move, id, src),
-            Place::Mem(offset) => self.store(src, "sp".into_id(), offset),
+        } else {
+            match ctx.get_local_place(val) {
+                Place::Reg(reg) => {
+                    if reg != src {
+                        self.mv(reg, src);
+                    }
+                }
+                Place::Mem(off) => self.store(src, sp, off),
+            }
         }
     }
 

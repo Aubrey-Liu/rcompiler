@@ -21,14 +21,7 @@ use crate::sysy;
 use gen::*;
 use utils::*;
 
-pub fn generate_mem_ir_opt(input: &str) -> Result<Program> {
-    let mut p = generate_mem_ir(input)?;
-    optimize(&mut p);
-
-    Ok(p)
-}
-
-pub fn generate_mem_ir(input: &str) -> Result<Program> {
+pub fn generate_mem_ir(input: &str, opt: bool) -> Result<Program> {
     let input = read_to_string(input)?;
     let mut ast = sysy::CompUnitParser::new().parse(&input).unwrap();
 
@@ -45,11 +38,15 @@ pub fn generate_mem_ir(input: &str) -> Result<Program> {
     let mut recorder = ProgramRecorder::new(&mut program, &symbols);
     ast.generate_ir(&mut recorder)?;
 
+    if opt {
+        optimize(&mut program);
+    }
+
     Ok(program)
 }
 
-pub fn generate_ir(input: &str, output: &str) -> Result<()> {
-    let program = generate_mem_ir_opt(input)?;
+pub fn generate_ir(input: &str, output: &str, opt: bool) -> Result<()> {
+    let program = generate_mem_ir(input, opt)?;
     let output = File::create(output).unwrap();
     let mut gen = KoopaGenerator::new(BufWriter::new(output));
     gen.generate_on(&program)?;

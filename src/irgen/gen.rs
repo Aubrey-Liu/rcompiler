@@ -277,6 +277,7 @@ impl<'i> GenerateIR<'i> for Branch {
         if let Some(el_stmt) = &self.el_stmt {
             el_stmt.generate_ir(recorder)?;
         }
+
         // jump to the if-end block
         let jump = recorder.new_value().jump(end_bb);
         recorder.push_inst(jump);

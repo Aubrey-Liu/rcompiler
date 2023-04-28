@@ -131,6 +131,14 @@ pub fn last_inst_of_bb(f: &FunctionData, bb: BasicBlock) -> Value {
         .unwrap()
 }
 
+pub fn first_inst_of_bb(f: &FunctionData, bb: BasicBlock) -> Value {
+    f.layout()
+        .bbs()
+        .node(&bb)
+        .map(|n| *n.insts().front_key().unwrap())
+        .unwrap()
+}
+
 pub fn fix_bb_param_idx(f: &mut FunctionData, bb: BasicBlock) {
     for (i, &param) in f.dfg().bb(bb).params().to_owned().iter().enumerate() {
         let used_by = f.dfg().value(param).used_by().to_owned();

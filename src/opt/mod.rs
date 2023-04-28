@@ -1,4 +1,5 @@
 mod empty_bb;
+pub mod live_range;
 pub mod pass;
 mod sccp;
 mod ssa;
