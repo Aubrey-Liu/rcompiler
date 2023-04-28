@@ -52,7 +52,7 @@ impl<'i> Context<'i> {
 
         let mut live_ranges = LiveRange::new();
         live_ranges.analyze(program);
-        ctx.allocator.alloca(&live_ranges, 8);
+        ctx.allocator.alloca(&live_ranges, 12);
 
         ctx
     }
