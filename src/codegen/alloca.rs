@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use crate::opt::live_range::Range;
-
 use super::*;
 
 pub struct RegAllocator {

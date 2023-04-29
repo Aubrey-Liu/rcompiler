@@ -1,17 +1,19 @@
 mod alloca;
 mod context;
 mod gen;
+mod live_range;
 mod program;
 mod write;
 
 use std::fs::File;
 
-use crate::{irgen::generate_mem_ir, opt::live_range::LiveRange};
+use crate::irgen::generate_mem_ir;
 use anyhow::Result;
 use koopa::ir::{values::*, *};
 
 use context::*;
 use gen::*;
+use live_range::*;
 use program::*;
 use write::*;
 

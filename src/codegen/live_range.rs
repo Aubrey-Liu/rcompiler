@@ -69,7 +69,7 @@ impl LiveRange {
                     self.find_live_range_of(fid, f, val, val);
                 }
                 let bb_exit = *node.insts().back_key().unwrap();
-                if let ValueKind::Jump(j) = value_kind(f, bb_exit) {
+                if let ValueKind::Jump(j) = f.dfg().value(bb_exit).kind() {
                     if !visited.contains(&j.target()) {
                         continue;
                     }
@@ -153,4 +153,20 @@ impl Range {
     pub fn new(begin: ID, end: ID) -> Self {
         Self { begin, end }
     }
+}
+
+fn last_inst_of_bb(f: &FunctionData, bb: BasicBlock) -> Value {
+    f.layout()
+        .bbs()
+        .node(&bb)
+        .map(|n| *n.insts().back_key().unwrap())
+        .unwrap()
+}
+
+fn first_inst_of_bb(f: &FunctionData, bb: BasicBlock) -> Value {
+    f.layout()
+        .bbs()
+        .node(&bb)
+        .map(|n| *n.insts().front_key().unwrap())
+        .unwrap()
 }
