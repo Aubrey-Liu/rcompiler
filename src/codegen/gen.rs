@@ -70,10 +70,8 @@ impl GenerateAsm for FunctionData {
                         TypeKind::Pointer(base_ty) => base_ty.size() as i32,
                         _ => unreachable!(),
                     };
-                    if size > 4 {
-                        ctx.cur_func_mut().spill_to_mem(val, off);
-                        off += size;
-                    }
+                    ctx.cur_func_mut().spill_to_mem(val, off);
+                    off += size;
                 }
             }
         });
