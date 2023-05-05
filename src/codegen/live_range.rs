@@ -20,6 +20,7 @@ pub struct LiveRange {
     number_mapping: HashMap<Value, ID>,
     idx_mapping: HashMap<Value, usize>,
     pub ranges: HashMap<Function, Vec<(Range, Value)>>,
+    pub function_calls: HashMap<Function, Vec<ID>>,
 }
 
 impl LiveRange {
@@ -30,13 +31,17 @@ impl LiveRange {
 
     fn set_numbers(&mut self, p: &Program) {
         let mut id = ID::default();
-        for f in p.funcs().values() {
+        for (fid, f) in p.funcs() {
             if f.layout().entry_bb().is_none() {
                 continue;
             }
+            self.function_calls.insert(*fid, Vec::new());
             for node in f.layout().bbs().nodes() {
                 for val in node.insts().keys() {
                     self.number_mapping.insert(*val, id);
+                    if matches!(f.dfg().value(*val).kind(), ValueKind::Call(_)) {
+                        self.function_calls.get_mut(&fid).unwrap().push(id);
+                    }
                     id += 1;
                 }
             }
@@ -145,6 +150,7 @@ impl LiveRange {
             number_mapping: HashMap::new(),
             idx_mapping: HashMap::new(),
             ranges: HashMap::new(),
+            function_calls: HashMap::new(),
         }
     }
 }

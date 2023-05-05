@@ -52,7 +52,7 @@ impl<'i> Context<'i> {
 
         let mut live_ranges = LiveRange::new();
         live_ranges.analyze(program);
-        ctx.allocator.alloca(&live_ranges, 12);
+        ctx.allocator.alloca(&live_ranges);
 
         ctx
     }
@@ -250,5 +250,12 @@ impl IntoName for RegID {
 impl IntoID for &str {
     fn into_id(self) -> RegID {
         *NAME_ID_MAPPING.get(self).unwrap()
+    }
+}
+
+impl RegID {
+    pub fn is_saved_reg(&self) -> bool {
+        let id = self.0;
+        return (8..=9).contains(&id) || (18..=27).contains(&id);
     }
 }
