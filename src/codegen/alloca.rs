@@ -14,6 +14,7 @@ pub struct RegAllocator {
 }
 
 const SAVED_REGS: u32 = 12;
+const TEMP_TREGS: u32 = 4;
 const TEMP_REGS: u32 = 12;
 
 impl RegAllocator {
@@ -56,11 +57,12 @@ impl RegAllocator {
         for i in 0..SAVED_REGS {
             self.free_pool[i as usize] = (format!("s{}", i).into_id(), true);
         }
-        for i in 0..4 {
+        for i in 0..TEMP_TREGS {
             self.free_pool[(i + SAVED_REGS) as usize] = (format!("t{}", i + 3).into_id(), true);
         }
-        for i in 0..(TEMP_REGS - 4) {
-            self.free_pool[(i + SAVED_REGS + 4) as usize] = (format!("a{}", i).into_id(), true);
+        for i in 0..(TEMP_REGS - TEMP_TREGS) {
+            self.free_pool[(i + SAVED_REGS + TEMP_TREGS) as usize] =
+                (format!("a{}", i).into_id(), true);
         }
     }
 
