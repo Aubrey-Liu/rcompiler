@@ -81,6 +81,7 @@ impl AsmProgram {
         let last = self.values.last_mut().unwrap();
         let invalid = "zero".into_id();
         let target = target.to_owned();
+        let default_val = AsmValue::Branch(BranchOp::Bnez, cond, invalid, target.clone());
         match &last {
             AsmValue::Unary(op, _, opr) => match op {
                 AsmUnaryOp::Seqz => {
@@ -90,7 +91,7 @@ impl AsmProgram {
                     *last = AsmValue::Branch(BranchOp::Bnez, *opr, invalid, target);
                 }
                 AsmUnaryOp::Move => {
-                    self.push(AsmValue::Branch(BranchOp::Bnez, cond, invalid, target));
+                    self.push(default_val);
                 }
             },
             AsmValue::Binary(op, _, lhs, rhs) => match op {
@@ -101,11 +102,11 @@ impl AsmProgram {
                     *last = AsmValue::Branch(BranchOp::Bgt, *lhs, *rhs, target);
                 }
                 _ => {
-                    self.push(AsmValue::Branch(BranchOp::Bnez, cond, invalid, target));
+                    self.push(default_val);
                 }
             },
             _ => {
-                self.push(AsmValue::Branch(BranchOp::Bnez, cond, invalid, target));
+                self.push(default_val);
             }
         }
     }
