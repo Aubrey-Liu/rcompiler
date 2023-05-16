@@ -1,6 +1,7 @@
 use std::{
     cell::{Cell, Ref},
     collections::HashMap,
+    fmt::Display,
 };
 
 use koopa::ir::entities::ValueData;
@@ -10,6 +11,12 @@ use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RegID(usize);
+
+impl Display for RegID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.into_name())
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum Place {

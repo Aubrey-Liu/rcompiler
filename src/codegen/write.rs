@@ -14,38 +14,31 @@ impl AsmWriter {
     }
 
     pub fn li(&mut self, dst: RegID, imm: i32) -> Result<()> {
-        writeln!(self.f, "  li {}, {}", dst.into_name(), imm)
+        writeln!(self.f, "  li {}, {}", dst, imm)
     }
 
     pub fn mem_access(&mut self, method: &str, rd1: RegID, rd2: RegID, offset: i32) -> Result<()> {
-        writeln!(
-            self.f,
-            "  {} {}, {}({})",
-            method,
-            rd1.into_name(),
-            offset,
-            rd2.into_name()
-        )
+        writeln!(self.f, "  {} {}, {}({})", method, rd1, offset, rd2)
     }
 
     pub fn lw(&mut self, dst: RegID, src: RegID, offset: i32) -> Result<()> {
         if (-2048..=2047).contains(&offset) {
             self.mem_access("lw", dst, src, offset)
         } else {
-            self.binary_with_imm("add", dst, src, offset)?;
+            self.binary_with_imm(&AsmBinaryOp::Addi, dst, src, offset)?;
             self.mem_access("lw", dst, dst, 0)
         }
     }
 
     pub fn la(&mut self, dst: RegID, name: &str) -> Result<()> {
-        writeln!(self.f, "  la {}, {}", dst.into_name(), name)
+        writeln!(self.f, "  la {}, {}", dst, name)
     }
 
     pub fn sw(&mut self, src: RegID, dst: RegID, offset: i32) -> Result<()> {
         if (-2048..=2047).contains(&offset) {
             self.mem_access("sw", src, dst, offset)
         } else {
-            self.binary_with_imm("add", "t0".into_id(), dst, offset)?;
+            self.binary_with_imm(&AsmBinaryOp::Addi, "t0".into_id(), dst, offset)?;
             self.mem_access("sw", src, "t0".into_id(), 0)
         }
     }
@@ -56,49 +49,34 @@ impl AsmWriter {
 
     pub fn branch(&mut self, op: &BranchOp, lhs: RegID, rhs: RegID, target: &str) -> Result<()> {
         match op {
-            BranchOp::Bnez => writeln!(self.f, "  bnez {}, {}", lhs.into_name(), target),
-            BranchOp::Beqz => writeln!(self.f, "  beqz {}, {}", lhs.into_name(), target),
+            BranchOp::Bnez => writeln!(self.f, "  bnez {}, {}", lhs, target),
+            BranchOp::Beqz => writeln!(self.f, "  beqz {}, {}", lhs, target),
             _ => {
-                writeln!(
-                    self.f,
-                    "  {} {}, {}, {}",
-                    op.asm_name(),
-                    lhs.into_name(),
-                    rhs.into_name(),
-                    target
-                )
+                writeln!(self.f, "  {} {}, {}, {}", op, lhs, rhs, target)
             }
         }
     }
 
-    pub fn unary(&mut self, op: &str, dst: RegID, opr: RegID) -> Result<()> {
-        writeln!(self.f, "  {} {}, {}", op, dst.into_name(), opr.into_name())
+    pub fn unary(&mut self, op: &AsmUnaryOp, dst: RegID, opr: RegID) -> Result<()> {
+        writeln!(self.f, "  {} {}, {}", op, dst, opr)
     }
 
-    pub fn binary(&mut self, op: &str, dst: RegID, lhs: RegID, rhs: RegID) -> Result<()> {
-        writeln!(
-            self.f,
-            "  {} {}, {}, {}",
-            op,
-            dst.into_name(),
-            lhs.into_name(),
-            rhs.into_name()
-        )
+    pub fn binary(&mut self, op: &AsmBinaryOp, dst: RegID, lhs: RegID, rhs: RegID) -> Result<()> {
+        writeln!(self.f, "  {} {}, {}, {}", op, dst, lhs, rhs)
     }
 
-    pub fn binary_with_imm(&mut self, op: &str, dst: RegID, opr: RegID, imm: i32) -> Result<()> {
+    pub fn binary_with_imm(
+        &mut self,
+        op: &AsmBinaryOp,
+        dst: RegID,
+        opr: RegID,
+        imm: i32,
+    ) -> Result<()> {
         if (-2048..=2047).contains(&imm) {
-            writeln!(
-                self.f,
-                "  {}i {}, {}, {}",
-                op,
-                dst.into_name(),
-                opr.into_name(),
-                imm
-            )
+            writeln!(self.f, "  {} {}, {}, {}", op, dst, opr, imm)
         } else {
             self.li("t0".into_id(), imm)?;
-            self.binary(op, dst, opr, "t0".into_id())
+            self.binary(&op.into_reg_type(), dst, opr, "t0".into_id())
         }
     }
 
@@ -148,11 +126,9 @@ impl AsmWriter {
             AsmValue::LoadImm(dst, imm) => self.li(*dst, *imm),
             AsmValue::Load(dst, src, offset) => self.lw(*dst, *src, *offset),
             AsmValue::Store(src, dst, offset) => self.sw(*src, *dst, *offset),
-            AsmValue::Unary(op, dst, opr) => self.unary(op.asm_name(), *dst, *opr),
-            AsmValue::Binary(op, dst, lhs, rhs) => self.binary(op.asm_name(), *dst, *lhs, *rhs),
-            AsmValue::BinaryImm(op, dst, lhs, imm) => {
-                self.binary_with_imm(op.asm_name(), *dst, *lhs, *imm)
-            }
+            AsmValue::Unary(op, dst, opr) => self.unary(op, *dst, *opr),
+            AsmValue::Binary(op, dst, lhs, rhs) => self.binary(op, *dst, *lhs, *rhs),
+            AsmValue::BinaryImm(op, dst, lhs, imm) => self.binary_with_imm(op, *dst, *lhs, *imm),
             AsmValue::Directive(directive) => self.directive(directive),
             AsmValue::Call(label) => self.call(label),
             AsmValue::Branch(op, lhs, rhs, target) => self.branch(op, *lhs, *rhs, target),

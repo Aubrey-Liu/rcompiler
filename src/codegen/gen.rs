@@ -299,9 +299,9 @@ impl NonUnitGenerateAsm for GetElemPtr {
             let offset = i.value() * stride;
             let src = p.read_value_addr(ctx, t1, self.src());
             match ctx.get_local_place(val) {
-                Place::Reg(dst) => p.binary_with_imm(AsmBinaryOp::Add, dst, src, offset),
+                Place::Reg(dst) => p.binary_with_imm(AsmBinaryOp::Addi, dst, src, offset),
                 Place::Mem(dst_off) => {
-                    p.binary_with_imm(AsmBinaryOp::Add, t1, src, offset);
+                    p.binary_with_imm(AsmBinaryOp::Addi, t1, src, offset);
                     p.store(t1, "sp".into_id(), dst_off);
                 }
             }
@@ -334,9 +334,9 @@ impl NonUnitGenerateAsm for GetPtr {
             let offset = i.value() * stride;
             let src = p.read_value_addr(ctx, t1, self.src());
             match ctx.get_local_place(val) {
-                Place::Reg(dst) => p.binary_with_imm(AsmBinaryOp::Add, dst, src, offset),
+                Place::Reg(dst) => p.binary_with_imm(AsmBinaryOp::Addi, dst, src, offset),
                 Place::Mem(dst_off) => {
-                    p.binary_with_imm(AsmBinaryOp::Add, t1, src, offset);
+                    p.binary_with_imm(AsmBinaryOp::Addi, t1, src, offset);
                     p.store(t1, "sp".into_id(), dst_off);
                 }
             }
@@ -359,9 +359,9 @@ impl NonUnitGenerateAsm for Alloc {
     fn generate(&self, ctx: &mut Context, p: &mut AsmProgram, val: Value) {
         let begin_at = ctx.cur_func().get_local_array(val);
         match ctx.get_local_place(val) {
-            Place::Reg(reg) => p.binary_with_imm(AsmBinaryOp::Add, reg, "sp".into_id(), begin_at),
+            Place::Reg(reg) => p.binary_with_imm(AsmBinaryOp::Addi, reg, "sp".into_id(), begin_at),
             Place::Mem(off) => {
-                p.binary_with_imm(AsmBinaryOp::Add, *T1, "sp".into_id(), begin_at);
+                p.binary_with_imm(AsmBinaryOp::Addi, *T1, "sp".into_id(), begin_at);
                 p.store(*T1, "sp".into_id(), off);
             }
         }

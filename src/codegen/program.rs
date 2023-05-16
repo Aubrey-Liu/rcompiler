@@ -1,5 +1,6 @@
 use super::*;
 use lazy_static_include::lazy_static::lazy_static;
+use strum_macros::Display;
 
 #[derive(Debug)]
 pub enum Directive {
@@ -130,7 +131,7 @@ impl AsmProgram {
         self.global_symbol(func_name);
 
         let ss = ctx.cur_func().ss();
-        self.binary_with_imm(AsmBinaryOp::Add, *SP, *SP, -ss);
+        self.binary_with_imm(AsmBinaryOp::Addi, *SP, *SP, -ss);
         if !is_leaf {
             self.store("ra".into_id(), *SP, ss - 4);
         }
@@ -157,7 +158,7 @@ impl AsmProgram {
             id += 1;
             off += 4;
         }
-        self.binary_with_imm(AsmBinaryOp::Add, sp, sp, ss);
+        self.binary_with_imm(AsmBinaryOp::Addi, sp, sp, ss);
         self.ret();
     }
 
@@ -261,22 +262,22 @@ impl AsmProgram {
             return;
         }
         match op {
-            BinaryOp::Add => self.binary_with_imm(AsmBinaryOp::Add, dst, lhs, rhs),
+            BinaryOp::Add => self.binary_with_imm(AsmBinaryOp::Addi, dst, lhs, rhs),
             BinaryOp::Sub if (-2048..=2047).contains(&(-rhs)) => {
-                self.binary_with_imm(AsmBinaryOp::Add, dst, lhs, -rhs)
+                self.binary_with_imm(AsmBinaryOp::Addi, dst, lhs, -rhs)
             }
-            BinaryOp::And => self.binary_with_imm(AsmBinaryOp::And, dst, lhs, rhs),
-            BinaryOp::Or => self.binary_with_imm(AsmBinaryOp::Or, dst, lhs, rhs),
+            BinaryOp::And => self.binary_with_imm(AsmBinaryOp::Andi, dst, lhs, rhs),
+            BinaryOp::Or => self.binary_with_imm(AsmBinaryOp::Ori, dst, lhs, rhs),
             BinaryOp::Eq => {
-                self.binary_with_imm(AsmBinaryOp::Xor, dst, lhs, rhs);
+                self.binary_with_imm(AsmBinaryOp::Xori, dst, lhs, rhs);
                 self.unary(AsmUnaryOp::Seqz, dst, dst);
             }
             BinaryOp::NotEq => {
-                self.binary_with_imm(AsmBinaryOp::Xor, dst, lhs, rhs);
+                self.binary_with_imm(AsmBinaryOp::Xori, dst, lhs, rhs);
                 self.unary(AsmUnaryOp::Snez, dst, dst);
             }
             BinaryOp::Ge => {
-                self.binary_with_imm(AsmBinaryOp::Slt, dst, lhs, rhs);
+                self.binary_with_imm(AsmBinaryOp::Slti, dst, lhs, rhs);
                 self.unary(AsmUnaryOp::Seqz, dst, dst);
             }
             _ => {
@@ -319,7 +320,7 @@ impl AsmProgram {
                 shift += 1;
                 imm >>= 1;
             }
-            self.binary_with_imm(AsmBinaryOp::Sll, dst, opr, shift)
+            self.binary_with_imm(AsmBinaryOp::Slli, dst, opr, shift)
         } else {
             self.load_imm("t0".into_id(), imm);
             self.binary(AsmBinaryOp::Mul, dst, opr, "t0".into_id())
@@ -347,80 +348,73 @@ pub enum AsmValue {
 
 pub type Lable = String;
 
-#[derive(Debug)]
+#[derive(Debug, Display, Clone, Copy)]
 pub enum AsmBinaryOp {
+    #[strum(serialize = "add")]
     Add,
+    #[strum(serialize = "addi")]
+    Addi,
+    #[strum(serialize = "sub")]
     Sub,
+    #[strum(serialize = "mul")]
     Mul,
+    #[strum(serialize = "div")]
     Div,
+    #[strum(serialize = "rem")]
     Rem,
+    #[strum(serialize = "and")]
     And,
+    #[strum(serialize = "andi")]
+    Andi,
+    #[strum(serialize = "or")]
     Or,
+    #[strum(serialize = "ori")]
+    Ori,
+    #[strum(serialize = "slt")]
     Slt,
+    #[strum(serialize = "slti")]
+    Slti,
+    #[strum(serialize = "sgt")]
     Sgt,
+    #[strum(serialize = "xor")]
     Xor,
-    Sll,
-}
-
-#[derive(Debug)]
-pub enum AsmUnaryOp {
-    Seqz,
-    Snez,
-    Move,
-}
-
-#[derive(Debug)]
-pub enum BranchOp {
-    Bnez,
-    Beqz,
-    Blt,
-    Bgt,
-}
-
-impl BranchOp {
-    pub fn asm_name(&self) -> &'static str {
-        match self {
-            Self::Beqz => "beqz",
-            Self::Bnez => "bnez",
-            Self::Blt => "blt",
-            Self::Bgt => "bgt",
-        }
-    }
+    #[strum(serialize = "xori")]
+    Xori,
+    #[strum(serialize = "slli")]
+    Slli,
 }
 
 impl AsmBinaryOp {
-    pub fn asm_name(&self) -> &'static str {
-        lazy_static! {
-            static ref OP_NAMES: Vec<&'static str> =
-                vec!["add", "sub", "mul", "div", "rem", "and", "or", "slt", "sgt", "xor", "sll"];
-        };
-
-        OP_NAMES[self.index()]
-    }
-
-    fn index(&self) -> usize {
+    pub fn into_reg_type(self) -> Self {
         match self {
-            Self::Add => 0,
-            Self::Sub => 1,
-            Self::Mul => 2,
-            Self::Div => 3,
-            Self::Rem => 4,
-            Self::And => 5,
-            Self::Or => 6,
-            Self::Slt => 7,
-            Self::Sgt => 8,
-            Self::Xor => 9,
-            Self::Sll => 10,
+            Self::Addi => Self::Add,
+            Self::Andi => Self::And,
+            Self::Ori => Self::Or,
+            Self::Slti => Self::Slt,
+            Self::Xori => Self::Xor,
+            _ => unreachable!(),
         }
     }
 }
 
-impl AsmUnaryOp {
-    pub fn asm_name(&self) -> &'static str {
-        match self {
-            Self::Seqz => "seqz",
-            Self::Snez => "snez",
-            Self::Move => "mv",
-        }
-    }
+#[derive(Debug, Display)]
+pub enum AsmUnaryOp {
+    #[strum(serialize = "seqz")]
+    Seqz,
+    #[strum(serialize = "snez")]
+    Snez,
+    #[strum(serialize = "mv")]
+    Move,
+}
+
+#[derive(Debug, Display)]
+pub enum BranchOp {
+    #[strum(serialize = "bnez")]
+    Bnez,
+    #[strum(serialize = "beqz")]
+    Beqz,
+    #[strum(serialize = "blt")]
+    Blt,
+    #[strum(serialize = "bgt")]
+    Bgt,
 }

@@ -13,3 +13,5 @@ lalrpop-util = { version = "0.19.9", features = ["lexer"] }
 lazy-static-include = "3.1.4"
 regex = "1"
 smallvec = "1.10.0"
+strum = { version = "0.24", features = ["derive"] }
+strum_macros = "0.24.3"
