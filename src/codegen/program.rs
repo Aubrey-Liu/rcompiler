@@ -223,6 +223,38 @@ impl AsmProgram {
         }
     }
 
+    pub fn ir_binary_with_imm(&mut self, op: BinaryOp, dst: RegID, lhs: RegID, rhs: i32) {
+        if !(-2048..=2047).contains(&rhs) {
+            self.load_imm(*T0, rhs);
+            self.ir_binary(op, dst, lhs, *T0);
+            return;
+        }
+        match op {
+            BinaryOp::Add => self.binary_with_imm(AsmBinaryOp::Add, dst, lhs, rhs),
+            BinaryOp::Sub if (-2048..=2047).contains(&(-rhs)) => {
+                self.binary_with_imm(AsmBinaryOp::Add, dst, lhs, -rhs)
+            }
+            BinaryOp::And => self.binary_with_imm(AsmBinaryOp::And, dst, lhs, rhs),
+            BinaryOp::Or => self.binary_with_imm(AsmBinaryOp::Or, dst, lhs, rhs),
+            BinaryOp::Eq => {
+                self.binary_with_imm(AsmBinaryOp::Xor, dst, lhs, rhs);
+                self.unary(AsmUnaryOp::Seqz, dst, dst);
+            }
+            BinaryOp::NotEq => {
+                self.binary_with_imm(AsmBinaryOp::Xor, dst, lhs, rhs);
+                self.unary(AsmUnaryOp::Snez, dst, dst);
+            }
+            BinaryOp::Ge => {
+                self.binary_with_imm(AsmBinaryOp::Slt, dst, lhs, rhs);
+                self.unary(AsmUnaryOp::Seqz, dst, dst);
+            }
+            _ => {
+                self.load_imm(*T0, rhs);
+                self.ir_binary(op, dst, lhs, *T0)
+            }
+        }
+    }
+
     pub fn write_back(&mut self, ctx: &Context, src: RegID, val: Value) {
         let t0 = *T0;
         let sp = *SP;
@@ -295,8 +327,6 @@ pub enum AsmBinaryOp {
     Sgt,
     Xor,
     Sll,
-    #[allow(dead_code)]
-    Sra,
 }
 
 pub enum AsmUnaryOp {
@@ -308,9 +338,8 @@ pub enum AsmUnaryOp {
 impl AsmBinaryOp {
     pub fn asm_name(&self) -> &'static str {
         lazy_static! {
-            static ref OP_NAMES: Vec<&'static str> = vec![
-                "add", "sub", "mul", "div", "rem", "and", "or", "slt", "sgt", "xor", "sll", "sra"
-            ];
+            static ref OP_NAMES: Vec<&'static str> =
+                vec!["add", "sub", "mul", "div", "rem", "and", "or", "slt", "sgt", "xor", "sll"];
         };
 
         OP_NAMES[self.index()]
@@ -329,7 +358,6 @@ impl AsmBinaryOp {
             Self::Sgt => 8,
             Self::Xor => 9,
             Self::Sll => 10,
-            Self::Sra => 11,
         }
     }
 }
@@ -340,17 +368,6 @@ impl AsmUnaryOp {
             Self::Seqz => "seqz",
             Self::Snez => "snez",
             Self::Move => "mv",
-        }
-    }
-}
-
-impl Place {
-    #[allow(dead_code)]
-    pub fn reg_id(&self) -> RegID {
-        if let Place::Reg(id) = self {
-            *id
-        } else {
-            unreachable!()
         }
     }
 }

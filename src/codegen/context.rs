@@ -13,7 +13,6 @@ pub struct RegID(usize);
 
 #[derive(Debug, Clone, Copy)]
 pub enum Place {
-    #[allow(dead_code)]
     Reg(RegID),
     Mem(i32),
 }

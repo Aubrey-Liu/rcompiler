@@ -12,22 +12,13 @@ pub struct PassRunner {
     passes: Vec<Pass>,
 }
 
-pub enum Pass {
-    #[allow(dead_code)]
-    ProgramPass(Box<dyn ProgramPass>),
-    FunctionPass(Box<dyn FunctionPass>),
-}
+pub struct Pass(pub Box<dyn FunctionPass>);
 
 impl PassRunner {
     pub fn run_passes(&mut self, program: &mut Program) {
         for pass in &mut self.passes {
-            match pass {
-                Pass::ProgramPass(p) => p.run_on(program),
-                Pass::FunctionPass(p) => {
-                    for data in program.funcs_mut().values_mut() {
-                        p.run_on(data);
-                    }
-                }
+            for data in program.funcs_mut().values_mut() {
+                pass.0.run_on(data);
             }
         }
     }

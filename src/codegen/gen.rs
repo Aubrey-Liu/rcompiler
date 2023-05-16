@@ -194,8 +194,7 @@ impl GenerateAsm for Return {
 }
 
 impl GenerateAsm for Integer {
-    #[allow(unused_variables)]
-    fn generate(&self, ctx: &mut Context, p: &mut AsmProgram) {
+    fn generate(&self, _ctx: &mut Context, p: &mut AsmProgram) {
         p.directive(Directive::Word(self.value()));
     }
 }
@@ -223,11 +222,22 @@ impl NonUnitGenerateAsm for Binary {
     fn generate(&self, ctx: &mut Context, p: &mut AsmProgram, val: Value) {
         let (t1, t2) = (*T1, *T2);
         let lhs = p.read_value(ctx, t1, self.lhs());
-        let rhs = p.read_value(ctx, t2, self.rhs());
         match ctx.get_local_place(val) {
-            Place::Reg(dst) => p.ir_binary(self.op(), dst, lhs, rhs),
+            Place::Reg(dst) => {
+                if let ValueKind::Integer(imm) = ctx.value_kind(self.rhs()) {
+                    p.ir_binary_with_imm(self.op(), dst, lhs, imm.value());
+                } else {
+                    let rhs = p.read_value(ctx, t2, self.rhs());
+                    p.ir_binary(self.op(), dst, lhs, rhs);
+                }
+            }
             Place::Mem(off) => {
-                p.ir_binary(self.op(), t1, lhs, rhs);
+                if let ValueKind::Integer(imm) = ctx.value_kind(self.rhs()) {
+                    p.ir_binary_with_imm(self.op(), t1, lhs, imm.value());
+                } else {
+                    let rhs = p.read_value(ctx, t2, self.rhs());
+                    p.ir_binary(self.op(), t1, lhs, rhs);
+                }
                 p.store(t1, "sp".into_id(), off);
             }
         }
