@@ -1,6 +1,7 @@
 use super::*;
 use lazy_static_include::lazy_static::lazy_static;
 
+#[derive(Debug)]
 pub enum Directive {
     Data,
     Text,
@@ -77,7 +78,36 @@ impl AsmProgram {
     }
 
     pub fn branch(&mut self, cond: RegID, target: &str) {
-        self.push(AsmValue::Branch(cond, target.to_owned()));
+        let last = self.values.last_mut().unwrap();
+        let invalid = "zero".into_id();
+        let target = target.to_owned();
+        match &last {
+            AsmValue::Unary(op, _, opr) => match op {
+                AsmUnaryOp::Seqz => {
+                    *last = AsmValue::Branch(BranchOp::Beqz, *opr, invalid, target);
+                }
+                AsmUnaryOp::Snez => {
+                    *last = AsmValue::Branch(BranchOp::Bnez, *opr, invalid, target);
+                }
+                AsmUnaryOp::Move => {
+                    self.push(AsmValue::Branch(BranchOp::Bnez, cond, invalid, target));
+                }
+            },
+            AsmValue::Binary(op, _, lhs, rhs) => match op {
+                AsmBinaryOp::Slt => {
+                    *last = AsmValue::Branch(BranchOp::Blt, *lhs, *rhs, target);
+                }
+                AsmBinaryOp::Sgt => {
+                    *last = AsmValue::Branch(BranchOp::Bgt, *lhs, *rhs, target);
+                }
+                _ => {
+                    self.push(AsmValue::Branch(BranchOp::Bnez, cond, invalid, target));
+                }
+            },
+            _ => {
+                self.push(AsmValue::Branch(BranchOp::Bnez, cond, invalid, target));
+            }
+        }
     }
 
     pub fn jump(&mut self, target: &str) {
@@ -296,6 +326,7 @@ impl AsmProgram {
     }
 }
 
+#[derive(Debug)]
 pub enum AsmValue {
     LoadAddress(RegID, Lable),                 // la dst, lable
     LoadImm(RegID, i32),                       // li dst, imm
@@ -304,7 +335,7 @@ pub enum AsmValue {
     Binary(AsmBinaryOp, RegID, RegID, RegID),  // op dst, lhs, rhs
     BinaryImm(AsmBinaryOp, RegID, RegID, i32), // op dst, lhs, imm
     Unary(AsmUnaryOp, RegID, RegID),           // op dst, opr
-    Branch(RegID, Lable),
+    Branch(BranchOp, RegID, RegID, Lable),
     Jump(Lable),
     Call(Lable),
     Directive(Directive),
@@ -315,6 +346,7 @@ pub enum AsmValue {
 
 pub type Lable = String;
 
+#[derive(Debug)]
 pub enum AsmBinaryOp {
     Add,
     Sub,
@@ -329,10 +361,30 @@ pub enum AsmBinaryOp {
     Sll,
 }
 
+#[derive(Debug)]
 pub enum AsmUnaryOp {
     Seqz,
     Snez,
     Move,
+}
+
+#[derive(Debug)]
+pub enum BranchOp {
+    Bnez,
+    Beqz,
+    Blt,
+    Bgt,
+}
+
+impl BranchOp {
+    pub fn asm_name(&self) -> &'static str {
+        match self {
+            Self::Beqz => "beqz",
+            Self::Bnez => "bnez",
+            Self::Blt => "blt",
+            Self::Bgt => "bgt",
+        }
+    }
 }
 
 impl AsmBinaryOp {

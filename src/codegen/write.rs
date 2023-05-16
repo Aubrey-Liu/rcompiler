@@ -54,8 +54,21 @@ impl AsmWriter {
         writeln!(self.f, "  j {}", target)
     }
 
-    pub fn bnez(&mut self, cond: RegID, target: &str) -> Result<()> {
-        writeln!(self.f, "  bnez {}, {}", cond.into_name(), target)
+    pub fn branch(&mut self, op: &BranchOp, lhs: RegID, rhs: RegID, target: &str) -> Result<()> {
+        match op {
+            BranchOp::Bnez => writeln!(self.f, "  bnez {}, {}", lhs.into_name(), target),
+            BranchOp::Beqz => writeln!(self.f, "  beqz {}, {}", lhs.into_name(), target),
+            _ => {
+                writeln!(
+                    self.f,
+                    "  {} {}, {}, {}",
+                    op.asm_name(),
+                    lhs.into_name(),
+                    rhs.into_name(),
+                    target
+                )
+            }
+        }
     }
 
     pub fn unary(&mut self, op: &str, dst: RegID, opr: RegID) -> Result<()> {
@@ -142,7 +155,7 @@ impl AsmWriter {
             }
             AsmValue::Directive(directive) => self.directive(directive),
             AsmValue::Call(label) => self.call(label),
-            AsmValue::Branch(cond, target) => self.bnez(*cond, target),
+            AsmValue::Branch(op, lhs, rhs, target) => self.branch(op, *lhs, *rhs, target),
             AsmValue::Jump(target) => self.j(target),
             AsmValue::LocalSymbol(label) => self.local_symbol(label),
             AsmValue::GlobalSymbol(label) => self.global_symbol(label),

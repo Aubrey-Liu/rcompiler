@@ -155,17 +155,16 @@ impl GenerateAsm for Branch {
             let param = ctx.cur_func_data().dfg().bb(self.true_bb()).params()[i];
             p.move_local_value(ctx, param, arg);
         }
+        let cond = p.read_value(ctx, *T1, self.cond());
+        let true_bb = ctx.cur_func().get_bb_name(&self.true_bb());
+        let false_bb = ctx.cur_func().get_bb_name(&self.false_bb());
+        p.branch(cond, true_bb);
 
         for (i, &arg) in self.false_args().iter().enumerate() {
             let param = ctx.cur_func_data().dfg().bb(self.false_bb()).params()[i];
             p.move_local_value(ctx, param, arg);
         }
 
-        let cond = p.read_value(ctx, *T1, self.cond());
-
-        let true_bb = ctx.cur_func().get_bb_name(&self.true_bb());
-        let false_bb = ctx.cur_func().get_bb_name(&self.false_bb());
-        p.branch(cond, true_bb);
         p.jump(false_bb);
     }
 }
