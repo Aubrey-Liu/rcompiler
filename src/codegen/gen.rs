@@ -213,8 +213,13 @@ impl NonUnitGenerateAsm for Load {
         let t1 = *TMP1;
         let t2 = *TMP2;
         let src = p.read_value_addr(ctx, t1, self.src());
-        p.load(t2, src, 0);
-        p.write_back(ctx, t2, val);
+        match ctx.get_local_place(val) {
+            Place::Reg(dst) => p.load(dst, src, 0),
+            Place::Mem(_) => {
+                p.load(t2, src, 0);
+                p.write_back(ctx, t2, val);
+            }
+        }
     }
 }
 
