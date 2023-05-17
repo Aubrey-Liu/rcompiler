@@ -18,7 +18,9 @@ impl PassRunner {
     pub fn run_passes(&mut self, program: &mut Program) {
         for pass in &mut self.passes {
             for data in program.funcs_mut().values_mut() {
-                pass.0.run_on(data);
+                if data.layout().entry_bb().is_some() {
+                    pass.0.run_on(data);
+                }
             }
         }
     }

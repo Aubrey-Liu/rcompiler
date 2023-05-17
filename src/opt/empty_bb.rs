@@ -7,10 +7,8 @@ pub struct RemoveEmptyBB;
 
 impl FunctionPass for RemoveEmptyBB {
     fn run_on(&mut self, f: &mut FunctionData) {
-        if f.layout().entry_bb().is_some() {
-            while self.remove_empty_bb(f) {}
-            self.try_coalesce_entry(f);
-        }
+        while self.remove_empty_bb(f) {}
+        self.try_coalesce_entry(f);
     }
 }
 

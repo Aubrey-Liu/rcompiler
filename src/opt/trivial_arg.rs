@@ -6,9 +6,7 @@ pub struct RemoveTrivialArgs;
 
 impl FunctionPass for RemoveTrivialArgs {
     fn run_on(&mut self, f: &mut FunctionData) {
-        if f.layout().entry_bb().is_some() {
-            while self.try_remove_unused_args(f) || self.try_remove_trivial_args(f) {}
-        }
+        while self.try_remove_unused_args(f) || self.try_remove_trivial_args(f) {}
     }
 }
 
@@ -122,14 +120,4 @@ impl RemoveTrivialArgs {
 
         same
     }
-}
-
-fn value_eq(f: &FunctionData, x: Value, y: Value) -> bool {
-    if x == y {
-        return true;
-    }
-    if let (ValueKind::Integer(i), ValueKind::Integer(j)) = (value_kind(f, x), value_kind(f, y)) {
-        return i.value() == j.value();
-    }
-    false
 }

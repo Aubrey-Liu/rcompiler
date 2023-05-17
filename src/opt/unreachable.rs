@@ -9,9 +9,7 @@ pub struct RemoveUnreachable;
 
 impl FunctionPass for RemoveUnreachable {
     fn run_on(&mut self, f: &mut FunctionData) {
-        if f.layout().entry_bb().is_some() {
-            self.remove_unreachable_bb(f);
-        }
+        self.remove_unreachable_bb(f);
     }
 }
 

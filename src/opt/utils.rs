@@ -107,6 +107,9 @@ pub fn replace_variable(f: &mut FunctionData, origin: Value, replace_by: Value) 
                     }
                 });
             }
+            ValueKind::Load(load) => {
+                *load.src_mut() = replace_by;
+            }
             _ => unreachable!(),
         }
         f.dfg_mut().replace_value_with(user).raw(data);
@@ -141,4 +144,14 @@ pub fn fix_bb_param_idx(f: &mut FunctionData, bb: BasicBlock) {
         f.dfg_mut().replace_value_with(param).raw(data);
         fix_used_by(f, &used_by);
     }
+}
+
+pub fn value_eq(f: &FunctionData, x: Value, y: Value) -> bool {
+    if x == y {
+        return true;
+    }
+    if let (ValueKind::Integer(i), ValueKind::Integer(j)) = (value_kind(f, x), value_kind(f, y)) {
+        return i.value() == j.value();
+    }
+    false
 }

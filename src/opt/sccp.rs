@@ -48,10 +48,8 @@ pub struct Sccp {
 
 impl FunctionPass for Sccp {
     fn run_on(&mut self, f: &mut FunctionData) {
-        if f.layout().entry_bb().is_some() {
-            self.work(f);
-            self.clear();
-        }
+        self.work(f);
+        self.clear();
     }
 }
 

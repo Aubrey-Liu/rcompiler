@@ -1,3 +1,4 @@
+mod common_expr;
 mod empty_bb;
 pub mod pass;
 mod sccp;
@@ -6,6 +7,7 @@ mod trivial_arg;
 mod unreachable;
 mod utils;
 
+use common_expr::*;
 use empty_bb::*;
 use koopa::ir::Program;
 use pass::*;
@@ -24,5 +26,6 @@ pub fn optimize(p: &mut Program) {
     pass_runner.register_pass(Pass(Box::new(RemoveEmptyBB)));
     pass_runner.register_pass(Pass(Box::new(RemoveTrivialArgs)));
     pass_runner.register_pass(Pass(Box::new(RemoveEmptyBB)));
+    pass_runner.register_pass(Pass(Box::new(RemoveCommonExpression)));
     pass_runner.run_passes(p);
 }

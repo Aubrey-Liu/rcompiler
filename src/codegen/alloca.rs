@@ -117,8 +117,11 @@ impl RegAllocator {
     fn alloca_register(&mut self, f: Function, r: Range, val: Value, allow_temp: bool) {
         let reg = if allow_temp && self.free_temp_regs > 0 {
             self.alloc_temp_reg()
-        } else {
+        } else if self.free_saved_regs > 0 {
             self.alloc_saved_reg()
+        } else {
+            self.spill_at_interval(f, r, val);
+            return;
         };
         self.places.entry(f).and_modify(|v| {
             v.insert(val, Place::Reg(reg));

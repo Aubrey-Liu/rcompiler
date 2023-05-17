@@ -21,7 +21,7 @@ fn main() -> Result<()> {
     let output = args.nth(1).unwrap();
 
     match mode.as_str() {
-        "-koopa" => generate_ir(&input, &output, false)?,
+        "-koopa" => generate_ir(&input, &output, true)?,
         "-riscv" => generate_code(&input, &output, false)?,
         "-perf" => generate_code(&input, &output, true)?,
         _ => bail!("invalid mode: {}", mode.as_str()),

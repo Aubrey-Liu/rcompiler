@@ -32,9 +32,7 @@ pub struct SsaBuilder {
 
 impl FunctionPass for SsaBuilder {
     fn run_on(&mut self, f: &mut FunctionData) {
-        if f.layout().entry_bb().is_some() {
-            self.build_ssa(f);
-        }
+        self.build_ssa(f);
     }
 }
 
