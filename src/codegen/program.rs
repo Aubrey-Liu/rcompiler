@@ -258,6 +258,9 @@ impl AsmProgram {
         match op {
             BinaryOp::Add => self.binary_with_imm(AsmBinaryOp::Addi, dst, lhs, imm),
             BinaryOp::Sub => self.binary_with_imm(AsmBinaryOp::Addi, dst, lhs, -imm),
+            BinaryOp::Mul => self.muli(dst, lhs, imm),
+            BinaryOp::Div => self.divi(dst, lhs, imm),
+            BinaryOp::Mod => self.remi(dst, lhs, imm),
             BinaryOp::And => self.binary_with_imm(AsmBinaryOp::Andi, dst, lhs, imm),
             BinaryOp::Or => self.binary_with_imm(AsmBinaryOp::Ori, dst, lhs, imm),
             BinaryOp::Eq => {
@@ -318,6 +321,34 @@ impl AsmProgram {
             self.binary(AsmBinaryOp::Mul, dst, opr, dst)
         }
     }
+
+    pub fn divi(&mut self, dst: RegID, opr: RegID, imm: i32) {
+        if imm == 1 {
+            if dst != opr {
+                self.unary(AsmUnaryOp::Move, dst, opr);
+            }
+        } else if imm > 0 && (imm & (imm - 1)) == 0 {
+            let mut shift = 0;
+            let mut imm = imm >> 1;
+            while imm != 0 {
+                shift += 1;
+                imm >>= 1;
+            }
+            self.binary_with_imm(AsmBinaryOp::Srai, dst, opr, shift)
+        } else {
+            self.load_imm(dst, imm);
+            self.binary(AsmBinaryOp::Div, dst, opr, dst)
+        }
+    }
+
+    pub fn remi(&mut self, dst: RegID, opr: RegID, imm: i32) {
+        if imm > 0 && (imm & (imm - 1)) == 0 {
+            self.binary_with_imm(AsmBinaryOp::Andi, dst, opr, imm - 1)
+        } else {
+            self.load_imm(dst, imm);
+            self.binary(AsmBinaryOp::Rem, dst, opr, dst)
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -374,6 +405,8 @@ pub enum AsmBinaryOp {
     Xori,
     #[strum(serialize = "slli")]
     Slli,
+    #[strum(serialize = "srai")]
+    Srai,
 }
 
 impl AsmBinaryOp {
