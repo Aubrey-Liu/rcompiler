@@ -61,20 +61,16 @@ impl RemoveEmptyBB {
     fn try_coalesce_entry(&self, f: &mut FunctionData) {
         let entry_bb = f.layout().entry_bb().unwrap();
         let node = f.layout().bbs().node(&entry_bb).unwrap();
-        let val = *node.insts().front_key().unwrap();
+        let val = *node.insts().back_key().unwrap();
         if let ValueKind::Jump(j) = value_kind(f, val).clone() {
-            if !j.args().is_empty() {
+            let target = j.target();
+            if !j.args().is_empty() || f.dfg().bb(j.target()).used_by().len() > 1 {
                 return;
             }
-            let target = j.target();
-            replace_bb_with(f, target, entry_bb);
-
             f.layout_mut().bb_mut(entry_bb).insts_mut().remove(&val);
-
             f.dfg_mut().remove_value(val);
             f.dfg_mut().remove_bb(target);
             let (_, node) = f.layout_mut().bbs_mut().remove(&target).unwrap();
-
             for val in node.insts().keys() {
                 f.layout_mut()
                     .bb_mut(entry_bb)

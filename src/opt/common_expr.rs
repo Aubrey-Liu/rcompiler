@@ -8,12 +8,12 @@ pub struct RemoveCommonExpression;
 
 impl FunctionPass for RemoveCommonExpression {
     fn run_on(&mut self, f: &mut FunctionData) {
-        self.work(f);
+        while self.work(f) {}
     }
 }
 
 impl RemoveCommonExpression {
-    fn work(&self, f: &mut FunctionData) {
+    fn work(&self, f: &mut FunctionData) -> bool {
         let mut removed_values: HashMap<BasicBlock, Vec<_>> = HashMap::new();
         for (&bb, node) in f.layout().bbs() {
             let mut visited_values = Vec::new();
@@ -61,5 +61,7 @@ impl RemoveCommonExpression {
                 f.layout_mut().bb_mut(bb).insts_mut().remove(&val);
             }
         }
+
+        return !removed_values.is_empty();
     }
 }
