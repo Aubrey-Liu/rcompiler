@@ -1,7 +1,7 @@
-pub(crate) mod exp;
+pub(crate) mod expr;
 pub(crate) mod visit;
 
-pub(crate) use exp::*;
+pub(crate) use expr::*;
 pub(crate) use visit::*;
 
 #[derive(Debug)]
