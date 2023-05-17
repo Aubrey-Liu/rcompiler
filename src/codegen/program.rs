@@ -180,12 +180,11 @@ impl AsmProgram {
     }
 
     pub fn read_value(&mut self, ctx: &Context, dst: RegID, val: Value) -> RegID {
-        let t0 = *T0;
         let sp = *SP;
         if ctx.is_global(val) {
             let name = ctx.get_global_var(&val);
-            self.load_address(t0, name);
-            self.load(dst, t0, 0);
+            self.load_address(dst, name);
+            self.load(dst, dst, 0);
             return dst;
         }
         if let ValueKind::Integer(imm) = ctx.value_kind(val) {
@@ -255,34 +254,27 @@ impl AsmProgram {
         }
     }
 
-    pub fn ir_binary_with_imm(&mut self, op: BinaryOp, dst: RegID, lhs: RegID, rhs: i32) {
-        if !(-2048..=2047).contains(&rhs) {
-            self.load_imm(*T0, rhs);
-            self.ir_binary(op, dst, lhs, *T0);
-            return;
-        }
+    pub fn ir_binary_with_imm(&mut self, op: BinaryOp, dst: RegID, lhs: RegID, imm: i32) {
         match op {
-            BinaryOp::Add => self.binary_with_imm(AsmBinaryOp::Addi, dst, lhs, rhs),
-            BinaryOp::Sub if (-2048..=2047).contains(&(-rhs)) => {
-                self.binary_with_imm(AsmBinaryOp::Addi, dst, lhs, -rhs)
-            }
-            BinaryOp::And => self.binary_with_imm(AsmBinaryOp::Andi, dst, lhs, rhs),
-            BinaryOp::Or => self.binary_with_imm(AsmBinaryOp::Ori, dst, lhs, rhs),
+            BinaryOp::Add => self.binary_with_imm(AsmBinaryOp::Addi, dst, lhs, imm),
+            BinaryOp::Sub => self.binary_with_imm(AsmBinaryOp::Addi, dst, lhs, -imm),
+            BinaryOp::And => self.binary_with_imm(AsmBinaryOp::Andi, dst, lhs, imm),
+            BinaryOp::Or => self.binary_with_imm(AsmBinaryOp::Ori, dst, lhs, imm),
             BinaryOp::Eq => {
-                self.binary_with_imm(AsmBinaryOp::Xori, dst, lhs, rhs);
+                self.binary_with_imm(AsmBinaryOp::Xori, dst, lhs, imm);
                 self.unary(AsmUnaryOp::Seqz, dst, dst);
             }
             BinaryOp::NotEq => {
-                self.binary_with_imm(AsmBinaryOp::Xori, dst, lhs, rhs);
+                self.binary_with_imm(AsmBinaryOp::Xori, dst, lhs, imm);
                 self.unary(AsmUnaryOp::Snez, dst, dst);
             }
             BinaryOp::Ge => {
-                self.binary_with_imm(AsmBinaryOp::Slti, dst, lhs, rhs);
+                self.binary_with_imm(AsmBinaryOp::Slti, dst, lhs, imm);
                 self.unary(AsmUnaryOp::Seqz, dst, dst);
             }
             _ => {
-                self.load_imm(*T0, rhs);
-                self.ir_binary(op, dst, lhs, *T0)
+                self.load_imm(dst, imm);
+                self.ir_binary(op, dst, lhs, dst)
             }
         }
     }
@@ -322,8 +314,8 @@ impl AsmProgram {
             }
             self.binary_with_imm(AsmBinaryOp::Slli, dst, opr, shift)
         } else {
-            self.load_imm("t0".into_id(), imm);
-            self.binary(AsmBinaryOp::Mul, dst, opr, "t0".into_id())
+            self.load_imm(dst, imm);
+            self.binary(AsmBinaryOp::Mul, dst, opr, dst)
         }
     }
 }

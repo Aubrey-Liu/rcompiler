@@ -5,8 +5,8 @@ use lazy_static_include::lazy_static::lazy_static;
 use super::*;
 
 lazy_static! {
-    static ref T1: RegID = "t1".into_id();
-    static ref T2: RegID = "t2".into_id();
+    static ref TMP1: RegID = "t0".into_id();
+    static ref TMP2: RegID = "t1".into_id();
 }
 
 pub trait GenerateAsm {
@@ -92,8 +92,8 @@ impl GenerateAsm for FunctionData {
             if i < 8 {
                 p.write_back(ctx, format!("a{}", i).into_id(), *param);
             } else {
-                p.load(*T1, "sp".into_id(), ss + (i as i32 - 8) * 4);
-                p.write_back(ctx, *T1, *param);
+                p.load(*TMP2, "sp".into_id(), ss + (i as i32 - 8) * 4);
+                p.write_back(ctx, *TMP2, *param);
             }
         });
 
@@ -128,7 +128,7 @@ impl GenerateAsm for Value {
 
 impl GenerateAsm for Store {
     fn generate(&self, ctx: &mut Context, p: &mut AsmProgram) {
-        let (t1, t2) = (*T1, *T2);
+        let (t1, t2) = (*TMP1, *TMP2);
         if let ValueKind::ZeroInit(_) = ctx.value_kind(self.value()) {
             let a0 = "a0".into_id();
             let begin = p.read_value(ctx, a0, self.dest());
@@ -155,7 +155,7 @@ impl GenerateAsm for Branch {
             let param = ctx.cur_func_data().dfg().bb(self.true_bb()).params()[i];
             p.move_local_value(ctx, param, arg);
         }
-        let cond = p.read_value(ctx, *T1, self.cond());
+        let cond = p.read_value(ctx, *TMP1, self.cond());
         let true_bb = ctx.cur_func().get_bb_name(&self.true_bb());
         let false_bb = ctx.cur_func().get_bb_name(&self.false_bb());
         p.branch(cond, true_bb);
@@ -210,16 +210,17 @@ pub trait NonUnitGenerateAsm {
 
 impl NonUnitGenerateAsm for Load {
     fn generate(&self, ctx: &mut Context, p: &mut AsmProgram, val: Value) {
-        let t1 = *T1;
+        let t1 = *TMP1;
+        let t2 = *TMP2;
         let src = p.read_value_addr(ctx, t1, self.src());
-        p.load(t1, src, 0);
-        p.write_back(ctx, t1, val);
+        p.load(t2, src, 0);
+        p.write_back(ctx, t2, val);
     }
 }
 
 impl NonUnitGenerateAsm for Binary {
     fn generate(&self, ctx: &mut Context, p: &mut AsmProgram, val: Value) {
-        let (t1, t2) = (*T1, *T2);
+        let (t1, t2) = (*TMP1, *TMP2);
         let lhs = p.read_value(ctx, t1, self.lhs());
         match ctx.get_local_place(val) {
             Place::Reg(dst) => {
@@ -232,12 +233,12 @@ impl NonUnitGenerateAsm for Binary {
             }
             Place::Mem(off) => {
                 if let ValueKind::Integer(imm) = ctx.value_kind(self.rhs()) {
-                    p.ir_binary_with_imm(self.op(), t1, lhs, imm.value());
+                    p.ir_binary_with_imm(self.op(), t2, lhs, imm.value());
                 } else {
                     let rhs = p.read_value(ctx, t2, self.rhs());
-                    p.ir_binary(self.op(), t1, lhs, rhs);
+                    p.ir_binary(self.op(), t2, lhs, rhs);
                 }
-                p.store(t1, "sp".into_id(), off);
+                p.store(t2, "sp".into_id(), off);
             }
         }
     }
@@ -268,7 +269,7 @@ impl NonUnitGenerateAsm for Call {
                     p.mv(dst, reg);
                 }
             } else {
-                let reg = p.read_value(ctx, *T1, arg);
+                let reg = p.read_value(ctx, *TMP2, arg);
                 p.store(reg, "sp".into_id(), (i as i32 - 8) * 4);
             }
         });
@@ -294,26 +295,26 @@ impl NonUnitGenerateAsm for GetElemPtr {
             unreachable!()
         };
 
-        let (t1, t2) = (*T1, *T2);
+        let (t1, t2) = (*TMP1, *TMP2);
         if let ValueKind::Integer(i) = ctx.value_kind(self.index()) {
             let offset = i.value() * stride;
             let src = p.read_value_addr(ctx, t1, self.src());
             match ctx.get_local_place(val) {
                 Place::Reg(dst) => p.binary_with_imm(AsmBinaryOp::Addi, dst, src, offset),
                 Place::Mem(dst_off) => {
-                    p.binary_with_imm(AsmBinaryOp::Addi, t1, src, offset);
-                    p.store(t1, "sp".into_id(), dst_off);
+                    p.binary_with_imm(AsmBinaryOp::Addi, t2, src, offset);
+                    p.store(t2, "sp".into_id(), dst_off);
                 }
             }
         } else {
-            let src = p.read_value_addr(ctx, t1, self.src());
-            let index = p.read_value(ctx, t2, self.index());
+            let index = p.read_value(ctx, t1, self.index());
             p.muli(t2, index, stride);
+            let src = p.read_value_addr(ctx, t1, self.src());
             match ctx.get_local_place(val) {
                 Place::Reg(dst) => p.binary(AsmBinaryOp::Add, dst, src, t2),
                 Place::Mem(dst_off) => {
-                    p.binary(AsmBinaryOp::Add, t1, src, t2);
-                    p.store(t1, "sp".into_id(), dst_off);
+                    p.binary(AsmBinaryOp::Add, t2, src, t2);
+                    p.store(t2, "sp".into_id(), dst_off);
                 }
             }
         }
@@ -329,26 +330,26 @@ impl NonUnitGenerateAsm for GetPtr {
             unreachable!()
         };
 
-        let (t1, t2) = (*T1, *T2);
+        let (t1, t2) = (*TMP1, *TMP2);
         if let ValueKind::Integer(i) = ctx.value_kind(self.index()) {
             let offset = i.value() * stride;
             let src = p.read_value_addr(ctx, t1, self.src());
             match ctx.get_local_place(val) {
                 Place::Reg(dst) => p.binary_with_imm(AsmBinaryOp::Addi, dst, src, offset),
                 Place::Mem(dst_off) => {
-                    p.binary_with_imm(AsmBinaryOp::Addi, t1, src, offset);
-                    p.store(t1, "sp".into_id(), dst_off);
+                    p.binary_with_imm(AsmBinaryOp::Addi, t2, src, offset);
+                    p.store(t2, "sp".into_id(), dst_off);
                 }
             }
         } else {
-            let src = p.read_value_addr(ctx, t1, self.src());
-            let index = p.read_value(ctx, t2, self.index());
+            let index = p.read_value(ctx, t1, self.index());
             p.muli(t2, index, stride);
+            let src = p.read_value_addr(ctx, t1, self.src());
             match ctx.get_local_place(val) {
                 Place::Reg(dst) => p.binary(AsmBinaryOp::Add, dst, src, t2),
                 Place::Mem(dst_off) => {
-                    p.binary(AsmBinaryOp::Add, t1, src, t2);
-                    p.store(t1, "sp".into_id(), dst_off);
+                    p.binary(AsmBinaryOp::Add, t2, src, t2);
+                    p.store(t2, "sp".into_id(), dst_off);
                 }
             }
         }
@@ -361,8 +362,8 @@ impl NonUnitGenerateAsm for Alloc {
         match ctx.get_local_place(val) {
             Place::Reg(reg) => p.binary_with_imm(AsmBinaryOp::Addi, reg, "sp".into_id(), begin_at),
             Place::Mem(off) => {
-                p.binary_with_imm(AsmBinaryOp::Addi, *T1, "sp".into_id(), begin_at);
-                p.store(*T1, "sp".into_id(), off);
+                p.binary_with_imm(AsmBinaryOp::Addi, *TMP2, "sp".into_id(), begin_at);
+                p.store(*TMP2, "sp".into_id(), off);
             }
         }
     }

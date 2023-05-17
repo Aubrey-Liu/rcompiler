@@ -38,8 +38,9 @@ impl AsmWriter {
         if (-2048..=2047).contains(&offset) {
             self.mem_access("sw", src, dst, offset)
         } else {
-            self.binary_with_imm(&AsmBinaryOp::Addi, "t0".into_id(), dst, offset)?;
-            self.mem_access("sw", src, "t0".into_id(), 0)
+            let tmp = "t0".into_id();
+            self.binary_with_imm(&AsmBinaryOp::Addi, tmp, dst, offset)?;
+            self.mem_access("sw", src, tmp, 0)
         }
     }
 
@@ -75,8 +76,13 @@ impl AsmWriter {
         if (-2048..=2047).contains(&imm) {
             writeln!(self.f, "  {} {}, {}, {}", op, dst, opr, imm)
         } else {
-            self.li("t0".into_id(), imm)?;
-            self.binary(&op.into_reg_type(), dst, opr, "t0".into_id())
+            let tmp = if dst == "sp".into_id() {
+                "t0".into_id()
+            } else {
+                dst
+            };
+            self.li(tmp, imm)?;
+            self.binary(&op.into_reg_type(), dst, opr, tmp)
         }
     }
 
