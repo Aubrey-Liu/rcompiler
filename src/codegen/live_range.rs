@@ -39,8 +39,13 @@ impl LiveRange {
             for node in f.layout().bbs().nodes() {
                 for val in node.insts().keys() {
                     self.number_mapping.insert(*val, id);
-                    if matches!(f.dfg().value(*val).kind(), ValueKind::Call(_)) {
+                    let kind = f.dfg().value(*val).kind();
+                    if matches!(kind, ValueKind::Call(_)) {
                         self.function_calls.get_mut(&fid).unwrap().push(id);
+                    } else if let ValueKind::Store(store) = kind {
+                        if matches!(f.dfg().value(store.value()).kind(), ValueKind::ZeroInit(_)) {
+                            self.function_calls.get_mut(&fid).unwrap().push(id);
+                        }
                     }
                     id += 1;
                 }

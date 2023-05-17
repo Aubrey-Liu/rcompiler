@@ -200,8 +200,8 @@ impl FunctionInfo {
         self.saved_regs.1 += shift;
     }
 
-    pub fn get_local_array(&self, val: Value) -> i32 {
-        *self.local_arrays.get(&val).unwrap() + self.base_offset
+    pub fn get_local_array(&self, val: Value) -> Option<i32> {
+        self.local_arrays.get(&val).map(|x| *x + self.base_offset)
     }
 
     pub fn get_bb_name(&self, bb: &BasicBlock) -> &String {

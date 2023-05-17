@@ -14,8 +14,9 @@ pub struct RegAllocator {
 }
 
 const SAVED_REGS: u32 = 12;
+const TEMP_AREGS: u32 = 8;
 const TEMP_TREGS: u32 = 5;
-const TEMP_REGS: u32 = 13;
+const TEMP_REGS: u32 = TEMP_AREGS + TEMP_TREGS;
 
 impl RegAllocator {
     pub fn init(&mut self, fid: Function) {
@@ -57,12 +58,12 @@ impl RegAllocator {
         for i in 0..SAVED_REGS {
             self.free_pool[i as usize] = (format!("s{}", i).into_id(), true);
         }
-        for i in 0..TEMP_TREGS {
-            self.free_pool[(i + SAVED_REGS) as usize] = (format!("t{}", i + 2).into_id(), true);
+        for i in 0..TEMP_AREGS {
+            self.free_pool[(i + SAVED_REGS) as usize] = (format!("a{}", i).into_id(), true);
         }
-        for i in 0..(TEMP_REGS - TEMP_TREGS) {
-            self.free_pool[(i + SAVED_REGS + TEMP_TREGS) as usize] =
-                (format!("a{}", i).into_id(), true);
+        for i in 0..TEMP_TREGS {
+            self.free_pool[(i + SAVED_REGS + TEMP_AREGS) as usize] =
+                (format!("t{}", i + 2).into_id(), true);
         }
     }
 
@@ -136,7 +137,7 @@ impl RegAllocator {
 
     fn alloc_saved_reg(&mut self) -> RegID {
         self.free_saved_regs -= 1;
-        for (reg, free) in &mut self.free_pool[0..SAVED_REGS as usize] {
+        for (reg, free) in &mut self.free_pool[..SAVED_REGS as usize] {
             if *free {
                 *free = false;
                 return *reg;
@@ -148,9 +149,7 @@ impl RegAllocator {
 
     fn alloc_temp_reg(&mut self) -> RegID {
         self.free_temp_regs -= 1;
-        for (reg, free) in
-            &mut self.free_pool[SAVED_REGS as usize..(SAVED_REGS + TEMP_REGS) as usize]
-        {
+        for (reg, free) in &mut self.free_pool[SAVED_REGS as usize..] {
             if *free {
                 *free = false;
                 return *reg;

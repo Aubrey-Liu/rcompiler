@@ -363,7 +363,7 @@ impl NonUnitGenerateAsm for GetPtr {
 
 impl NonUnitGenerateAsm for Alloc {
     fn generate(&self, ctx: &mut Context, p: &mut AsmProgram, val: Value) {
-        let begin_at = ctx.cur_func().get_local_array(val);
+        let begin_at = ctx.cur_func().get_local_array(val).unwrap();
         match ctx.get_local_place(val) {
             Place::Reg(reg) => p.binary_with_imm(AsmBinaryOp::Addi, reg, "sp".into_id(), begin_at),
             Place::Mem(off) => {
