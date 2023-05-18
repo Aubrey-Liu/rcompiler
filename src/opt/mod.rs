@@ -24,8 +24,8 @@ pub fn optimize(p: &mut Program) {
     pass_runner.register_pass(Pass(Box::new(Sccp::new())));
     pass_runner.register_pass(Pass(Box::new(RemoveUnreachable)));
     pass_runner.register_pass(Pass(Box::new(RemoveEmptyBB)));
+    pass_runner.register_pass(Pass(Box::new(RemoveCommonExpression)));
     pass_runner.register_pass(Pass(Box::new(RemoveTrivialArgs)));
     pass_runner.register_pass(Pass(Box::new(RemoveEmptyBB)));
-    pass_runner.register_pass(Pass(Box::new(RemoveCommonExpression)));
     pass_runner.run_passes(p);
 }
