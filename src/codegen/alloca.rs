@@ -69,7 +69,7 @@ impl RegAllocator {
 
     fn contains_call(&self, r: Range, calls: &[u32]) -> bool {
         for call in calls {
-            if (r.begin..=r.end).contains(call) {
+            if (r.begin + 1..=r.end).contains(call) {
                 return true;
             }
         }

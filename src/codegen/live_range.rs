@@ -123,9 +123,7 @@ impl LiveRange {
         self.ranges
             .entry(fid)
             .and_modify(|v| v.push((Range::new(def_id, def_id), val)));
-        for user in f.dfg().value(val).used_by() {
-            self.update_range(fid, val, *self.number_mapping.get(user).unwrap());
-        }
+        self.update_range_by_users(fid, f, val);
     }
 
     fn find_live_range_of(&mut self, fid: Function, f: &FunctionData, val: Value, def: Value) {
@@ -135,8 +133,13 @@ impl LiveRange {
         self.ranges
             .entry(fid)
             .and_modify(|v| v.push((Range::new(def_id, def_id), val)));
-        for user in f.dfg().value(val).used_by() {
-            self.update_range(fid, val, *self.number_mapping.get(user).unwrap());
+        self.update_range_by_users(fid, f, val);
+    }
+
+    fn update_range_by_users(&mut self, fid: Function, f: &FunctionData, val: Value) {
+        for &user in f.dfg().value(val).used_by() {
+            let number = *self.number_mapping.get(&user).unwrap();
+            self.update_range(fid, val, number);
         }
     }
 
