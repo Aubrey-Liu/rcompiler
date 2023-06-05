@@ -2,7 +2,7 @@ use super::*;
 use lazy_static_include::lazy_static::lazy_static;
 use strum_macros::Display;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Directive {
     Data,
     Text,
@@ -78,38 +78,76 @@ impl AsmProgram {
         self.push(AsmValue::Call(lable.to_owned()));
     }
 
-    pub fn branch(&mut self, cond: RegID, target: &str) {
-        let last = self.values.last_mut().unwrap();
+    fn compress_extend(&mut self, values: &[AsmValue]) {
+        self.values.pop();
+        self.values.pop();
+        self.values.extend(values.to_vec());
+    }
+
+    fn compress_back(&mut self, val: AsmValue) {
+        self.values.pop();
+        self.values.pop();
+        self.values.push(val);
+    }
+
+    fn compress_branch(&mut self) -> bool {
         let invalid = "zero".into_id();
-        let target = target.to_owned();
-        let default_val = AsmValue::Branch(BranchOp::Bnez, cond, invalid, target.clone());
-        match &last {
-            AsmValue::Unary(op, _, opr) => match op {
-                AsmUnaryOp::Seqz => {
-                    *last = AsmValue::Branch(BranchOp::Beqz, *opr, invalid, target);
-                }
-                AsmUnaryOp::Snez => {
-                    *last = AsmValue::Branch(BranchOp::Bnez, *opr, invalid, target);
-                }
-                AsmUnaryOp::Move => {
-                    self.push(default_val);
-                }
-            },
-            AsmValue::Binary(op, _, lhs, rhs) => match op {
-                AsmBinaryOp::Slt => {
-                    *last = AsmValue::Branch(BranchOp::Blt, *lhs, *rhs, target);
-                }
-                AsmBinaryOp::Sgt => {
-                    *last = AsmValue::Branch(BranchOp::Bgt, *lhs, *rhs, target);
-                }
-                _ => {
-                    self.push(default_val);
-                }
-            },
-            _ => {
-                self.push(default_val);
-            }
+        let mut iter = self.values.iter().rev().peekable();
+        match (iter.next().unwrap(), iter.next().unwrap()) {
+            (
+                AsmValue::Branch(BranchOp::Bnez, _, _, target),
+                AsmValue::Unary(AsmUnaryOp::Seqz, _, opr),
+            ) => self.compress_back(AsmValue::Branch(
+                BranchOp::Beqz,
+                *opr,
+                invalid,
+                target.clone(),
+            )),
+            (
+                AsmValue::Branch(BranchOp::Bnez, _, _, target),
+                AsmValue::Unary(AsmUnaryOp::Snez, _, opr),
+            ) => self.compress_back(AsmValue::Branch(
+                BranchOp::Bnez,
+                *opr,
+                invalid,
+                target.clone(),
+            )),
+            (
+                AsmValue::Branch(BranchOp::Bnez, _, _, target),
+                AsmValue::Binary(AsmBinaryOp::Slt, _, lhs, rhs),
+            ) => self.compress_back(AsmValue::Branch(BranchOp::Blt, *lhs, *rhs, target.clone())),
+            (
+                AsmValue::Branch(BranchOp::Bnez, _, _, target),
+                AsmValue::Binary(AsmBinaryOp::Sgt, _, lhs, rhs),
+            ) => self.compress_back(AsmValue::Branch(BranchOp::Bgt, *lhs, *rhs, target.clone())),
+            (
+                AsmValue::Branch(BranchOp::Beqz, lhs, _, target),
+                AsmValue::BinaryImm(AsmBinaryOp::Xori, _, rhs, imm),
+            ) => self.compress_extend(&[
+                AsmValue::LoadImm(*lhs, *imm),
+                AsmValue::Branch(BranchOp::Beq, *lhs, *rhs, target.clone()),
+            ]),
+            (
+                AsmValue::Branch(BranchOp::Bnez, lhs, _, target),
+                AsmValue::BinaryImm(AsmBinaryOp::Xori, _, rhs, imm),
+            ) => self.compress_extend(&[
+                AsmValue::LoadImm(*lhs, *imm),
+                AsmValue::Branch(BranchOp::Bne, *lhs, *rhs, target.clone()),
+            ]),
+            _ => return false,
         }
+
+        true
+    }
+
+    pub fn branch(&mut self, cond: RegID, target: &str) {
+        self.push(AsmValue::Branch(
+            BranchOp::Bnez,
+            cond,
+            "zero".into_id(),
+            target.to_string(),
+        ));
+        while self.compress_branch() {}
     }
 
     pub fn jump(&mut self, target: &str) {
@@ -351,7 +389,7 @@ impl AsmProgram {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AsmValue {
     LoadAddress(RegID, Lable),                 // la dst, lable
     LoadImm(RegID, i32),                       // li dst, imm
@@ -422,7 +460,7 @@ impl AsmBinaryOp {
     }
 }
 
-#[derive(Debug, Display)]
+#[derive(Debug, Display, Clone)]
 pub enum AsmUnaryOp {
     #[strum(serialize = "seqz")]
     Seqz,
@@ -432,7 +470,7 @@ pub enum AsmUnaryOp {
     Move,
 }
 
-#[derive(Debug, Display)]
+#[derive(Debug, Display, Clone)]
 pub enum BranchOp {
     #[strum(serialize = "bnez")]
     Bnez,
@@ -442,4 +480,8 @@ pub enum BranchOp {
     Blt,
     #[strum(serialize = "bgt")]
     Bgt,
+    #[strum(serialize = "beq")]
+    Beq,
+    #[strum(serialize = "bne")]
+    Bne,
 }
