@@ -262,6 +262,6 @@ impl IntoID for &str {
 impl RegID {
     pub fn is_saved_reg(&self) -> bool {
         let id = self.0;
-        return (8..=9).contains(&id) || (18..=27).contains(&id);
+        (8..=9).contains(&id) || (18..=27).contains(&id)
     }
 }

@@ -62,6 +62,6 @@ impl RemoveCommonExpression {
             }
         }
 
-        return !removed_values.is_empty();
+        !removed_values.is_empty()
     }
 }
