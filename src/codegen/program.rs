@@ -239,6 +239,66 @@ impl AsmProgram {
         }
     }
 
+    pub fn try_remove_redundant_mv(&mut self, dst: RegID, src: RegID) -> bool {
+        let mut iter = self.values.iter_mut().rev();
+        while let Some(val) = iter.next() {
+            match val {
+                AsmValue::Binary(_, ddst, lhs, rhs) => {
+                    if *ddst == src {
+                        *ddst = dst;
+                        break;
+                    }
+                    if *lhs == src || *rhs == src {
+                        return false;
+                    }
+                }
+                AsmValue::BinaryImm(_, ddst, opr, _) => {
+                    if *ddst == src {
+                        *ddst = dst;
+                        break;
+                    }
+                    if *opr == src {
+                        return false;
+                    }
+                }
+                AsmValue::Unary(_, ddst, opr) => {
+                    if *ddst == src {
+                        *ddst = dst;
+                        break;
+                    }
+                    if *opr == src {
+                        return false;
+                    }
+                }
+                AsmValue::Load(ddst, ssrc, _) => {
+                    if *ddst == src {
+                        *ddst = dst;
+                        break;
+                    }
+                    if *ssrc == src {
+                        return false;
+                    }
+                }
+                AsmValue::LoadImm(ddst, _) if *ddst == src => {
+                    *ddst = dst;
+                    break;
+                }
+                AsmValue::Store(reg1, reg2, _) => {
+                    if *reg1 == src || *reg2 == src {
+                        return false;
+                    }
+                }
+                AsmValue::Branch(_, reg1, reg2, _) => {
+                    if *reg1 == src || *reg2 == src {
+                        return false;
+                    }
+                }
+                _ => return false,
+            }
+        }
+
+        true
+    }
     pub fn move_local_value(&mut self, ctx: &Context, dst: Value, src: Value) {
         if let ValueKind::Integer(imm) = ctx.value_kind(src) {
             match ctx.get_local_place(dst) {
@@ -250,7 +310,11 @@ impl AsmProgram {
             }
         } else {
             match (ctx.get_local_place(src), ctx.get_local_place(dst)) {
-                (Place::Reg(src), Place::Reg(dst)) => self.mv(dst, src),
+                (Place::Reg(src), Place::Reg(dst)) => {
+                    if !self.try_remove_redundant_mv(dst, src) {
+                        self.mv(dst, src)
+                    }
+                }
                 (Place::Reg(id), Place::Mem(off)) => self.store(id, *SP, off),
                 (Place::Mem(off), Place::Reg(id)) => self.load(id, *SP, off),
                 (Place::Mem(src_off), Place::Mem(dst_off)) => {
