@@ -1,1 +1,1 @@
-# A C-style Language Compiler Written in Rust
+A Rust-based learning-purpose compiler for a C-style language
